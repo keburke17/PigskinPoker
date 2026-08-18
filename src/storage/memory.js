@@ -92,9 +92,10 @@ export function createMemoryStore(initialDb, opts = {}) {
     if (!db) return null;
     const v = hydrateLeague(db);
     if (!v) return null;
-    v.commissionerCode = codes.commissioner;
+    // Mirror the Supabase adapter exactly: expose only whether a code is set.
+    v.commissionerCodeSet = !!codes.commissioner;
     v.teams.forEach((t) => {
-      t.joinCode = codes.teams[t.id] ?? "";
+      t.hasJoinCode = !!codes.teams[t.id];
     });
     return v;
   }
@@ -417,14 +418,42 @@ export function createMemoryStore(initialDb, opts = {}) {
     /* ------------------------------- codes ------------------------------- */
     // Phase 2b: still client-checked, exactly as the artifact did. Phase 2c moves
     // verification into a server function and stops sending these to the browser.
-    getCodes: () => clone(codes),
-    setCommissionerCode(code) {
-      codes.commissioner = code;
-      notify();
+    /* Same async login surface as the Supabase adapter, so App does not branch on
+     * which store it is talking to. Verification is local here because there is no
+     * server; the SHAPE is identical. */
+    async loginCommissioner(code) {
+      const given = String(code ?? "").trim().toUpperCase();
+      if (!codes.commissioner) {
+        if (!given) return { ok: false, reason: "invalid", message: "Enter a code to create the commissioner login." };
+        codes.commissioner = given;
+        notify();
+        return { ok: true, role: "commissioner", teamId: null };
+      }
+      if (given !== String(codes.commissioner).trim().toUpperCase()) {
+        return { ok: false, reason: "unauthorized", message: "Incorrect commissioner code." };
+      }
+      return { ok: true, role: "commissioner", teamId: null };
     },
-    setTeamJoinCode(teamLegacyId, code) {
+
+    async loginManager(teamLegacyId, code) {
+      const expected = codes.teams[teamLegacyId];
+      if (!expected) {
+        return { ok: false, reason: "unauthorized", message: "This team doesn't have a join code set yet - ask your commissioner to set one." };
+      }
+      if (String(code ?? "").trim().toUpperCase() !== String(expected).trim().toUpperCase()) {
+        return { ok: false, reason: "unauthorized", message: "Incorrect join code." };
+      }
+      return { ok: true, role: "manager", teamId: teamLegacyId };
+    },
+
+    async logout() {
+      return { ok: true };
+    },
+
+    async setTeamJoinCode(teamLegacyId, code) {
       codes.teams[teamLegacyId] = code;
       notify();
+      return { ok: true };
     },
 
     /** Test/debug only. Not part of the interface. */

@@ -12,9 +12,11 @@
  *
  * The view is DERIVED on every read. There is no blob stored anywhere.
  *
- * NOTE (Phase 2b): commissionerCode and team.joinCode are still carried on the view,
- * exactly as the artifact had them, because login is still checked client-side. Phase 2c
- * moves login server-side and drops both from the view - see the note in loginResult().
+ * SECURITY (Phase 2c): this view NEVER carries the commissioner code or any team's join
+ * code. The artifact kept both inside the league blob, so every visitor's browser
+ * downloaded all of them (P2). They now live hashed in tables the publishable key
+ * cannot read, and are verified server-side. All the view exposes is whether a code has
+ * been set, which is what the UI actually needs to decide what to render.
  */
 
 import { emptyCumulative } from "../engine/index.js";
@@ -141,7 +143,7 @@ export function hydrateLeague(db, opts = {}) {
     return {
       id: t.legacy_id,
       name: t.name,
-      joinCode: t.joinCode ?? "", // Phase 2b only; see file header
+      hasJoinCode: !!(t.has_join_code ?? t.hasJoinCode), // never the code itself
       roster,
       cumulative: toCumulative(totalsFor(t.id, "regular")),
       playoffCumulative: toCumulative(totalsFor(t.id, "playoff")),
@@ -240,7 +242,7 @@ export function hydrateLeague(db, opts = {}) {
   return {
     schemaVersion: season.schema_version,
     leagueName: league.name,
-    commissionerCode: league.commissionerCode ?? null, // Phase 2b only
+    commissionerCodeSet: !!(league.has_commissioner_code ?? league.commissionerCodeSet),
     teams,
     playerPool: playerRows.map((p) => ({
       id: p.legacy_id,

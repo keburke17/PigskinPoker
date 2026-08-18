@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import { execSync } from "node:child_process";
 
@@ -82,6 +82,13 @@ if (!available) {
     "\n              These are the security assertions. Run them with: npx supabase start\n"
   );
 }
+
+/* Clean up after ourselves. Leaving a stray league behind makes the demo seed's
+ * "refuse to run where real data exists" guard fire in other suites - which is the
+ * guard working correctly, and our mess to avoid. */
+afterAll(async () => {
+  if (available && ids.league) await secret.from("leagues").delete().eq("id", ids.league);
+});
 
 const gate = () => (available ? describe : describe.skip);
 

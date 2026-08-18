@@ -18,6 +18,7 @@
 
 import { useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
+import { saveSessionToken } from "./storage/supabase.js";
 import { useLeague } from "./hooks/useLeague.js";
 import { validateBackup } from "./storage/backup.js";
 import {
@@ -83,44 +84,47 @@ export default function App() {
   const dealError = opError && opError.headline ? opError.headline : null;
   const finalizeError = dealError;
 
-  /* ---- login (still client-checked in 2b; Phase 2c moves it server-side) ---- */
-  const onCommissionerLogin = (code) => {
-    const trimmed = (code || "").trim();
-    if (!state.commissionerCode) {
-      if (!trimmed) {
-        setLoginError("Enter a code to create the commissioner login.");
-        return;
-      }
-      store.setCommissionerCode(trimmed);
-      setIdentity({ role: "commissioner", teamId: null });
-      setLoginError(null);
-    } else if (trimmed === state.commissionerCode) {
-      setIdentity({ role: "commissioner", teamId: null });
-      setLoginError(null);
-    } else {
-      setLoginError("Incorrect commissioner code.");
+  /* ---- login ----
+   * The EXPERIENCE is unchanged: the league still just types a code. What changed is
+   * that the code is no longer in the browser to compare against. Verification happens
+   * server-side against a hash, and a successful login returns a session token that
+   * every privileged write re-checks (fixes P2).
+   *
+   * Both adapters expose the same async surface, so this does not branch on which
+   * store it is talking to. */
+  const onCommissionerLogin = async (code) => {
+    setLoginError(null);
+    const r = await store.loginCommissioner(code);
+    if (!r.ok) {
+      setLoginError(r.message || "Incorrect commissioner code.");
+      return;
     }
+    if (r.token) saveSessionToken(r.token);
+    setIdentity({ role: "commissioner", teamId: null });
   };
 
-  const onManagerLogin = (teamId, joinCode) => {
-    const team = state.teams.find((t) => t.id === teamId);
-    if (!team) {
+  const onManagerLogin = async (teamId, joinCode) => {
+    setLoginError(null);
+    if (!teamId) {
       setLoginError("Select a team first.");
       return;
     }
-    if (!team.joinCode) {
-      setLoginError("This team doesn't have a join code set yet - ask your commissioner to set one.");
+    const r = await store.loginManager(teamId, joinCode);
+    if (!r.ok) {
+      setLoginError(r.message || "Incorrect join code.");
       return;
     }
-    if (team.joinCode !== joinCode) {
-      setLoginError("Incorrect join code.");
-      return;
-    }
+    if (r.token) saveSessionToken(r.token);
     setIdentity({ role: "manager", teamId });
-    setLoginError(null);
   };
 
-  const onLogout = () => {
+  const onLogout = async () => {
+    try {
+      await store.logout?.();
+    } catch {
+      /* logging out locally matters more than the round trip succeeding */
+    }
+    saveSessionToken(null);
     setIdentity({ role: null, teamId: null });
     setTab("home");
   };
@@ -158,16 +162,15 @@ export default function App() {
       s.teams.push({
         id: uid("team"),
         name,
-        joinCode: "",
         roster: null,
         cumulative: emptyCumulative(),
         playoffCumulative: emptyCumulative(),
       });
     });
   const onRenameTeam = (id, name) => onRenameMyTeam(id, name);
-  const onSetJoinCode = (id, code) => {
-    store.setTeamJoinCode(id, code);
-    ops.mutate("joinCode:" + id, () => {});
+  const onSetJoinCode = async (id, code) => {
+    const r = await store.setTeamJoinCode(id, code);
+    if (r && r.ok === false) setLoginError(r.message || "Couldn't set that join code.");
   };
   const onRemoveTeam = (id) =>
     ops.mutate("removeTeam:" + id, (s) => {

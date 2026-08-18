@@ -19,6 +19,16 @@
 
 import { stableUuid } from "./ids.js";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/* Keep an id that is ALREADY a database uuid; otherwise derive a stable one.
+ *
+ * Without this, re-decomposing a league that came back through hydrate() re-hashes
+ * each existing uuid into a DIFFERENT uuid, so the same natural key (period, team)
+ * arrives with a new id and the upsert collides with the row already there. Caught by
+ * tests/server.test.js on the second lifecycle write. */
+const keepOrDerive = (existing, derive) => (UUID_RE.test(existing ?? "") ? existing : derive());
+
 const STARTER_SLOTS = ["Coach", "QB", "WR", "RB", "TE", "FLEX"];
 
 const periodKey = (p) => p.type + "-" + p.number;
@@ -42,7 +52,13 @@ export function decomposeLeague(state, opts) {
   const periodId = (p) => uid("period", periodKey(p));
 
   const out = {
-    leagues: [{ id: leagueId, name: state.leagueName || "Pigskin Poker" }],
+    leagues: [
+      {
+        id: leagueId,
+        name: state.leagueName || "Pigskin Poker",
+        has_commissioner_code: !!state.commissionerCode,
+      },
+    ],
     seasons: [
       {
         id: seasonId,
@@ -84,6 +100,8 @@ export function decomposeLeague(state, opts) {
       name: t.name,
       legacy_id: t.id,
       active: true,
+      // Public fact, never the code itself. Drives the team picker's "joinable" state.
+      has_join_code: !!t.joinCode,
     });
     const totals = (cum, scope) => ({
       id: uid("totals", t.id + ":" + scope),
@@ -150,7 +168,8 @@ export function decomposeLeague(state, opts) {
     });
     rows.forEach((r) => {
       out.period_results.push({
-        id: uid("result", r.id || periodKey(period) + ":" + r.teamId),
+        // Natural key is (period, team) - never the engine's random result id.
+        id: keepOrDerive(r.id, () => uid("result", periodKey(period) + ":" + r.teamId)),
         period_id: periodId(period),
         team_id: teamId(r.teamId),
         rank: r.rank,
@@ -258,7 +277,7 @@ export function decomposeLeague(state, opts) {
     const known = e.period && historical.has(periodKey(e.period));
     const isCurrent = e.period && periodKey(e.period) === curKey;
     out.events.push({
-      id: uid("event", e.id || "idx:" + i),
+      id: keepOrDerive(e.id, () => uid("event", e.id || "idx:" + i)),
       season_id: seasonId,
       period_id: known || isCurrent ? periodId(e.period) : null,
       type: e.type,

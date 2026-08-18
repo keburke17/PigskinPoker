@@ -38,6 +38,34 @@ in-memory store, are never sent anywhere, and must never be used for a real leag
 Pick "I'm the Commissioner" or "I'm a Team Manager" on the login screen. A full page
 refresh resets the demo league to its seeded state - refresh is the reset button.
 
+## Running against a real database (optional)
+
+The demo above needs nothing. To run against a real Postgres with the actual auth and
+write path:
+
+```bash
+npx supabase start && npx supabase db reset
+```
+
+Then create `.env.local` (git-ignored) from the values `npx supabase status` prints:
+
+```
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SECRET_KEY=sb_secret_...
+VITE_LEAGUE_NAME=Pigskin Poker (Demo League)
+```
+
+`npm run dev` now reads from Postgres, verifies logins server-side, and pushes live
+updates over Realtime. The same demo codes work.
+
+**`SUPABASE_SECRET_KEY` has no `VITE_` prefix on purpose.** Vite inlines any `VITE_`
+variable into the browser bundle; the secret key bypasses RLS entirely, so it must never
+be one. `tests/bundle.test.js` asserts it never reaches the client.
+
+`npx supabase db reset` is the one-command way back to a clean, populated league.
+
 ## Commands
 
 | Command | What it does |
@@ -48,6 +76,8 @@ refresh resets the demo league to its seeded state - refresh is the reset button
 | `npm run build` | Production build to `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run lint` | ESLint |
+| `npm run seed:generate` | Regenerate `supabase/seed.sql` from the demo league |
+| `npm run db:reset` | Rebuild the local database and reseed it |
 | `npm run format` | Prettier |
 
 ## How the code is laid out
@@ -78,7 +108,7 @@ behaviour intact and verified against it (see below).
 npm test
 ```
 
-83 tests. Two kinds:
+177 tests. Several kinds:
 
 - **Behaviour tests** for dealing, schemes, scoring, the tiebreak chain, finalization
   and playoff advancement - including the awkward paths: an exhausted player pool at
@@ -91,19 +121,30 @@ npm test
   **If that file fails, the game has changed.** That is either a bug, or a rule change
   that needs the original designer's sign-off.
 
-All tests are deterministic: randomness is injected (`src/engine/rng.js`) and the clock
-is frozen where it matters.
+- **Security tests** (`tests/rls.test.js`, `tests/server.test.js`) run against the real
+  local Postgres. They assert that a browser holding the publishable key can read what
+  the league should see and **write nothing, anywhere**, that secrets are unreachable,
+  and that a manager cannot enter stats, finalize a week, or touch another team's
+  lineup. They skip themselves if the local stack isn't running.
+- **`tests/bundle.test.js`** asserts the secret key never reaches the browser bundle.
+
+Engine tests are deterministic: randomness is injected (`src/engine/rng.js`) and the
+clock is frozen where it matters.
 
 ## Where things stand
 
 Ported and working: the whole game, running in a normal browser against a pluggable
 storage layer, with the engine under test.
 
-Deliberately not done yet: real persistence (Supabase), server-enforced authorization,
-and a live stats feed. Those are Phases 2-4 - see [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md)
-for the schema and concurrency design they are built on, and
+Real persistence, server-enforced authorization and live updates are in place. Codes are
+hashed and verified server-side, every privileged write is checked against a session, and
+two people editing at once cannot silently overwrite each other.
+
+Deliberately not done yet: a live stats feed (Phase 4), deployment (Phase 5), and
+importing the real league's history (Phase 5). See
+[`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) for the design,
+[`docs/AUTH.md`](docs/AUTH.md) for how login works and the path to real accounts, and
 [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md) for the decisions still open.
 
-The join-code login is currently checked in the browser, exactly as the original did.
-**It is not access control yet** - that is Phase 3. Don't put a real league on a public
-URL before then.
+**Before putting a real league on a public URL**, read the "deliberately still weak"
+section of [`docs/AUTH.md`](docs/AUTH.md) - login has no rate limiting yet.

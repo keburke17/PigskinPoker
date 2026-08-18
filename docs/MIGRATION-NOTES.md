@@ -139,3 +139,83 @@ The last one is the real finding. It is usable but fiddly, and the people using 
 be on phones on a Sunday afternoon with one thumb. It is a CSS-only fix (padding and
 `min-height`), but it changes the look of every screen, so it is a design decision rather
 than a port decision - flagged rather than made.
+
+---
+
+## Phase 2 - Real persistence, real authorization
+
+### 2a - Schema
+
+14 tables, decomposing the single blob (docs/DATA-MODEL.md). Verified against a real
+local Postgres rather than shipped unrun, which caught two defects immediately:
+
+1. **RLS policies alone left every table unreachable, including to the secret key.**
+   PostgREST roles also need table-level `GRANT`s: RLS decides *which rows*, grants
+   decide *whether you may touch the table at all*. The secret key bypasses RLS but not
+   privileges. Supabase's hosted defaults usually hide this, which is exactly why the
+   migration now does it explicitly - it has to reproduce identically in a project
+   without those defaults.
+2. **A column-level grant makes `select('*')` fail outright**, not silently omit the
+   column. Since `schemes.submitted_at` is withheld, any client doing `select('*')` on
+   schemes gets a hard 42501. Documented in the migration and asserted in the tests.
+
+### 2b - The write path
+
+`update(s => ...)` is gone. Each handler calls one named operation that writes only what
+it touches. Two more real bugs surfaced in testing:
+
+3. **`decompose()` never emitted `version`**, so `existing.version + 1` was `NaN`, and
+   because `NaN !== NaN` every second write to a row looked stale.
+4. **The period version was a bare integer.** After a finalize the current period is a
+   *different row*, and a fresh row also starts at version 1 - so a client holding
+   "period v1" for Week 2 would match Week 3's v1 and its stale write would be accepted.
+   Now identity-qualified (`"week-2#1"`).
+
+### 2c - Supabase, functions, and authorization
+
+Reads go straight to PostgREST with the publishable key (which is what makes Realtime
+work); writes go through one Netlify Function holding the secret key. Two more defects,
+both found by driving the real app rather than by reading the code:
+
+5. **The client had no way to know whether a commissioner code was set.** It correctly
+   cannot read `league_secrets`, so it assumed none existed and offered to *create* one -
+   on a league that already had a commissioner. Fixed by adding public
+   `has_commissioner_code` / `has_join_code` booleans (migration
+   `20260818010000`). Whether a code exists is a public fact; the code is not.
+6. **The client dropped the session token on login.** `call()` returned only
+   `{ ok, view }`, so the app looked signed in while every privileged write would have
+   401'd.
+
+Both are the kind of bug that a green test suite would never have caught, because both
+components worked correctly in isolation.
+
+### Decisions taken unilaterally
+
+- **Auth was borrowed forward from Phase 3**, with the repo owner's agreement. Phase 2
+  needed manager writes authorized somewhere, and a half-enforced write path on a public
+  domain is worse than doing auth once. See docs/AUTH.md.
+- **scrypt from `node:crypto`** for code hashing - no new dependency, and the standard
+  library answer. Parameters are modest (N=16384) because these are short shared codes,
+  not passwords; a login costs ~20ms.
+- **A Vite plugin serves the Netlify Function locally** (`vite-plugin-api.js`) so
+  `npm run dev` exercises the real privileged path. The alternative was a dev-only
+  bypass in the client, which is how write paths end up unenforced in production.
+- **Test files run sequentially** (`fileParallelism: false`). Several suites drive the
+  same Postgres, and the demo seed deliberately refuses to run where unexpected data
+  exists - so parallel files made them see each other's fixtures.
+- **Commissioner admin operations still write the whole league** (`replaceLeague`).
+  Adding a team or editing scoring is low-frequency, single-user and genuinely
+  league-wide; giving each its own row-level path would be ceremony without benefit. The
+  hot path - stat entry, lineup swaps, schemes - is fully fine-grained, which is what P1
+  and P3 were about.
+
+### Known gaps, carried forward deliberately
+
+- **No rate limiting on login.** A short shared code with unlimited attempts is
+  brute-forceable; scrypt makes each guess cost ~20ms, which helps but is not a
+  substitute. Should land before a real league is on a public URL.
+- **Sessions never rotate**, and changing a team's join code does not invalidate
+  existing sessions. One-line fix in `setTeamJoinCode`, deferred to Phase 3 with the
+  rest of the session work.
+- **`sessions` is hand-rolled** and should be replaced by real Supabase sessions rather
+  than grown.

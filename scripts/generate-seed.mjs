@@ -12,10 +12,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createDemoLeague } from "../src/storage/demoLeague.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
+import { hashCode } from "../server/auth.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "supabase", "seed.sql");
@@ -23,12 +23,9 @@ const OUT = path.join(ROOT, "supabase", "seed.sql");
 const DEMO_LEAGUE_KEY = "demo";
 const DEMO_YEAR = 2026;
 
-/* Demo-only hashing. Phase 3 replaces this with a real KDF in the login function -
- * sha256 of a shared code is NOT adequate for production credentials. These hash
- * obviously-fake local codes that never leave a developer's machine. */
-const DEMO_SALT = "pigskin-demo-seed-v1";
-const hashCode = (code) =>
-  crypto.createHash("sha256").update(DEMO_SALT + ":" + code).digest("hex");
+/* Hashing comes from server/auth.js - the SAME scrypt function the login endpoint
+ * verifies against. One implementation, so a seeded code and a commissioner-set code
+ * can never end up in incompatible formats. */
 
 /* ---------- SQL literal formatting ---------- */
 const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
@@ -86,9 +83,8 @@ const header = `-- =============================================================
 --      Commissioner:  DEMO-COMMISH
 --      Managers:      DEMO-TEAM-1 .. DEMO-TEAM-6
 --
---  The hashes below are sha256(salt:code) - adequate for fake local codes, NOT for
---  production credentials. Phase 3 replaces this with a real KDF in the login
---  function; see docs/AUTH.md when it lands.
+--  The hashes below are scrypt, produced by the same server/auth.js function the
+--  login endpoint verifies against. The CODES are fake; the hashing is real.
 --  ===========================================================================
 --
 --  Contents: a six-team league with Week 1 played and finalized (so standings and

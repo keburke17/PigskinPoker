@@ -14,7 +14,7 @@ export function LoginScreen({ state, onCommissionerLogin, onManagerLogin, loginE
   const [teamId, setTeamId] = useState("");
   const [joinCode, setJoinCode] = useState("");
 
-  const hasCode = !!state.commissionerCode;
+  const hasCode = !!state.commissionerCodeSet;
 
   return (
     <div className="pp-login-wrap">

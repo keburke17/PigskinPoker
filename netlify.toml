@@ -1,0 +1,30 @@
+# Netlify build + function configuration.
+#
+# The frontend is a static Vite build; every privileged write goes through the single
+# function in netlify/functions/api.mjs, which holds the secret key.
+#
+# Environment variables to set in the Netlify UI (never in this file, never in git):
+#   VITE_SUPABASE_URL              public by design - ships to the browser
+#   VITE_SUPABASE_PUBLISHABLE_KEY  public by design - ships to the browser
+#   SUPABASE_URL                   same URL, for the function
+#   SUPABASE_SECRET_KEY            SERVER ONLY. Bypasses RLS. Never prefix with VITE_.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Friendlier path than /.netlify/functions/api
+[[redirects]]
+  from = "/api"
+  to = "/.netlify/functions/api"
+  status = 200
+
+# SPA fallback - the app has no router yet (P6), but this is correct either way.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

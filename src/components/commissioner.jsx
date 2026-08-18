@@ -28,7 +28,10 @@ export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onSetJoinCode, 
 
 export function CommTeamRow({ team, onRenameTeam, onSetJoinCode, onRemoveTeam }) {
   const [name, setName] = useState(team.name);
-  const [code, setCode] = useState(team.joinCode || "");
+  /* Deliberately blank. Join codes are stored hashed, so there is nothing to read
+   * back - the commissioner sets a NEW code rather than viewing the existing one.
+   * That is the cost of taking codes out of every visitor's browser (P2). */
+  const [code, setCode] = useState("");
   return (
     <div className="pp-card pp-card-tight">
       <div className="pp-grid-2">
@@ -259,9 +262,13 @@ export function CommInvitePanel({ state }) {
       <p className="pp-sub">Safe to post publicly - contains no codes.</p>
       <div className="pp-input" style={{ marginBottom: 10 }}>{publicMsg}</div>
       <h3 className="pp-h3">Private Join Codes</h3>
-      <p className="pp-sub">Send each of these individually - not publicly.</p>
+      <p className="pp-sub">
+        Codes are stored encrypted and can&apos;t be shown again after you set them - that&apos;s
+        what keeps them out of every visitor&apos;s browser. If someone loses theirs, set a new
+        one for that team under Teams and send them the new code.
+      </p>
       {state.teams.map((t) => (
-        <div key={t.id} className="pp-roster-slot"><div style={{ flex: 1 }}>{t.name}</div><Tag>{t.joinCode || "(no code set)"}</Tag></div>
+        <div key={t.id} className="pp-roster-slot"><div style={{ flex: 1 }}>{t.name}</div><Tag>{t.hasJoinCode ? "code set" : "no code set"}</Tag></div>
       ))}
     </div>
   );
