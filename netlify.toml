@@ -14,6 +14,12 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[build.environment]
+  # Pin the runtime. Netlify's default Node version moves over time, and the function
+  # is an ES module importing from outside its own directory - exactly the combination
+  # that breaks quietly when the runtime shifts under it.
+  NODE_VERSION = "22"
+
 [functions]
   node_bundler = "esbuild"
 
