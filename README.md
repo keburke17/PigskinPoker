@@ -156,12 +156,14 @@ Not done yet:
 | **Phase 3** | Real accounts, and rate limiting on login |
 | **Phase 4** | Live NFL stats feed (the seam exists, no provider is wired) |
 | **Phase 5** | Importing the original league's history from its Backup JSON |
-| **Phase 6** | `CLAUDE.md` and `docs/RULES.md` for handoff |
+| **Phase 6** | `docs/RULES.md` - the game rules written down outside the code |
 
 ### Documentation
 
 | Document | What it covers |
 |---|---|
+| [`CLAUDE.md`](CLAUDE.md) | Orientation for a Claude Code session - read automatically |
+| [`docs/FOR-THE-DESIGNER.md`](docs/FOR-THE-DESIGNER.md) | Setup guide for the original author, and the decisions waiting on him |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Getting it live, routine operations, troubleshooting |
 | [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) | The schema, concurrency design, and RLS plan |
 | [`docs/AUTH.md`](docs/AUTH.md) | How login works, and the path to real accounts |
