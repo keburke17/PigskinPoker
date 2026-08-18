@@ -41,22 +41,81 @@ const periodKey = (p) => p.type + "-" + p.number;
  * @param {(code: string) => string} [opts.hashCode]  required if codes are present
  */
 export function decomposeLeague(state, opts) {
-  const { leagueKey, year, hashCode } = opts;
+  const { leagueKey, year, hashCode, existing } = opts;
   const ns = (kind) => leagueKey + ":" + kind;
   const uid = (kind, key) => stableUuid(ns(kind), key);
 
-  const leagueId = uid("league", leagueKey);
-  const seasonId = uid("season", String(year));
-  const teamId = (legacy) => uid("team", legacy);
-  const playerId = (legacy) => uid("player", legacy);
-  const periodId = (p) => uid("period", periodKey(p));
+  /* ------------------------------------------------------------------------
+   * IDENTITY: PRESERVE, THEN DERIVE.
+   *
+   * Derived ids are a function of `leagueKey`, so two callers passing different
+   * leagueKeys for the SAME league produce different ids for every row. When that
+   * happened, persisting an edit inserted a whole new league and deleted the old one -
+   * cascading away league_secrets and sessions, i.e. permanently locking the
+   * commissioner out of their own league on the first "Add Team".
+   *
+   * The demo league never hit it because "demo" was hardcoded on both sides, which is
+   * exactly why a green test suite missed it. So identity no longer depends on callers
+   * agreeing: when a row already exists, its id is looked up by NATURAL KEY and reused.
+   * Derivation is only ever the fallback for genuinely new rows.
+   * --------------------------------------------------------------------- */
+  const prev = existing || {};
+  const uuidToTeamLegacy = new Map((prev.teams ?? []).map((t) => [t.id, t.legacy_id]));
+  const uuidToPeriodKey = new Map((prev.periods ?? []).map((p) => [p.id, p.type + "-" + p.number]));
+
+  const known = {
+    league: prev.leagues?.[0]?.id ?? null,
+    season: new Map((prev.seasons ?? []).map((s) => [String(s.year), s.id])),
+    team: new Map((prev.teams ?? []).map((t) => [t.legacy_id, t.id])),
+    player: new Map((prev.players ?? []).map((p) => [p.legacy_id, p.id])),
+    period: new Map((prev.periods ?? []).map((p) => [p.type + "-" + p.number, p.id])),
+    totals: new Map(
+      (prev.team_totals ?? []).map((t) => [uuidToTeamLegacy.get(t.team_id) + ":" + t.scope, t.id])
+    ),
+    slot: new Map(
+      (prev.roster_slots ?? []).map((r) => [
+        uuidToPeriodKey.get(r.period_id) + ":" + uuidToTeamLegacy.get(r.team_id) +
+          ":" + (r.area === "starter" ? "s:" + r.slot : "b:" + r.bench_index),
+        r.id,
+      ])
+    ),
+    stat: new Map(
+      (prev.stat_lines ?? []).map((r) => [
+        uuidToPeriodKey.get(r.period_id) + ":" + uuidToTeamLegacy.get(r.team_id) + ":" + r.slot,
+        r.id,
+      ])
+    ),
+    scheme: new Map(
+      (prev.schemes ?? []).map((r) => [
+        uuidToPeriodKey.get(r.period_id) + ":" + uuidToTeamLegacy.get(r.team_id),
+        r.id,
+      ])
+    ),
+    result: new Map(
+      (prev.period_results ?? []).map((r) => [
+        uuidToPeriodKey.get(r.period_id) + ":" + uuidToTeamLegacy.get(r.team_id),
+        r.id,
+      ])
+    ),
+  };
+
+  const leagueId = known.league ?? uid("league", leagueKey);
+  const seasonId = known.season.get(String(year)) ?? uid("season", String(year));
+  const teamId = (legacy) => known.team.get(legacy) ?? uid("team", legacy);
+  const playerId = (legacy) => known.player.get(legacy) ?? uid("player", legacy);
+  const periodId = (p) => known.period.get(periodKey(p)) ?? uid("period", periodKey(p));
 
   const out = {
     leagues: [
       {
         id: leagueId,
         name: state.leagueName || "Pigskin Poker",
-        has_commissioner_code: !!state.commissionerCode,
+        /* Accept EITHER shape. A raw blob (bootstrap, or a restored backup) carries
+         * the plaintext code; a hydrated view carries only the boolean, because the
+         * code never reaches the browser. Reading just the former silently cleared the
+         * flag on every state write, which made the login screen offer to "create" a
+         * commissioner for a league that already had one. */
+        has_commissioner_code: !!(state.commissionerCode || state.commissionerCodeSet),
       },
     ],
     seasons: [
@@ -101,10 +160,11 @@ export function decomposeLeague(state, opts) {
       legacy_id: t.id,
       active: true,
       // Public fact, never the code itself. Drives the team picker's "joinable" state.
-      has_join_code: !!t.joinCode,
+      // Same either-shape rule as has_commissioner_code above.
+      has_join_code: !!(t.joinCode || t.hasJoinCode),
     });
     const totals = (cum, scope) => ({
-      id: uid("totals", t.id + ":" + scope),
+      id: known.totals.get(t.id + ":" + scope) ?? uid("totals", t.id + ":" + scope),
       season_id: seasonId,
       team_id: teamId(t.id),
       scope,
@@ -169,7 +229,9 @@ export function decomposeLeague(state, opts) {
     rows.forEach((r) => {
       out.period_results.push({
         // Natural key is (period, team) - never the engine's random result id.
-        id: keepOrDerive(r.id, () => uid("result", periodKey(period) + ":" + r.teamId)),
+        id:
+          known.result.get(periodKey(period) + ":" + r.teamId) ??
+          keepOrDerive(r.id, () => uid("result", periodKey(period) + ":" + r.teamId)),
         period_id: periodId(period),
         team_id: teamId(r.teamId),
         rank: r.rank,
@@ -209,7 +271,9 @@ export function decomposeLeague(state, opts) {
     STARTER_SLOTS.forEach((slot) => {
       const legacyPid = t.roster.starters[slot];
       out.roster_slots.push({
-        id: uid("slot", curKey + ":" + t.id + ":s:" + slot),
+        id:
+          known.slot.get(curKey + ":" + t.id + ":s:" + slot) ??
+          uid("slot", curKey + ":" + t.id + ":s:" + slot),
         period_id: curPeriodId,
         team_id: teamId(t.id),
         area: "starter",
@@ -221,7 +285,9 @@ export function decomposeLeague(state, opts) {
     });
     t.roster.bench.forEach((legacyPid, i) => {
       out.roster_slots.push({
-        id: uid("slot", curKey + ":" + t.id + ":b:" + i),
+        id:
+          known.slot.get(curKey + ":" + t.id + ":b:" + i) ??
+          uid("slot", curKey + ":" + t.id + ":b:" + i),
         period_id: curPeriodId,
         team_id: teamId(t.id),
         area: "bench",
@@ -241,7 +307,9 @@ export function decomposeLeague(state, opts) {
       const legacyPid = team?.roster?.starters?.[slot] ?? null;
       const num = (v) => (v === "" || v == null ? null : Number(v));
       out.stat_lines.push({
-        id: uid("stat", curKey + ":" + legacyTeamId + ":" + slot),
+        id:
+          known.stat.get(curKey + ":" + legacyTeamId + ":" + slot) ??
+          uid("stat", curKey + ":" + legacyTeamId + ":" + slot),
         period_id: curPeriodId,
         team_id: teamId(legacyTeamId),
         slot,
@@ -260,7 +328,7 @@ export function decomposeLeague(state, opts) {
   Object.entries(state.schemes || {}).forEach(([legacyTeamId, sc]) => {
     if (!sc) return;
     out.schemes.push({
-      id: uid("scheme", curKey + ":" + legacyTeamId),
+      id: known.scheme.get(curKey + ":" + legacyTeamId) ?? uid("scheme", curKey + ":" + legacyTeamId),
       period_id: curPeriodId,
       team_id: teamId(legacyTeamId),
       type: sc.type,

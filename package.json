@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "seed:generate": "node scripts/generate-seed.mjs",
-    "db:reset": "supabase db reset"
+    "db:reset": "supabase db reset",
+    "bootstrap": "node scripts/bootstrap-league.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

@@ -219,3 +219,66 @@ components worked correctly in isolation.
   rest of the session work.
 - **`sessions` is hand-rolled** and should be replaced by real Supabase sessions rather
   than grown.
+
+---
+
+## Pre-deployment: the blank-league path
+
+Adding a bootstrap for deployment surfaced the most dangerous bug in the project so far.
+
+### Two gaps that made deployment impossible
+
+1. **No bootstrap.** `supabase db push` creates the schema but runs no seed, so a freshly
+   deployed database has zero leagues. `loadLeague()` correctly returned `null`, and the
+   app then sat on "Loading Pigskin Poker..." forever. The Artifact bootstrapped by
+   calling `createDefaultState()` in the browser; that path disappeared when state moved
+   to Postgres. `scripts/bootstrap-league.mjs` replaces it.
+2. **No way to create a league.** No endpoint, no UI. Nobody noticed because the
+   in-memory adapter always has the demo league.
+
+### The identity bug (would have destroyed the real league)
+
+`decomposeLeague()` derived **every row id** from `leagueKey`. Two callers passing
+different leagueKeys for the same league therefore produced different ids for every row.
+So persisting an ordinary edit **inserted a whole new league and deleted the old one** -
+and because `sessions` and `league_secrets` cascade from `leagues`, that wiped the
+commissioner's code and every session.
+
+In practice: **adding the first team to a real league would have permanently locked the
+commissioner out of it.** Observed exactly that in the browser - four teams added, one
+survived, `has_commissioner_code` flipped to false, subsequent requests 401'd.
+
+It never appeared against the demo league because `"demo"` was hardcoded as the
+leagueKey on both sides. 177 passing tests did not catch it, and neither would code
+review, because both halves were individually correct.
+
+**Fix:** identity is now *preserve-then-derive*. Existing rows are matched by NATURAL
+KEY (team `legacy_id`, period `type-number`, stat line `(period, team, slot)`, and so
+on) and keep their ids; derivation is only the fallback for genuinely new rows. Callers
+no longer have to agree on a leagueKey for identity to be stable.
+
+**Defence in depth:** `persistBlob` now refuses to delete from `leagues` or `seasons` at
+all. No ordinary state write should ever remove one, and the blast radius when it does
+is total.
+
+**Regression guard:** `tests/bootstrap.test.js` bootstraps with one leagueKey, persists
+with a deliberately different one, and asserts the league id, its secrets, live sessions
+and the player pool all survive.
+
+### A smaller one alongside it
+
+`has_commissioner_code` was being cleared on every state write. `decompose` read only
+`state.commissionerCode` (the plaintext), but a hydrated view carries just
+`commissionerCodeSet` - because the code never reaches the browser. The flag now accepts
+either shape, so it survives a round trip.
+
+### Decisions taken
+
+- **The commissioner code is set at bootstrap, not claimed in the UI.** The Artifact let
+  the first person to type a code become commissioner, which was fine behind a private
+  link and is a land-grab on a public URL. `scripts/bootstrap-league.mjs` requires
+  `PIGSKIN_COMMISSIONER_CODE` (min 8 characters) so there is never an unclaimed slot.
+- **Secrets come from the environment, never from CLI arguments** - arguments land in
+  shell history and process listings.
+- The bootstrap refuses to run against a database that already has a league, unless
+  `--force`.

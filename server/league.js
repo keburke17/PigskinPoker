@@ -78,6 +78,9 @@ export async function persistBlob(db, previous, blob, opts) {
     leagueKey: opts.leagueKey,
     year: opts.year,
     hashCode: () => "unused-secrets-are-not-rewritten",
+    // Identity comes from what is already in the database, not from leagueKey. See the
+    // long comment in decompose.js - getting this wrong deletes the league.
+    existing: previous,
   });
 
   const VERSIONED = new Set([
@@ -85,6 +88,12 @@ export async function persistBlob(db, previous, blob, opts) {
   ]);
   // Never touch secrets from a blob write - they are not derivable from app state.
   const WRITABLE = TABLES;
+
+  /* Deleting a league cascades to EVERYTHING, including league_secrets and sessions -
+   * i.e. it locks the commissioner out permanently. No ordinary state write should ever
+   * remove one, so the delete pass simply refuses to consider these tables. Belt and
+   * braces alongside the identity fix in decompose.js. */
+  const NEVER_DELETE_FROM = new Set(["leagues", "seasons"]);
 
   for (const table of WRITABLE) {
     const before = new Map((previous?.[table] ?? []).map((r) => [r.id, r]));
@@ -103,6 +112,7 @@ export async function persistBlob(db, previous, blob, opts) {
     }
 
     // Delete rows that no longer exist (e.g. a removed team, a cleared scheme).
+    if (NEVER_DELETE_FROM.has(table)) continue;
     const keep = new Set(rows.map((r) => r.id));
     const gone = (previous?.[table] ?? []).filter((r) => !keep.has(r.id)).map((r) => r.id);
     if (gone.length) {
