@@ -14,6 +14,7 @@ Each has a recommendation so you have something to say yes or no to.
 > OQ-2 **yes, seasons** / OQ-4 **manual entry was the only option - treat it as a stopgap** /
 > OQ-9 **yes, public once resolved** / OQ-A **deferred to the original designer**.
 > OQ-B **provisionally yes, confirm with him**. OQ-8 **checked in Phase 1 - see below**.
+> **OQ-10 (one league or many?) is newly open** and shapes Phase 3.
 > The rest are still open and cost nothing to change.
 
 ---
@@ -165,6 +166,57 @@ it is one policy and one column.
 
 ---
 
+### OQ-10. One league, or many? **[OPEN - shapes Phase 3, raised during deployment]**
+
+The Artifact stored everything under a single `window.storage` key, so "one league" was
+never a decision - it was the only thing a key-value store could express. That constraint
+is gone, and it is worth deciding deliberately rather than by default.
+
+**The database is already multi-league.** `leagues` is an ordinary table with a UUID key
+and nothing limiting it to one row; `league_secrets.league_id` is the *primary key*, so a
+commissioner code is per-league rather than global; and 11 foreign keys already scope
+teams, players, seasons and sessions to a league. Ten leagues could exist tomorrow with
+no migration.
+
+What is single-league is the **application**:
+
+| Gap | Where |
+|---|---|
+| No league selection | The adapter loads "the only league", or matches `VITE_LEAGUE_NAME` |
+| No league creation | `scripts/bootstrap-league.mjs` is a CLI script an operator runs |
+| No commissioner claim | The code is set out-of-band by whoever runs that script |
+| **Reads are not league-scoped** | Every read policy is `using (true)` |
+
+That last row is the one that matters. With one league it is correct and intentional -
+league data is public to anyone holding the link. With several leagues sharing a
+database, League A's members could read League B's rosters and standings straight off the
+API, and the app-level picker would make it *look* separated while the policies were not.
+Multi-league therefore requires a real RLS change (`using (league_id = ...)`), not just a
+dropdown.
+
+**Recommendation: stay single-league for now, and if you want many, build it WITH Phase
+3's real accounts rather than before them.**
+
+Today "commissioner" means *whoever knows a code* - a league has no owner. That is
+exactly why `bootstrap-league.mjs` sets the code up front instead of letting the first
+visitor claim it: with no identity, an unclaimed league on a public URL is a land-grab.
+
+With accounts, that inverts cleanly - **whoever creates a league becomes its
+commissioner** - and one change delivers the signup flow, the creation flow, and the fix
+for the land-grab together. Building self-serve league creation first means solving "who
+owns this league" twice, and throwing the first answer away.
+
+**The decision needed now is only this:** is multi-league on the roadmap at all? If yes,
+league ownership should land *with* accounts in Phase 3 rather than be retrofitted
+afterwards. If it is a "one league forever" project, Phase 3 gets simpler and
+`VITE_LEAGUE_NAME` can go away entirely.
+
+Worth noting the current arrangement costs nothing either way: one Netlify site plus one
+Supabase project plus one league is the simplest and safest setup for your friend's
+league, and nothing in it blocks the multi-league path later.
+
+---
+
 ## Part 2 - Code that disagrees with the rules
 
 I have not changed any of these.
@@ -278,6 +330,7 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 
 | Question | Needed before | Why it can wait |
 |---|---|---|
+| **OQ-10** one league or many? | **Phase 3** | If many, league ownership must land with accounts, not after. |
 | **OQ-B** blocks validated server-side | **Phase 3** | Provisionally yes; awaiting the designer's final confirmation. |
 | **OQ-5** join codes vs. real accounts | Phase 3 | Phase 3 makes accounts additive either way. |
 | **OQ-6** notifications | Phase 3 | Only affects whether we collect emails while building the members table. |
@@ -289,3 +342,6 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 **OQ-B is provisionally answered** (yes, Block protects your own starters) and is on the
 list to confirm with the original designer, alongside **OQ-A**. Those two are the standing
 agenda for that conversation.
+
+**OQ-10 is the one to decide before Phase 3 starts**, because it changes what Phase 3
+builds rather than what comes after it.
