@@ -52,6 +52,26 @@ export function createStore(env = import.meta.env) {
   const url = env?.VITE_SUPABASE_URL;
   const publishableKey = env?.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+  /* A PRODUCTION build with no Supabase configuration must fail loudly.
+   *
+   * Falling back to the in-memory demo here would deploy a site that LOOKS entirely
+   * healthy - six teams, standings, a week in progress - but is a throwaway copy in
+   * each visitor's tab that resets on every refresh and saves nothing. A typo in a
+   * Netlify environment variable would produce exactly that, silently. Better to
+   * refuse to start and say which variable is missing. */
+  if (env?.PROD && !(url && publishableKey)) {
+    const missing = [
+      !url && "VITE_SUPABASE_URL",
+      !publishableKey && "VITE_SUPABASE_PUBLISHABLE_KEY",
+    ].filter(Boolean);
+    throw new Error(
+      "Pigskin Poker is not configured: " + missing.join(" and ") + " " +
+      (missing.length > 1 ? "are" : "is") + " missing. Set " +
+      (missing.length > 1 ? "them" : "it") + " in your host's environment variables " +
+      "and redeploy. (Refusing to fall back to the in-memory demo league in production.)"
+    );
+  }
+
   if (url && publishableKey) {
     return createSupabaseStore({
       url,

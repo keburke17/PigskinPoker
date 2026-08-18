@@ -28,6 +28,10 @@ export function useLeague(store) {
   const [identity, setIdentity] = useState({ role: null, teamId: null });
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  /* Distinct from loadFailed: the database answered correctly and simply has no league
+   * in it yet. That is a deployment step that has not been run, not an error - and it
+   * needs its own screen, or the app just sits on "Loading..." forever. */
+  const [noLeague, setNoLeague] = useState(false);
   const [loadErrorDetail, setLoadErrorDetail] = useState(null);
   const [saveState, setSaveState] = useState({ status: "saved", lastSavedAt: null, error: null });
   const [conflict, setConflict] = useState(null);
@@ -55,6 +59,7 @@ export function useLeague(store) {
         loadRetryTimer.current = null;
       }
       setView(next);
+      setNoLeague(next === null);
       setPendingStats({});
       setLoading(false);
     } catch (e) {
@@ -249,6 +254,7 @@ export function useLeague(store) {
     setIdentity,
     loading,
     loadFailed,
+    noLeague,
     loadErrorDetail,
     retryLoad: () => {
       loadAttempt.current = 0;

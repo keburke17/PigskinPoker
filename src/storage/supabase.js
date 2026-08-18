@@ -38,7 +38,7 @@ export function saveSessionToken(token) {
 }
 
 export function createSupabaseStore(config) {
-  const { url, publishableKey, apiPath = "/api", leagueName = "Pigskin Poker" } = config;
+  const { url, publishableKey, apiPath = "/api", leagueName = null } = config;
   const sb = createClient(url, publishableKey, { auth: { persistSession: false } });
 
   let leagueId = null;
@@ -81,10 +81,38 @@ export function createSupabaseStore(config) {
   }
 
   async function fetchRows() {
-    const league = await sb.from("leagues").select("*").eq("name", leagueName).maybeSingle();
-    if (league.error) throw new Error("Couldn't read the league: " + league.error.message);
-    if (!league.data) return null; // no league yet - safe to start fresh
-    leagueId = league.data.id;
+    /* Find the league. VITE_LEAGUE_NAME is an OPTIONAL disambiguator, not a
+     * requirement: a deployment normally holds exactly one league, and demanding an
+     * exact name match (punctuation and all) turned a harmless typo into an app that
+     * hangs on "Loading..." with nothing to explain why. */
+    const all = await sb.from("leagues").select("*");
+    if (all.error) throw new Error("Couldn't read the league: " + all.error.message);
+
+    const leagues = all.data ?? [];
+    if (leagues.length === 0) return null; // schema exists, nothing bootstrapped yet
+
+    let chosen;
+    if (leagueName) {
+      chosen = leagues.find((l) => l.name === leagueName);
+      if (!chosen) {
+        throw new Error(
+          'No league named "' + leagueName + '". This database has: ' +
+          leagues.map((l) => '"' + l.name + '"').join(", ") +
+          ". Fix VITE_LEAGUE_NAME, or remove it to use the only league."
+        );
+      }
+    } else if (leagues.length === 1) {
+      chosen = leagues[0];
+    } else {
+      throw new Error(
+        "This database holds " + leagues.length + " leagues (" +
+        leagues.map((l) => '"' + l.name + '"').join(", ") +
+        "). Set VITE_LEAGUE_NAME to choose one."
+      );
+    }
+
+    leagueId = chosen.id;
+    const league = { data: chosen };
 
     const seasons = await sb.from("seasons").select("*").eq("league_id", leagueId);
     if (seasons.error) throw new Error("Couldn't read seasons: " + seasons.error.message);

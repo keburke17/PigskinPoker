@@ -59,6 +59,7 @@ export default function App() {
     setIdentity,
     loading,
     loadFailed,
+    noLeague,
     loadErrorDetail,
     retryLoad,
     saveState,
@@ -305,6 +306,42 @@ export default function App() {
               <p className="pp-sub" style={{ marginTop: 10 }}>
                 If this keeps happening: check your connection, make sure you opened this app's actual published
                 link (not just the chat that built it), and try refreshing the page.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* The database is reachable and correct, but nothing has been bootstrapped into it.
+   * Without this the app renders the loading spinner indefinitely, which on a fresh
+   * deployment looks like a hang rather than a step that has not been run. */
+  if (noLeague) {
+    return (
+      <div className="pp-root">
+        <div className="pp-login-wrap">
+          <div className="pp-login-card">
+            <div style={{ textAlign: "center", marginBottom: 14 }}>
+              <div className="pp-eyebrow">Pigskin Poker</div>
+              <h1 className="pp-h1" style={{ fontSize: 26 }}>No league here yet</h1>
+            </div>
+            <div className="pp-card">
+              <p className="pp-sub" style={{ marginBottom: 10 }}>
+                The database is connected and working - it just doesn&apos;t contain a
+                league. This is the one setup step that has to be run once, by hand,
+                after deploying.
+              </p>
+              <p className="pp-sub">
+                From a checkout of the repo, with this deployment&apos;s Supabase URL and
+                secret key in the environment:
+              </p>
+              <div className="pp-input" style={{ margin: "10px 0", whiteSpace: "pre-wrap" }}>
+                PIGSKIN_COMMISSIONER_CODE=&quot;choose-a-code&quot; npm run bootstrap -- --name &quot;Pigskin Poker&quot;
+              </div>
+              <p className="pp-sub">
+                That creates the league, the season and the player pool, and sets the
+                commissioner code. Then reload this page and log in.
               </p>
             </div>
           </div>
