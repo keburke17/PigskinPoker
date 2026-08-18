@@ -19,7 +19,7 @@
  * Skips itself when the local stack isn't running:  npx supabase start
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { execSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import { createDefaultState } from "../src/engine/index.js";
@@ -50,6 +50,13 @@ if (env?.url && env.secret) {
 } else {
   console.warn("\n[bootstrap.test.js] SKIPPED: " + (skipReason || "no local stack") + "\n");
 }
+/* Clean up after ourselves. A leftover league pollutes the dev database that
+ * `npm run dev` reads, and once there are two leagues the app cannot tell which one it
+ * is meant to load without VITE_LEAGUE_NAME set. Same discipline as rls.test.js. */
+afterAll(async () => {
+  if (available) await db.from("leagues").delete().eq("name", LEAGUE_NAME);
+});
+
 const gate = () => (available ? describe : describe.skip);
 
 const LEAGUE_NAME = "Bootstrap Test League";
