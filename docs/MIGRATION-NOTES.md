@@ -48,7 +48,7 @@ recorded which team is logged in on *this* browser.
 
 **The Phase 1 interface is deliberately blob-shaped** (`loadLeague` / `saveLeague`),
 because that is a drop-in for `window.storage` and keeps this phase mechanical. It is
-not the final shape: `docs/DATA-MODEL.md` §6 defines the operation-shaped interface that
+not the final shape: `docs/DATA-MODEL.md` section 6 defines the operation-shaped interface that
 Phase 2 replaces it with. A `version` field is already plumbed through so the
 optimistic-concurrency path has somewhere to land.
 
@@ -346,3 +346,75 @@ quoted (`GRANT SELECT("id") ON TABLE ...`), and the pattern omitted the quote ch
 so it matched nothing. Worth recording because the failure mode of a checker with a
 too-narrow pattern is a **false all-clear** - the same shape of mistake as the earlier
 `grep` that reported the secrets tables as ungranted when they were not.
+
+### Making misconfiguration loud instead of plausible
+
+Three failure modes that were silent or unexplained, all found by walking the deployment
+path rather than by testing:
+
+1. **A production build with missing Supabase variables fell back to the in-memory demo
+   league.** That deploys a site which looks entirely healthy - six teams, standings, a
+   week in progress - but is a throwaway copy in each visitor's tab that saves nothing
+   and resets on refresh. One typo in a hosting dashboard produced exactly that, with no
+   error anywhere. Production now refuses to start and names the missing variable;
+   development keeps the friendly fallback.
+2. **The league was looked up by exact name**, so `VITE_LEAGUE_NAME` had to match what
+   the bootstrap created, punctuation included, or the app hung on "Loading..." forever.
+   The name is now an optional disambiguator: one league just works, and a real mismatch
+   reports which names the database actually contains.
+3. **A database with schema but no league** - the state immediately after `db push` -
+   rendered the loading spinner indefinitely, which reads as a hang rather than a setup
+   step nobody ran. It now explains itself and prints the bootstrap command.
+
+The common thread: each one produced a *plausible* screen rather than an error, and the
+person seeing it had no way to tell configuration from breakage.
+
+### Codes could not be changed at all
+
+Codes are stored as one-way hashes, so a mistyped commissioner code meant hand-editing
+the database - a position nobody should be in mid-season. `npm run set-code` sets or
+rotates it, and **deletes existing commissioner sessions** while doing so: a code change
+usually means "someone should no longer have this", and a 30-day token surviving the
+rotation would defeat the point. That closes one of the three gaps recorded in `AUTH.md`.
+
+Two related fixes came out of using it for real:
+
+- **Shell quoting leaked into the stored code.** A code passed as `'pigskinPoker'` with
+  the quotes intact hashed the quotes, so nothing typed at the login screen could match.
+  Both scripts now strip a matching surrounding quote pair, warn about non-ASCII
+  characters (smart quotes are invisible in most terminals), and print the effective code
+  between markers with a character count.
+- **The script declared success without checking its own work.** It confirmed the write
+  landed, not that the code would log anyone in. Those are different claims and only the
+  second is useful. `set-code` now verifies the stored hash through the real verify path
+  before reporting success - which would have caught the quoting problem at the point of
+  failure instead of at the login screen.
+
+Also: re-running `bootstrap` on an existing league correctly refused, but said nothing
+about the commissioner code being left unchanged - so a second run with a new code
+*looked* like it had worked. The refusal message now says so and points at `set-code`.
+
+### What the deployment actually proved
+
+Verified against the live site, not inferred:
+
+- reads reaching Postgres, and Realtime pushing changes with no refresh;
+- the publishable key - taken from the shipped bundle - can read the ten league-visible
+  tables and **write to nothing**, with the three secrets tables returning `42501`;
+- no secret key, server module, or hash material in the client bundle;
+- login through the function: scrypt verification, session created, opaque token issued,
+  stored only as a hash;
+- **the identity fix holding under the exact operation that would have broken it** -
+  adding a team left the league id, its secrets, live sessions and all 223 players intact.
+
+### A pattern worth naming
+
+Four separate times, a verification step reported "nothing found" when the data was fine:
+a `grep` that missed quoted identifiers, a dump parser expecting `COPY` when pg_dump
+emitted `INSERT`, a grant checker whose pattern omitted a quote character, and a shell
+glob that silently ate part of a commit message.
+
+Every one produced a **false all-clear** rather than an error. A checker that finds
+nothing is making a claim about itself as much as about the data, and the habit that
+caught these was refusing to report "clean" without first confirming the checker could
+see anything at all.

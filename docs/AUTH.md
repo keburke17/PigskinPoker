@@ -66,7 +66,7 @@ button.
 ## The consequence you should know about
 
 **Join codes can no longer be read back.** They are hashed, and hashing is one-way. The
-Commissioner → Invite panel used to list every team's code; it now shows only whether a
+Commissioner -> Invite panel used to list every team's code; it now shows only whether a
 code is set.
 
 If someone loses their code, the commissioner sets a **new** one for that team and sends
@@ -132,11 +132,59 @@ The schema was built so this is **additive**, not a migration.
   for a project like this to end up with a security problem.
 - **No rate limiting on login.** A short shared code plus unlimited attempts is
   brute-forceable. scrypt makes each guess cost ~20ms, which is meaningful but not a
-  substitute. Worth adding a per-IP limit in the function before this is on a public
-  domain with a real league on it.
-- **Sessions never rotate.** A 30-day token is not revoked if a device is lost. The
-  commissioner changing the team's join code does not invalidate existing sessions -
-  it should, and that is a one-line delete in `setTeamJoinCode`.
+  substitute. **This is the one to fix before real league history is on a public URL.**
+  A per-IP limit in the function is the smallest useful version.
+- **Team join codes have no minimum length.** The commissioner sets them through the UI
+  and nothing stops a two-character one. Same exposure as above, lower stakes: a
+  compromised manager session can edit that team's lineup and schemes, not run the
+  league. `PIGSKIN_COMMISSIONER_CODE` enforces 8 characters; `setTeamJoinCode` should
+  do the same.
+- **Sessions expire but never rotate.** A 30-day token is not revoked if a device is
+  lost, and changing a *team's* join code does not sign out that team's existing
+  sessions. Rotating the **commissioner** code does now sign out commissioner sessions
+  (see below); `setTeamJoinCode` needs the same one-line delete.
 
-Those three are the honest gaps. None of them are worse than the Artifact's position
-(where the codes were simply public), but none should survive Phase 3.
+None of these are worse than the Artifact's position, where the codes were simply
+public - but none should survive Phase 3.
+
+---
+
+## Operational notes
+
+### Codes cannot be read back, only replaced
+
+Hashing is one-way, so there is no "show me the code" anywhere, by design. That leaves
+one real workflow gap: a forgotten or mistyped commissioner code would otherwise mean
+hand-editing the database.
+
+```bash
+PIGSKIN_COMMISSIONER_CODE=the-new-code npm run set-code
+```
+
+It also **deletes existing commissioner sessions**. A code change usually means "someone
+should no longer have this", and a 30-day token surviving the rotation would defeat the
+point. It verifies the new code against the stored hash before reporting success - "the
+write succeeded" and "this code will log you in" are not the same claim, and only the
+second one is useful.
+
+### Shell quoting is the most common way to lock yourself out
+
+A code passed as `'mycode'` with the quotes intact hashes the quotes as part of it, and
+then nothing typed at the login screen can ever match. Smart quotes from copy-paste are
+worse because they are invisible in most terminals.
+
+Both `bootstrap` and `set-code` now strip a matching surrounding quote pair, warn about
+non-ASCII characters, and print the effective code between `>>> <<<` markers with a
+character count. If that count is not what you expect, something is still mangling it.
+
+### How the login screen knows a code exists
+
+The browser cannot read `league_secrets` - that is the whole point of it. But the login
+screen still has to choose between "enter your code" and "create the commissioner
+login", and the team picker has to show which teams are joinable.
+
+Two public boolean columns carry exactly that and nothing more:
+`leagues.has_commissioner_code` and `teams.has_join_code`. Whether a code *exists* is a
+public fact; the code is not. They are maintained server-side alongside the hash they
+describe - if they drift, the login screen offers to create a commissioner for a league
+that already has one.

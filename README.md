@@ -76,9 +76,17 @@ be one. `tests/bundle.test.js` asserts it never reaches the client.
 | `npm run build` | Production build to `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run lint` | ESLint |
+| `npm run format` | Prettier |
 | `npm run seed:generate` | Regenerate `supabase/seed.sql` from the demo league |
 | `npm run db:reset` | Rebuild the local database and reseed it |
-| `npm run format` | Prettier |
+
+Deployment commands, all documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md):
+
+| Command | What it does |
+|---|---|
+| `npm run bootstrap` | Create a blank league in a database (needed once per deployment) |
+| `npm run set-code` | Set or rotate a league's commissioner code |
+| `npm run verify:grants` | Check the live security posture of the linked remote database |
 
 ## How the code is laid out
 
@@ -108,7 +116,7 @@ behaviour intact and verified against it (see below).
 npm test
 ```
 
-177 tests. Several kinds:
+190 tests. Several kinds:
 
 - **Behaviour tests** for dealing, schemes, scoring, the tiebreak chain, finalization
   and playoff advancement - including the awkward paths: an exhausted player pool at
@@ -133,18 +141,33 @@ clock is frozen where it matters.
 
 ## Where things stand
 
-Ported and working: the whole game, running in a normal browser against a pluggable
-storage layer, with the engine under test.
+**Live at <https://pigskinpoker.netlify.app>**, running on Supabase and Netlify.
 
-Real persistence, server-enforced authorization and live updates are in place. Codes are
-hashed and verified server-side, every privileged write is checked against a session, and
-two people editing at once cannot silently overwrite each other.
+Working and verified against real infrastructure: the whole game; real persistence;
+server-enforced authorization; live updates over Realtime. Codes are hashed and verified
+server-side, every privileged write is checked against a session, two people editing at
+once cannot silently overwrite each other, and a browser holding the public key can read
+what the league should see and write nothing, anywhere.
 
-Deliberately not done yet: a live stats feed (Phase 4), deployment (Phase 5), and
-importing the real league's history (Phase 5). See
-[`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) for the design,
-[`docs/AUTH.md`](docs/AUTH.md) for how login works and the path to real accounts, and
-[`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md) for the decisions still open.
+Not done yet:
 
-**Before putting a real league on a public URL**, read the "deliberately still weak"
-section of [`docs/AUTH.md`](docs/AUTH.md) - login has no rate limiting yet.
+| | |
+|---|---|
+| **Phase 3** | Real accounts, and rate limiting on login |
+| **Phase 4** | Live NFL stats feed (the seam exists, no provider is wired) |
+| **Phase 5** | Importing the original league's history from its Backup JSON |
+| **Phase 6** | `CLAUDE.md` and `docs/RULES.md` for handoff |
+
+### Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Getting it live, routine operations, troubleshooting |
+| [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) | The schema, concurrency design, and RLS plan |
+| [`docs/AUTH.md`](docs/AUTH.md) | How login works, and the path to real accounts |
+| [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md) | Decisions still open, for the original designer |
+| [`docs/MIGRATION-NOTES.md`](docs/MIGRATION-NOTES.md) | What changed from the Artifact, and every bug found on the way |
+
+**Before putting real league history on a public URL**, read "What is deliberately still
+weak" in [`docs/AUTH.md`](docs/AUTH.md) - login has no rate limiting yet, and team join
+codes have no minimum length.
