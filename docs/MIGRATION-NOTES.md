@@ -282,3 +282,55 @@ either shape, so it survives a round trip.
   shell history and process listings.
 - The bootstrap refuses to run against a database that already has a league, unless
   `--force`.
+
+---
+
+## Deploying: what only the hosted project could reveal
+
+### Hosted default privileges silently undid the grant model
+
+The first `db push` to a real Supabase project produced this:
+
+```
+GRANT ALL ON TABLE public.league_secrets TO anon;
+GRANT ALL ON TABLE public.team_secrets   TO anon;
+GRANT ALL ON TABLE public.sessions       TO anon;
+```
+
+`anon` is the role the **public, browser-side publishable key** authenticates as, and
+those three tables exist precisely to be unreachable from a browser.
+
+**Cause:** a hosted project ships with default privileges roughly equivalent to
+`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated,
+service_role`. Every table a migration creates is therefore *born* with `GRANT ALL` to
+`anon`. The initial migration's `grant select ...` was **additive** and never took that
+away. The local stack has no such defaults - which is why the local RLS suite passed and
+why this was invisible until the first real push.
+
+**Was anything exposed? No.** RLS was enabled on all 14 tables and those three have no
+policy at all, so every row was denied. The data was safe throughout.
+
+**What was lost was the second gate.** The stated model is "a grant denies it *and* a
+policy denies it". It had degraded to "a policy denies it" - one `disable row level
+security` during debugging away from publishing commissioner code hashes and live
+session tokens.
+
+**Fix:** `20260818020000_revoke_default_grants.sql`, written revoke-then-grant so it
+produces an identical, correct end state on any project regardless of the defaults it
+started with. It also alters default privileges so later tables do not inherit the
+problem.
+
+**Guard:** `npm run verify:grants` dumps the linked remote schema and asserts the live
+posture - RLS on everywhere, zero browser-role grants on the three secrets tables,
+SELECT-only on the ten readable ones, and column-level-with-`submitted_at`-withheld on
+`schemes`. Run it after every `db push`. Structural tests cannot cover this, because the
+environment that has the problem is not the one the tests run against.
+
+### A caught bug in the checker itself
+
+The first version of `verify-grants.mjs` reported `schemes` as having no grants at all.
+It did have them: `pg_dump` emits column-level grants one per column with the name
+quoted (`GRANT SELECT("id") ON TABLE ...`), and the pattern omitted the quote character,
+so it matched nothing. Worth recording because the failure mode of a checker with a
+too-narrow pattern is a **false all-clear** - the same shape of mistake as the earlier
+`grep` that reported the secrets tables as ungranted when they were not.
