@@ -1,4 +1,10 @@
 /* Pigskin Poker - global stylesheet.
+ *
+ * NOTE ON ESCAPES: this file is real CSS, so a unicode escape is a SINGLE backslash
+ * (content:"\2666"). In the original it lived inside a JS template literal, where the
+ * same character had to be written "\\2666" to survive JS string parsing. Copying that
+ * form verbatim into a .css file renders a literal backslash followed by 2666 - which
+ * is exactly what happened, and showed up as garbage before every rule bullet.
  * Extracted verbatim from GLOBAL_CSS (LegacyProject/PigskinPokerCode.jsx lines 10-238),
  * where it was a template literal injected via <style> in every render path.
  * Hand-written and deliberately framework-free. Imported once in src/main.jsx.
@@ -172,7 +178,7 @@
 
 .pp-rule-list{ margin:0; padding-left:18px; list-style:none; }
 .pp-rule-list li{ position:relative; padding-left:2px; margin-bottom:7px; font-size:13px; color: var(--text-dim); line-height:1.45; }
-.pp-rule-list li::before{ content:"\\2666"; position:absolute; left:-16px; color: var(--gold-dim); font-size:11px; top:2px; }
+.pp-rule-list li::before{ content:"\2666"; position:absolute; left:-16px; color: var(--gold-dim); font-size:11px; top:2px; }
 .pp-rule-list li:last-child{ margin-bottom:0; }
 .pp-table th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-dim); padding:6px 8px; border-bottom:1px solid var(--border-soft); }
 .pp-table td{ padding:8px; border-bottom:1px solid rgba(255,255,255,0.05); vertical-align:top; }

@@ -65,8 +65,20 @@ which would have been a real hazard once a second backend existed.
 ### CSS and data
 
 - `GLOBAL_CSS` (legacy 10-238) is `src/styles/global.css`, imported once in `main.jsx`.
-  The `<style>` tag that was injected in all four render paths is gone. The CSS itself
-  is byte-for-byte unchanged.
+  The `<style>` tag that was injected in all four render paths is gone.
+
+  **Correction (found in production):** this originally said the CSS was "byte-for-byte
+  unchanged". That was true and still wrong. `GLOBAL_CSS` was a JS *template literal*,
+  so a CSS unicode escape had to be written with a double backslash (`"\\2666"`) to
+  survive JavaScript string parsing. Copied verbatim into a real `.css` file, those same
+  bytes mean an escaped backslash followed by literal digits - so every rule bullet on
+  the Rules page rendered as `\2666` instead of a diamond. One occurrence, fixed, and
+  `tests/styles.test.js` now asserts no such escapes remain.
+
+  Worth noting the shape of the mistake: "the bytes are identical" is not the same as
+  "the meaning is identical" when text moves between two languages that both use
+  backslash escapes. The original author warned about exactly this hazard in the other
+  direction - escapes rendering literally in JSX text.
 - `TEAM_ROWS` (legacy 242-275) is `src/data/teamRows.js`, unchanged. Phase 4 makes it
   regenerable; it is a plain data module now so that is a small step.
 
