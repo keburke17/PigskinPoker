@@ -288,7 +288,7 @@ environment the tests run in.
 
 ## Not safe yet
 
-Read before putting real league history on a public URL:
+Read before running a league you care about on a public URL:
 
 - **Login has no rate limiting.** A determined guesser gets unlimited attempts at the
   commissioner code. Password hashing makes each guess cost ~20ms, which helps but is

@@ -709,7 +709,9 @@ Two separate concerns that both got called "schemaVersion":
    `teams` and `playerPool` are arrays; the replacement validates the full expected shape,
    reports what is wrong in human terms, and refuses rather than half-loading.
 
-The Phase 5 importer for the real league is the first consumer of both.
+Backup restore is the first consumer of both. It is a convenience feature rather than a
+migration path - the Artifact league was a worked example, not real history, so there is
+nothing outstanding to carry across.
 
 ---
 

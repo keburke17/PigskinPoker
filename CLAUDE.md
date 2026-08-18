@@ -170,12 +170,12 @@ class of mistake is invisible locally. `docs/DEPLOYMENT.md` explains.
 
 | | |
 |---|---|
-| **Rate limiting on login** | None. The single thing to fix before real league history is on a public URL. |
+| **Rate limiting on login** | None. The single thing to fix before a league anyone cares about is on a public URL. |
 | **Team join code length** | No minimum. A two-character code is currently possible. |
 | **Real accounts** | Join codes only. `docs/AUTH.md` has the migration path; the schema is ready for it. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
-| **Importing the original league** | Not done. That history exists only in the Artifact's Backup JSON export. |
 | **Routing** | Navigation is component state. No deep links, no back button. |
+| **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **Multiple leagues** | The database supports it; the app does not. See OQ-10. |
 
 ---

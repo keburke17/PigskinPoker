@@ -132,7 +132,7 @@ The schema was built so this is **additive**, not a migration.
   for a project like this to end up with a security problem.
 - **No rate limiting on login.** A short shared code plus unlimited attempts is
   brute-forceable. scrypt makes each guess cost ~20ms, which is meaningful but not a
-  substitute. **This is the one to fix before real league history is on a public URL.**
+  substitute. **This is the one to fix before a league anyone cares about is on a public URL.**
   A per-IP limit in the function is the smallest useful version.
 - **Team join codes have no minimum length.** The commissioner sets them through the UI
   and nothing stops a two-character one. Same exposure as above, lower stakes: a

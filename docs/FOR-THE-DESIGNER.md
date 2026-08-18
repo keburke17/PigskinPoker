@@ -165,7 +165,7 @@ to build alongside real user accounts than to retrofit afterwards.
 
 ## What is not safe yet
 
-The live site is real but not hardened. Before your league's actual history goes on it:
+The live site is real but not hardened. Before you run a league you care about on it:
 
 - **There is no limit on login attempts**, so a determined guesser gets unlimited tries
   at the commissioner code.
@@ -176,12 +176,70 @@ Both are on the list for the next phase.
 
 ---
 
-## When you are ready to bring the real league across
+## Optional: running a real database locally
 
-The league's real history exists in exactly one place: the **Commissioner -> Backup**
-JSON export in the Artifact. Nothing has been imported yet, and the importer will be
-built and checked against that file - comparing standings, cumulative totals and the
-champion against the old app side by side, not just checking the import did not crash.
+Everything above needs no database. If you want to test the *full* stack - real logins
+verified server-side, live updates, the actual write path - you can run a complete copy
+of Supabase on your machine.
 
-**Please export that JSON and keep a copy somewhere safe.** If the Artifact ever stops
-working, that file is the only copy of your league's history that exists.
+That needs **Docker Desktop** (<https://docker.com>), which is a large install and uses a
+fair amount of memory while running. Then:
+
+```bash
+npx supabase start && npx supabase db reset
+```
+
+and create a `.env.local` file from the values `npx supabase status` prints - `README.md`
+has the exact list.
+
+**You almost certainly do not need this.** Rule changes, scoring tweaks, UI work and
+anything about how the game plays are all better tested in the no-database mode, which
+starts instantly and resets on refresh. Docker is only worth it if you are changing how
+data is stored or how logins work.
+
+Your local database and the live site are completely separate. Nothing you do locally can
+reach the real league, and the credentials that would let it are not in the repo.
+
+---
+
+## What you need installed, in short
+
+| Tool | Needed for | Required? |
+|---|---|---|
+| **Node.js** | Running the app at all | Yes |
+| **Git** | Getting the code, and keeping it up to date | Yes |
+| **Claude Code** | Working on it with Claude | Recommended |
+| **Docker Desktop** | Running a real database locally | Only if you want the full stack |
+
+### About Git and GitHub
+
+**Git** is the tool; **GitHub** is where the code is stored. You need Git installed to
+clone the repo.
+
+You do **not** need a GitHub account just to get the code or to run it - the repo is
+public, so `git clone` works with no account and no login.
+
+You need an account only to **send changes back**:
+
+- Create one free at <https://github.com>, then ask Kyle to add you as a collaborator on
+  the repository. After that `git push` works.
+- Alternatively, fork it to your own account and send pull requests - useful if you would
+  rather propose changes than publish them directly.
+
+Either way, pulling in later updates is:
+
+```bash
+git pull
+```
+
+If you are only trying things out locally and never pushing, you can skip the account
+entirely - your changes just stay on your machine.
+
+---
+
+## A note on the demo league
+
+The six-team league you see locally - Gridiron Gamblers, Pocket Aces and so on - is
+fabricated test data, generated fresh from a fixed random seed. It exists so the app has
+something to show without a database. It is not connected to any real league, and it
+resets every time you refresh.

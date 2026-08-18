@@ -155,7 +155,6 @@ Not done yet:
 |---|---|
 | **Phase 3** | Real accounts, and rate limiting on login |
 | **Phase 4** | Live NFL stats feed (the seam exists, no provider is wired) |
-| **Phase 5** | Importing the original league's history from its Backup JSON |
 | **Phase 6** | `docs/RULES.md` - the game rules written down outside the code |
 
 ### Documentation
@@ -170,6 +169,6 @@ Not done yet:
 | [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md) | Decisions still open, for the original designer |
 | [`docs/MIGRATION-NOTES.md`](docs/MIGRATION-NOTES.md) | What changed from the Artifact, and every bug found on the way |
 
-**Before putting real league history on a public URL**, read "What is deliberately still
+**Before running a league you care about on a public URL**, read "What is deliberately still
 weak" in [`docs/AUTH.md`](docs/AUTH.md) - login has no rate limiting yet, and team join
 codes have no minimum length.

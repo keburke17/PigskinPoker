@@ -2,10 +2,10 @@
  *
  * ONE mapping, TWO consumers:
  *   1. scripts/generate-seed.mjs - turns the demo league into supabase/seed.sql
- *   2. the Phase 5 importer      - turns the real league's Backup JSON into rows
+ *   2. backup restore            - turns an exported Backup JSON into rows
  *
- * Writing it once is the point: the importer that carries the league's real history
- * across is exercised on every `supabase db reset` long before it touches real data.
+ * Writing it once is the point: the restore path is exercised on every
+ * `supabase db reset`, long before anyone relies on it with a real league.
  *
  * WHAT THE BLOB CANNOT TELL US, and how that is handled:
  *   - Only the CURRENT period has rosters, stats and schemes; the artifact wiped
