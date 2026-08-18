@@ -43,7 +43,43 @@ const FORCE = "force" in args;
 
 const url = process.env.SUPABASE_URL;
 const secret = process.env.SUPABASE_SECRET_KEY;
-const code = process.env.PIGSKIN_COMMISSIONER_CODE;
+
+/* Shell quoting leaks through more often than you would think - a code arriving as
+ * 'pigskinPoker' (quotes included) hashes those quotes in, and then nothing the person
+ * types on the login screen can ever match. Smart quotes from copy-paste are worse,
+ * because they are invisible in most terminals.
+ *
+ * Strip a matching surrounding pair, and say so loudly rather than silently. */
+const QUOTE_PAIRS = [["'", "'"], ['"', '"'], ["\u2018", "\u2019"], ["\u201c", "\u201d"], ["\u2019", "\u2019"]];
+function unquote(raw) {
+  let v = String(raw ?? "").trim();
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (v.length >= 2 && v.startsWith(open) && v.endsWith(close)) {
+      const inner = v.slice(1, -1);
+      console.warn(
+        "\n  NOTE: the code arrived wrapped in quote characters (" + open + close + ").\n" +
+        "  That is shell quoting leaking through, not part of your code. Using the\n" +
+        "  text inside the quotes instead - otherwise nobody could ever type it in."
+      );
+      return inner.trim();
+    }
+  }
+  return v;
+}
+
+/* Anything outside printable ASCII will be impossible to type on a phone. */
+function warnIfExotic(v) {
+  const bad = [...v].filter((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) > 126);
+  if (bad.length) {
+    console.warn(
+      "\n  WARNING: the code contains " + bad.length + " non-ASCII or control character(s): " +
+      bad.map((c) => "U+" + c.charCodeAt(0).toString(16).padStart(4, "0")).join(" ") +
+      "\n  Smart quotes and dashes look normal but cannot be typed reliably on a phone."
+    );
+  }
+}
+
+const code = unquote(process.env.PIGSKIN_COMMISSIONER_CODE);
 
 function die(msg) {
   console.error("\n  " + msg + "\n");
@@ -68,6 +104,8 @@ if (code.trim().length < 8) {
       "  thing standing between the internet and commissioner access, and login is not\n" +
       "  rate limited yet (see docs/AUTH.md).");
 }
+
+warnIfExotic(code);
 
 const db = createClient(url, secret, { auth: { persistSession: false } });
 

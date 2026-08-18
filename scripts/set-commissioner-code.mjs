@@ -30,9 +30,45 @@ const args = Object.fromEntries(
   }, [])
 );
 
+
+/* Shell quoting leaks through more often than you would think - a code arriving as
+ * 'pigskinPoker' (quotes included) hashes those quotes in, and then nothing the person
+ * types on the login screen can ever match. Smart quotes from copy-paste are worse,
+ * because they are invisible in most terminals.
+ *
+ * Strip a matching surrounding pair, and say so loudly rather than silently. */
+const QUOTE_PAIRS = [["'", "'"], ['"', '"'], ["\u2018", "\u2019"], ["\u201c", "\u201d"], ["\u2019", "\u2019"]];
+function unquote(raw) {
+  let v = String(raw ?? "").trim();
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (v.length >= 2 && v.startsWith(open) && v.endsWith(close)) {
+      const inner = v.slice(1, -1);
+      console.warn(
+        "\n  NOTE: the code arrived wrapped in quote characters (" + open + close + ").\n" +
+        "  That is shell quoting leaking through, not part of your code. Using the\n" +
+        "  text inside the quotes instead - otherwise nobody could ever type it in."
+      );
+      return inner.trim();
+    }
+  }
+  return v;
+}
+
+/* Anything outside printable ASCII will be impossible to type on a phone. */
+function warnIfExotic(v) {
+  const bad = [...v].filter((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) > 126);
+  if (bad.length) {
+    console.warn(
+      "\n  WARNING: the code contains " + bad.length + " non-ASCII or control character(s): " +
+      bad.map((c) => "U+" + c.charCodeAt(0).toString(16).padStart(4, "0")).join(" ") +
+      "\n  Smart quotes and dashes look normal but cannot be typed reliably on a phone."
+    );
+  }
+}
+
 const url = process.env.SUPABASE_URL;
 const secret = process.env.SUPABASE_SECRET_KEY;
-const code = process.env.PIGSKIN_COMMISSIONER_CODE;
+const code = unquote(process.env.PIGSKIN_COMMISSIONER_CODE);
 
 const die = (m) => {
   console.error("\n  " + m + "\n");
@@ -43,6 +79,7 @@ if (!url) die("SUPABASE_URL is not set.");
 if (!secret) die("SUPABASE_SECRET_KEY is not set.");
 if (secret.startsWith("sb_publishable_")) die("SUPABASE_SECRET_KEY holds a PUBLISHABLE key.");
 if (!code) die("PIGSKIN_COMMISSIONER_CODE is not set - that is the code you want to set.");
+warnIfExotic(code);
 if (code.trim().length < 8) {
   die(
     "PIGSKIN_COMMISSIONER_CODE is too short - use at least 8 characters.\n" +
@@ -95,9 +132,21 @@ const killed = await db
   .eq("role", "commissioner")
   .select("id");
 
-console.log("\n  Commissioner code updated for \"" + league.name + "\".");
+/* Prove it. Reading the stored hash back and verifying against it turns "the write
+ * succeeded" into "this exact code will log you in" - which is the thing the person
+ * actually cares about, and the check that would have caught quote characters
+ * immediately instead of at the login screen. */
+const { verifyCode } = await import("../server/auth.js");
+const back = await db
+  .from("league_secrets").select("commissioner_code_hash").eq("league_id", league.id).single();
+if (back.error || !verifyCode(code, back.data.commissioner_code_hash)) {
+  die("The code was written but does NOT verify on read-back. Do not rely on it.");
+}
+
+console.log("\n  Commissioner code updated for \"" + league.name + "\" and verified.");
 if (killed.data?.length) {
   console.log("  Signed out " + killed.data.length + " existing commissioner session(s).");
 }
-console.log("\n  Codes are case-insensitive and trimmed, so \"" +
-  code.trim() + "\" and \"" + code.trim().toUpperCase() + "\" both work.\n");
+console.log("\n  Log in with exactly this, between the markers:\n");
+console.log("      >>>" + code + "<<<   (" + code.length + " characters)\n");
+console.log("  Case and surrounding spaces do not matter.\n");
