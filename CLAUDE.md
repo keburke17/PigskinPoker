@@ -138,8 +138,13 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  and skip themselves without it. They assert the security model: a browser holding the
-  public key can read what the league should see and write nothing, anywhere.
+  (`npx supabase start`) and **skip themselves silently without it** - 59 of the 190
+  tests. They cover every Row Level Security assertion, all server-side authorization,
+  and the regression guard for a bug that would destroy the league on the first team
+  added.
+
+  **A green `npm test` with no local stack has verified none of that.** Check the skip
+  count before trusting a pass on anything touching storage, auth or the schema.
 - Everything else runs anywhere.
 
 Engine tests are deterministic - randomness is injected, the clock frozen where it

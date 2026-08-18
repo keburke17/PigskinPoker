@@ -33,7 +33,9 @@ longer sent to everyone's browser.
 npm install -g @anthropic-ai/claude-code
 ```
 
-You do not need Docker, a database, or any accounts to run the app locally.
+You do not need Docker or any accounts just to *run* the app. If you are taking over
+development you will want Docker too - see "Running a real database locally" below for
+why.
 
 ---
 
@@ -176,29 +178,56 @@ Both are on the list for the next phase.
 
 ---
 
-## Optional: running a real database locally
+## Running a real database locally
 
-Everything above needs no database. If you want to test the *full* stack - real logins
-verified server-side, live updates, the actual write path - you can run a complete copy
-of Supabase on your machine.
+**If you are taking over ongoing development, do this.** It is optional only if you are
+purely trying things out.
 
-That needs **Docker Desktop** (<https://docker.com>), which is a large install and uses a
-fair amount of memory while running. Then:
+The reason is the test suite. Three of the fifteen test files need a real database and
+**skip themselves silently when there isn't one** - 59 of 190 tests, about a third. They
+are not incidental:
+
+- every Row Level Security assertion (what a visitor's browser can read, and that it can
+  write nothing, anywhere);
+- every server-side authorization check (that a manager cannot enter stats, finalize a
+  week, or touch another team's lineup);
+- the regression guard for a bug that would have silently destroyed the league the first
+  time anyone added a team.
+
+Without a local database `npm test` prints a cheerful green pass having run **none** of
+those. That is a bad way to find out you broke the security model, so if you are
+maintaining this rather than poking at it, run the real thing.
+
+### Setting it up
+
+Install **Docker Desktop** (<https://docker.com>) - a large download, and it uses a fair
+amount of memory while running. Then, once:
 
 ```bash
-npx supabase start && npx supabase db reset
+npx supabase start
 ```
 
-and create a `.env.local` file from the values `npx supabase status` prints - `README.md`
-has the exact list.
+```bash
+npx supabase db reset
+```
 
-**You almost certainly do not need this.** Rule changes, scoring tweaks, UI work and
-anything about how the game plays are all better tested in the no-database mode, which
-starts instantly and resets on refresh. Docker is only worth it if you are changing how
-data is stored or how logins work.
+Create a `.env.local` file from the values `npx supabase status` prints - `README.md` has
+the exact list. After that `npm test` runs all 190, and `npm run dev` exercises the real
+login and save paths instead of the in-memory stand-in.
 
-Your local database and the live site are completely separate. Nothing you do locally can
-reach the real league, and the credentials that would let it are not in the repo.
+`npx supabase db reset` at any time gets you back to a clean, populated demo league.
+
+### When you can skip it
+
+The no-database mode is still the faster loop for anything about how the game *plays* -
+scoring tweaks, tiebreak rules, UI work. It starts instantly, resets on refresh, and the
+engine tests (the ones covering dealing, schemes, scoring and playoffs) run fine without
+Docker. Use it for iteration; run the full suite before you push.
+
+### It cannot touch the live site
+
+Your local database and the live one are entirely separate. Nothing local can reach the
+real league, and the credentials that would allow it are not in the repo.
 
 ---
 
@@ -209,7 +238,7 @@ reach the real league, and the credentials that would let it are not in the repo
 | **Node.js** | Running the app at all | Yes |
 | **Git** | Getting the code, and keeping it up to date | Yes |
 | **Claude Code** | Working on it with Claude | Recommended |
-| **Docker Desktop** | Running a real database locally | Only if you want the full stack |
+| **Docker Desktop** | A real local database, and the 59 tests that need one | Yes, for ongoing development |
 
 ### About Git and GitHub
 

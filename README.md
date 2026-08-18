@@ -38,10 +38,16 @@ in-memory store, are never sent anywhere, and must never be used for a real leag
 Pick "I'm the Commissioner" or "I'm a Team Manager" on the login screen. A full page
 refresh resets the demo league to its seeded state - refresh is the reset button.
 
-## Running against a real database (optional)
+## Running against a real database
 
-The demo above needs nothing. To run against a real Postgres with the actual auth and
-write path:
+The demo above needs nothing, and is the fastest loop for game-logic and UI work. But
+**three test files need a real database and skip themselves silently without one** - 59
+of 190 tests, covering every RLS assertion, all server-side authorization, and the
+regression guard for a bug that would destroy a league. A green `npm test` with no local
+stack has verified none of that, so run the real thing before pushing anything that
+touches storage, auth or the schema.
+
+Requires Docker Desktop.
 
 ```bash
 npx supabase start && npx supabase db reset
