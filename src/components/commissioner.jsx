@@ -1,0 +1,293 @@
+/* Pigskin Poker UI - extracted verbatim from
+ * LegacyProject/PigskinPokerCode.jsx lines 1816-2097.
+ * Only module boundaries were added: imports at the top, `export` on each
+ * declaration. No component body was edited.
+ */
+
+import { useRef, useState } from "react";
+import { POSITIONS, deepClone, defaultAdvancement, periodLabel, standingsPointsArray } from "../engine/index.js";
+import { MyTeamTab } from "./MyTeamTab.jsx";
+import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
+
+export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onSetJoinCode, onRemoveTeam }) {
+  const [newName, setNewName] = useState("");
+  return (
+    <div>
+      <div className="pp-card">
+        <h3 className="pp-h3">Add a Team</h3>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input className="pp-input" placeholder="Team name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <button className="pp-btn pp-btn-gold" disabled={!newName.trim()} onClick={() => { onAddTeam(newName.trim()); setNewName(""); }}>Add</button>
+        </div>
+      </div>
+      {state.teams.map((t) => <CommTeamRow key={t.id} team={t} onRenameTeam={onRenameTeam} onSetJoinCode={onSetJoinCode} onRemoveTeam={onRemoveTeam} />)}
+      {state.teams.length === 0 ? <EmptyState>No teams yet - add your first team above.</EmptyState> : null}
+    </div>
+  );
+}
+
+export function CommTeamRow({ team, onRenameTeam, onSetJoinCode, onRemoveTeam }) {
+  const [name, setName] = useState(team.name);
+  const [code, setCode] = useState(team.joinCode || "");
+  return (
+    <div className="pp-card pp-card-tight">
+      <div className="pp-grid-2">
+        <div className="pp-field" style={{ marginBottom: 6 }}>
+          <label className="pp-label">Team Name</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} />
+            <button className="pp-btn pp-btn-sm" onClick={() => onRenameTeam(team.id, name)}>Save</button>
+          </div>
+        </div>
+        <div className="pp-field" style={{ marginBottom: 6 }}>
+          <label className="pp-label">Join Code</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input className="pp-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="any text works" />
+            <button className="pp-btn pp-btn-sm" onClick={() => onSetJoinCode(team.id, code)}>Save</button>
+          </div>
+        </div>
+      </div>
+      <ConfirmButton label={"Remove " + team.name} confirmLabel="Yes, remove team" danger onConfirm={() => onRemoveTeam(team.id)} />
+    </div>
+  );
+}
+
+export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError }) {
+  const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
+  const submitted = teams.filter((t) => state.schemes[t.id]);
+  const pending = teams.filter((t) => !state.schemes[t.id]);
+  const phase = state.currentPeriod.phase;
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">{periodLabel(state.currentPeriod)} - {phase.replace("-", " ")}</h3>
+      {dealError ? <ErrorBanner message={dealError} /> : null}
+      {phase === "pre-deal" && (
+        <>
+          <p className="pp-sub">Deal a fresh roster to {teams.length} team{teams.length === 1 ? "" : "s"} for {periodLabel(state.currentPeriod)}.</p>
+          <button className="pp-btn pp-btn-gold" disabled={teams.length === 0} onClick={onDeal}>Deal Rosters</button>
+        </>
+      )}
+      {phase === "dealt" && (
+        <>
+          <p className="pp-sub">{submitted.length} of {teams.length} teams have submitted a scheme.</p>
+          {pending.length > 0 && <p className="pp-sub">Still pending: {pending.map((t) => t.name).join(", ")}</p>}
+          <button className="pp-btn pp-btn-gold" onClick={onProcessSchemes}>Process Schemes</button>
+        </>
+      )}
+      {phase === "schemes-processed" && (
+        <p className="pp-sub">Schemes have been processed. Head to Live Stats to enter results and finalize.</p>
+      )}
+    </div>
+  );
+}
+
+export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
+  const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
+  const [teamId, setTeamId] = useState(teams[0] ? teams[0].id : "");
+  const team = state.teams.find((t) => t.id === teamId);
+  return (
+    <div>
+      <div className="pp-card">
+        <label className="pp-label">Team</label>
+        <select className="pp-select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+          <option value="">Choose a team...</option>
+          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </div>
+      {team && <MyTeamTab state={state} team={team} onSwap={(slot, benchIdx) => onSwap(team.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={() => {}} />}
+    </div>
+  );
+}
+
+export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeletePlayer }) {
+  const [name, setName] = useState("");
+  const [position, setPosition] = useState("QB");
+  const [team, setTeam] = useState("");
+  const grouped = POSITIONS.reduce((acc, pos) => { acc[pos] = state.playerPool.filter((p) => p.position === pos).sort((a, b) => a.name.localeCompare(b.name)); return acc; }, {});
+  return (
+    <div>
+      <div className="pp-card">
+        <h3 className="pp-h3">Add Custom Player</h3>
+        <div className="pp-grid-2">
+          <div className="pp-field"><label className="pp-label">Name</label><input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div className="pp-field">
+            <label className="pp-label">Position</label>
+            <select className="pp-select" value={position} onChange={(e) => setPosition(e.target.value)}>
+              {POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="pp-field"><label className="pp-label">NFL Team</label><input className="pp-input" value={team} onChange={(e) => setTeam(e.target.value)} /></div>
+        <button className="pp-btn pp-btn-gold" disabled={!name.trim() || !team.trim()} onClick={() => { onAddPlayer(name.trim(), position, team.trim()); setName(""); setTeam(""); }}>Add Player</button>
+      </div>
+      {POSITIONS.map((pos) => (
+        <div key={pos} className="pp-card">
+          <h3 className="pp-h3">{pos} <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>({grouped[pos].length})</span></h3>
+          {grouped[pos].map((p) => (
+            <div key={p.id} className="pp-roster-slot" style={{ flexWrap: "wrap" }}>
+              <SuitBadge position={p.position} />
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <div className="pp-roster-slot-name">{p.name}</div>
+                <div className="pp-roster-slot-meta">{p.team}</div>
+              </div>
+              <select className="pp-select" style={{ width: 100 }} value={p.status} onChange={(e) => onSetStatus(p.id, e.target.value)}>
+                <option value="Active">Active</option>
+                <option value="OUT">OUT</option>
+                <option value="IR">IR</option>
+                <option value="BYE">BYE</option>
+              </select>
+              <ConfirmButton label="Delete" confirmLabel="Yes, delete" danger onConfirm={() => onDeletePlayer(p.id)} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function CommScoringPanel({ state, onSave }) {
+  const [cfg, setCfg] = useState(deepClone(state.scoringConfig));
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Scoring Settings</h3>
+      <div className="pp-field"><label className="pp-label">Points per N yards (N)</label><input className="pp-input" type="number" value={cfg.yardsPerPoint} onChange={(e) => setCfg(Object.assign({}, cfg, { yardsPerPoint: e.target.value }))} /></div>
+      <div className="pp-field"><label className="pp-label">Points per TD</label><input className="pp-input" type="number" value={cfg.pointsPerTD} onChange={(e) => setCfg(Object.assign({}, cfg, { pointsPerTD: e.target.value }))} /></div>
+      <div className="pp-grid-2">
+        <div className="pp-field"><label className="pp-label">Coach Win</label><input className="pp-input" type="number" value={cfg.coachWin} onChange={(e) => setCfg(Object.assign({}, cfg, { coachWin: e.target.value }))} /></div>
+        <div className="pp-field"><label className="pp-label">Coach Tie</label><input className="pp-input" type="number" value={cfg.coachTie} onChange={(e) => setCfg(Object.assign({}, cfg, { coachTie: e.target.value }))} /></div>
+        <div className="pp-field"><label className="pp-label">Coach Loss</label><input className="pp-input" type="number" value={cfg.coachLoss} onChange={(e) => setCfg(Object.assign({}, cfg, { coachLoss: e.target.value }))} /></div>
+      </div>
+      <button className="pp-btn pp-btn-gold" onClick={() => onSave({
+        yardsPerPoint: Number(cfg.yardsPerPoint) || 10, pointsPerTD: Number(cfg.pointsPerTD) || 0,
+        coachWin: Number(cfg.coachWin) || 0, coachTie: Number(cfg.coachTie) || 0, coachLoss: Number(cfg.coachLoss) || 0,
+      })}>Save Scoring</button>
+    </div>
+  );
+}
+
+export function CommStandingsCfgPanel({ state, onSave }) {
+  const teamCount = state.teams.length || 1;
+  const current = state.standingsPointsOverride || standingsPointsArray(teamCount);
+  const [text, setText] = useState(current.join(", "));
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Standings Point Values by Rank</h3>
+      <p className="pp-sub">Comma-separated, 1st place first. Default is team count down to 1.</p>
+      <input className="pp-input" value={text} onChange={(e) => setText(e.target.value)} />
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button className="pp-btn pp-btn-gold" onClick={() => {
+          const arr = text.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n));
+          if (arr.length > 0) onSave(arr);
+        }}>Save</button>
+        <button className="pp-btn pp-btn-ghost" onClick={() => { onSave(null); setText(standingsPointsArray(teamCount).join(", ")); }}>Reset to Default</button>
+      </div>
+    </div>
+  );
+}
+
+export function CommPlayoffsPanel({ state, onStart }) {
+  const [bracketSize, setBracketSize] = useState(state.playoffConfig.bracketSize || 4);
+  const [advText, setAdvText] = useState((state.playoffConfig.advancement || defaultAdvancement(bracketSize)).join(", "));
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Playoff Configuration</h3>
+      {state.playoffConfig.started ? (
+        <p className="pp-sub">Playoffs already started ({state.playoffConfig.bracketSize} teams, {state.playoffConfig.advancement.join(" -> ")}). Use Reset to start over if needed.</p>
+      ) : (
+        <>
+          <div className="pp-field">
+            <label className="pp-label">Bracket Size (top N teams by season standings)</label>
+            <input className="pp-input" type="number" value={bracketSize} onChange={(e) => { setBracketSize(e.target.value); setAdvText(defaultAdvancement(Number(e.target.value) || 1).join(", ")); }} />
+          </div>
+          <div className="pp-field">
+            <label className="pp-label">Advancement per round (e.g. 4, 2, 1)</label>
+            <input className="pp-input" value={advText} onChange={(e) => setAdvText(e.target.value)} />
+          </div>
+          <button
+            className="pp-btn pp-btn-gold"
+            disabled={state.teams.length < 2}
+            onClick={() => {
+              const bs = Number(bracketSize) || 2;
+              const adv = advText.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0);
+              onStart(Math.min(bs, state.teams.length), adv.length ? adv : defaultAdvancement(bs));
+            }}
+          >
+            Start Playoffs
+          </button>
+          {state.teams.length < 2 ? <p className="pp-sub">Add at least 2 teams first.</p> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+export function CommResetPanel({ onReset }) {
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Reset League</h3>
+      <p className="pp-sub">Wipes teams, rosters, stats, standings, and the activity log. The player pool and scoring settings stay intact. This cannot be undone.</p>
+      <TypedConfirm phrase="RESET LEAGUE" label="Reset League" onConfirm={onReset} />
+    </div>
+  );
+}
+
+export function CommBackupPanel({ state, onDownload, onRestore, restoreError }) {
+  const fileRef = useRef(null);
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Backup & Restore</h3>
+      <p className="pp-sub">
+        Given this app's history of unreliable automatic cloud saves, treat manual backups as your <strong>primary</strong>{" "}
+        safety net, not a nice-to-have. Download a backup after anything important - a week dealt, a week finalized,
+        teams added.
+      </p>
+      <button className="pp-btn pp-btn-gold" style={{ marginBottom: 12 }} onClick={onDownload}>Download Backup (JSON)</button>
+      <div className="pp-divider" />
+      <h3 className="pp-h3">Restore from Backup</h3>
+      {restoreError ? <ErrorBanner message={restoreError} /> : null}
+      <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }} onChange={(e) => { const f = e.target.files[0]; if (f) onRestore(f); e.target.value = ""; }} />
+      <ConfirmButton label="Choose File & Restore" confirmLabel="This replaces current league data - continue?" danger onConfirm={() => fileRef.current && fileRef.current.click()} />
+    </div>
+  );
+}
+
+export function CommInvitePanel({ state }) {
+  const publicMsg = "Join our Pigskin Poker league! Ask the commissioner for your team's private join code to log in.";
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Public Invite Message</h3>
+      <p className="pp-sub">Safe to post publicly - contains no codes.</p>
+      <div className="pp-input" style={{ marginBottom: 10 }}>{publicMsg}</div>
+      <h3 className="pp-h3">Private Join Codes</h3>
+      <p className="pp-sub">Send each of these individually - not publicly.</p>
+      {state.teams.map((t) => (
+        <div key={t.id} className="pp-roster-slot"><div style={{ flex: 1 }}>{t.name}</div><Tag>{t.joinCode || "(no code set)"}</Tag></div>
+      ))}
+    </div>
+  );
+}
+
+export function CommissionerTab(props) {
+  const [sub, setSub] = useState("teams");
+  const subs = ["teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "backup", "reset"];
+  const labels = { teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", backup: "Backup", reset: "Reset" };
+  return (
+    <div>
+      <div className="pp-subnav">
+        {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
+      </div>
+      {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onSetJoinCode={props.onSetJoinCode} onRemoveTeam={props.onRemoveTeam} />}
+      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} />}
+      {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
+      {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} />}
+      {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
+      {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
+      {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onStart={props.onStartPlayoffs} />}
+      {sub === "invite" && <CommInvitePanel state={props.state} />}
+      {sub === "backup" && <CommBackupPanel state={props.state} onDownload={props.onDownloadBackup} onRestore={props.onRestoreBackup} restoreError={props.restoreError} />}
+      {sub === "reset" && <CommResetPanel onReset={props.onResetLeague} />}
+    </div>
+  );
+}
+
+/* ================================== App ==================================== */
