@@ -78,8 +78,10 @@ if (existing.data.length > 0 && !FORCE) {
   die(
     "REFUSING: this database already contains " + existing.data.length + " league(s):\n" +
     existing.data.map((l) => "    - " + l.name).join("\n") +
-    "\n\n  Bootstrapping again would create a second league. Pass --force only if you\n" +
-    "  are certain that is what you want."
+    "\n\n  Bootstrapping again would create a second league, so nothing was changed -\n" +
+    "  INCLUDING the commissioner code. To change that code, use:\n\n" +
+    "    PIGSKIN_COMMISSIONER_CODE='new-code' npm run set-code\n\n" +
+    "  Pass --force only if you really do want a second league."
   );
 }
 
