@@ -92,6 +92,7 @@ Deployment commands, all documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md
 |---|---|
 | `npm run bootstrap` | Create a blank league in a database (needed once per deployment) |
 | `npm run set-code` | Set or rotate a league's commissioner code |
+| `npm run db:push` | Apply migrations to the linked remote **and verify grants** - use this, not `supabase db push` |
 | `npm run verify:grants` | Check the live security posture of the linked remote database |
 
 ## How the code is laid out

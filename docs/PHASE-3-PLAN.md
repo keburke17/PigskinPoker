@@ -351,7 +351,7 @@ security hole in it, and it makes every later slice safer to develop against.
   local stack proves nothing about this phase. Every change here needs
   `npx supabase start` running, and the skip count checked before believing a pass.
 - **Migrations stay forward-only**, and every new table ships with its RLS policies and
-  grants in the same migration. Run `npm run verify:grants` after any `db push`.
+  grants in the same migration. Push with `npm run db:push`, which verifies afterwards.
 - **Cutover is one-way in places.** Enforcing OQ-B server-side, rotating short join codes,
   and any session-lifecycle change will sign people out or reject requests that used to
   succeed. None of it should land mid-week without telling the league.

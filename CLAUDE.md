@@ -165,9 +165,24 @@ matters.
 
 Migrations are **forward-only**. Never edit one that has been applied - add a new one.
 Every table ships with its RLS policies in the same migration; a table without them is
-unreachable. After any `db push` to a hosted project, run `npm run verify:grants` -
-hosted Supabase grants permissive defaults on new tables that local does not, so this
-class of mistake is invisible locally. `docs/DEPLOYMENT.md` explains.
+unreachable.
+
+**Push with `npm run db:push`, never with `npx supabase db push` directly.**
+
+```bash
+npm run db:push
+```
+
+That runs the push and then `verify:grants`, which is not optional and must not be left
+to anyone's memory. Hosted Supabase grants permissive defaults on new tables that the
+local stack does not, so **every** table added by a migration is born with `GRANT ALL`
+to `anon` - the role the public browser key uses. It is invisible locally, no unit test
+can catch it, and it has happened once already on this project
+(`supabase/migrations/20260818020000_revoke_default_grants.sql` exists because of it).
+
+If you add a table that must be unreachable from a browser, add it to `SECRETS` in
+`scripts/verify-grants.mjs` in the same change, or the verifier will not know to check
+it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 
 ---
 

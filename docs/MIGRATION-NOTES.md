@@ -333,10 +333,15 @@ started with. It also alters default privileges so later tables do not inherit t
 problem.
 
 **Guard:** `npm run verify:grants` dumps the linked remote schema and asserts the live
-posture - RLS on everywhere, zero browser-role grants on the three secrets tables,
-SELECT-only on the ten readable ones, and column-level-with-`submitted_at`-withheld on
-`schemes`. Run it after every `db push`. Structural tests cannot cover this, because the
-environment that has the problem is not the one the tests run against.
+posture - RLS on everywhere, zero browser-role grants on the secrets tables (now four,
+with `auth_throttle`), SELECT-only on the ten readable ones, and
+column-level-with-`submitted_at`-withheld on `schemes`. Structural tests cannot cover
+this, because the environment that has the problem is not the one the tests run against.
+
+**And the guard is now wired into the push itself.** `npm run db:push` runs
+`supabase db push && verify:grants`, so the check is the default path rather than a
+step to remember. A guard that depends on someone recalling it at the right moment is
+most of a guard, and this one already failed that way once.
 
 ### A caught bug in the checker itself
 

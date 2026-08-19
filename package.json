@@ -14,6 +14,7 @@
     "format": "prettier --write .",
     "seed:generate": "node scripts/generate-seed.mjs",
     "db:reset": "supabase db reset",
+    "db:push": "supabase db push && node scripts/verify-grants.mjs",
     "bootstrap": "node scripts/bootstrap-league.mjs",
     "verify:grants": "node scripts/verify-grants.mjs",
     "set-code": "node scripts/set-commissioner-code.mjs"

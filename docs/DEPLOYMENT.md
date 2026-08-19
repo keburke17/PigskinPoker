@@ -74,22 +74,19 @@ per-machine and never travels through GitHub.
 ### 2. Create the tables
 
 ```bash
-npx supabase db push
+npm run db:push
 ```
+
+**Use `npm run db:push`, not `npx supabase db push`.** It runs the push and then
+`verify:grants`, because the check afterwards is not optional and must not depend on
+anyone remembering it - see "Hosted defaults differ from local" below. If it reports a
+problem, the push still happened; fix it with a follow-up migration.
 
 This applies everything in `supabase/migrations/` and records what it applied, so next
 time only new files run. It creates the tables and **no data**.
 
 `supabase/seed.sql` is *not* run by `db push`. That file is the local demo league, and
 it refuses to run against a database holding real data.
-
-Then confirm the security posture actually landed:
-
-```bash
-npm run verify:grants
-```
-
-This matters more than it sounds - see "Hosted defaults differ from local" below.
 
 ### 3. Create the league
 
@@ -189,12 +186,17 @@ npx supabase db reset && npm test
 ```
 
 ```bash
-npx supabase db push && npm run verify:grants
+npm run db:push
 ```
 
 **Migrations are forward-only.** Never edit one that has already been applied - add a
-new one. And always run `verify:grants` afterwards; a newly created table is born with
-permissive grants on hosted Supabase.
+new one. `db:push` runs `verify:grants` for you, because a newly created table is born
+with permissive grants on hosted Supabase and that is not a thing to leave to memory.
+
+**If your migration adds a table that must be unreachable from a browser**, add its name
+to `SECRETS` in `scripts/verify-grants.mjs` in the same change. The verifier only checks
+the tables it is told about, so a new secret table it does not know about passes
+silently - which is the one case where a green check would be actively misleading.
 
 ### Changing the commissioner code
 
@@ -269,9 +271,10 @@ the public key uses. The local stack does not, so this is invisible until the fi
 Row Level Security still denied every row, so nothing was exposed - but the second layer
 of defence was gone. Migration `20260818020000` revokes those grants explicitly.
 
-**This is why `npm run verify:grants` exists and why it must be run after every
-`db push`.** Unit tests cannot catch it: the environment with the problem is not the
-environment the tests run in.
+**This is why `npm run verify:grants` exists, and why `npm run db:push` runs it for
+you.** Unit tests cannot catch it: the environment with the problem is not the
+environment the tests run in. Pushing with `npx supabase db push` directly skips the
+only check that would notice - which is exactly how it got missed the first time.
 
 ---
 
