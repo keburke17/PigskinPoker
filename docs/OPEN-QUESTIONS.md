@@ -16,6 +16,13 @@ Each has a recommendation so you have something to say yes or no to.
 > OQ-B **provisionally yes, confirm with him**. OQ-8 **checked in Phase 1 - see below**.
 > **OQ-10 (one league or many?) is newly open** and shapes Phase 3.
 > The rest are still open and cost nothing to change.
+>
+> **Answered 2026-08-19, scoping Phase 3:** OQ-10 **yes, multi-league** - and league
+> ownership lands *with* accounts, not after them. OQ-5 **both**: real accounts become the
+> credential, and invite codes stay as *invitations* rather than logins. The commissioner
+> code is confirmed a testing artefact and retires with league creation.
+> **The season archive (OQ-2's other half) is held for the original designer**, not built
+> this phase. See `docs/PHASE-3-PLAN.md`.
 
 ---
 
@@ -74,14 +81,22 @@ which players are in the game? "Curated on purpose" and "typed out of necessity"
 different Phase 4s - the first keeps a hand-maintained list that a feed only enriches, the
 second replaces it wholesale.
 
-### OQ-5. Join codes, or real accounts?
+### OQ-5. Join codes, or real accounts? **[ANSWERED: both - accounts authenticate, codes invite]**
 
 No auth primitives existed in the sandbox, so join codes were the only option.
 
-**Recommendation: keep the join-code experience for now** and fix only the security
-underneath (Phase 3), because it is what your league already knows and there is nothing to
-sign up for. But you may prefer real logins, or want both. Phase 3 makes email/Google
-additive rather than a migration, so this is reversible - unlike OQ-1 and OQ-2.
+**Answer: real accounts, with the codes kept for what they are actually good at.** Multi-
+league forces this: today the code *is* the identity, which cannot express "commissioner of
+one league, manager in another".
+
+So the code stops being a credential and becomes an invitation - you sign in as yourself,
+redeem a code once, and a `league_members` row is minted. Sharing a code then stops being
+account sharing, and rotating one stops locking anybody out. The social flow you liked -
+paste a code into the group chat - is unchanged.
+
+Nothing moves for the existing league until each person chooses: both credentials are
+accepted, and code-as-login is switched off only at a season boundary. Full model in
+`docs/PHASE-3-PLAN.md`.
 
 ### OQ-6. Do you want to be able to notify people? *(out of scope this pass)*
 
@@ -166,7 +181,7 @@ it is one policy and one column.
 
 ---
 
-### OQ-10. One league, or many? **[OPEN - shapes Phase 3, raised during deployment]**
+### OQ-10. One league, or many? **[ANSWERED: many - and ownership lands with accounts]**
 
 The Artifact stored everything under a single `window.storage` key, so "one league" was
 never a decision - it was the only thing a key-value store could express. That constraint
@@ -330,10 +345,10 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 
 | Question | Needed before | Why it can wait |
 |---|---|---|
-| **OQ-10** one league or many? | **Phase 3** | If many, league ownership must land with accounts, not after. |
-| **OQ-B** blocks validated server-side | **Phase 3** | Provisionally yes; awaiting the designer's final confirmation. |
-| **OQ-5** join codes vs. real accounts | Phase 3 | Phase 3 makes accounts additive either way. |
-| **OQ-6** notifications | Phase 3 | Only affects whether we collect emails while building the members table. |
+| **OQ-B** blocks validated server-side | **Phase 3a** | Provisionally yes; still awaiting the designer's final confirmation. |
+| **OQ-E** reject stat writes while unlocked | **Phase 3a** | Same conversation as OQ-B; it is his rule to confirm. |
+| **OQ-6** notifications | Phase 3c | Now nearly free: magic-link sign-in needs the same SMTP provider notifications would. |
+| **league visibility** (new, from OQ-10) | Phase 3d | Members-only or link-public, per league. Recommended: a setting, defaulting to members-only, with the existing league set public so nothing changes for it. |
 | **OQ-4b** is `TEAM_ROWS` curated or typed? | Phase 4 | Decides whether a feed enriches the pool or replaces it. |
 | **OQ-3** history depth | Phase 2 | Schema already preserves it; this is about what we surface. |
 | **OQ-C / OQ-D / OQ-E** rules quirks | Anytime | All preserved as-is; each is a small, reversible behaviour question. |
@@ -343,5 +358,9 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 list to confirm with the original designer, alongside **OQ-A**. Those two are the standing
 agenda for that conversation.
 
-**OQ-10 is the one to decide before Phase 3 starts**, because it changes what Phase 3
-builds rather than what comes after it.
+**OQ-10 is answered: many.** What that changed is recorded in `docs/PHASE-3-PLAN.md` -
+accounts, an `invites` table replacing `team_secrets`, league-scoped read policies, and a
+landing page with three doors (sign in / redeem a code / create a league).
+
+**The standing agenda for the designer is now OQ-A, OQ-B and OQ-E**, plus the season
+archive, which is held for him rather than built.
