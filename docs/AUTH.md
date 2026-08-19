@@ -124,28 +124,214 @@ The schema was built so this is **additive**, not a migration.
 - **Notifications.** "Rosters are dealt - submit your scheme before Sunday" needs an
   email address, which is the one thing join codes cannot give you. See OQ-6.
 
-### What is deliberately still weak
+### What Phase 3a closed
 
-- **`sessions` is hand-rolled.** It is small - a hashed token, a role, an expiry - and
-  it is confined to this phase. It should be replaced by real Supabase sessions in Phase
-  3 rather than grown. Hand-rolled auth that quietly becomes permanent is a normal way
-  for a project like this to end up with a security problem.
-- **No rate limiting on login.** A short shared code plus unlimited attempts is
-  brute-forceable. scrypt makes each guess cost ~20ms, which is meaningful but not a
-  substitute. **This is the one to fix before a league anyone cares about is on a public URL.**
-  A per-IP limit in the function is the smallest useful version.
-- **Team join codes have no minimum length.** The commissioner sets them through the UI
-  and nothing stops a two-character one. Same exposure as above, lower stakes: a
-  compromised manager session can edit that team's lineup and schemes, not run the
-  league. `PIGSKIN_COMMISSIONER_CODE` enforces 8 characters; `setTeamJoinCode` should
-  do the same.
-- **Sessions expire but never rotate.** A 30-day token is not revoked if a device is
-  lost, and changing a *team's* join code does not sign out that team's existing
-  sessions. Rotating the **commissioner** code does now sign out commissioner sessions
-  (see below); `setTeamJoinCode` needs the same one-line delete.
+Phase 2c shipped real authorization and left four gaps open on purpose. Phase 3a shuts
+them. Each is asserted in `tests/server.test.js`, which **skips silently without a local
+Supabase stack** - check the skip count before believing a pass.
 
-None of these are worse than the Artifact's position, where the codes were simply
-public - but none should survive Phase 3.
+- **Rate limiting on login** - `server/throttle.js`, backed by the `auth_throttle`
+  table. Two buckets per attempt, and they are deliberately different controls: the
+  **per-IP** bucket is a real lockout with exponential backoff (a minute, doubling,
+  capped at an hour), while the **per-target** bucket (league or team) is a fixed
+  few-second slowdown that never escalates. An escalating per-target lock would let
+  anyone lock the real commissioner out of his own league by hammering the login - a
+  denial of service an attacker would choose on purpose, and worse than a slow brute
+  force. Ten failures are free; the eleventh attempt is refused with a 429 and a
+  `Retry-After`. A successful login clears its buckets. The IP is hashed with a
+  server-side pepper before storage, so the table is a counter and not a visitor log.
+
+  **It fails open.** If the throttle table itself errors, login proceeds. A broken
+  counter must not become an outage that locks the league out on a Sunday.
+
+- **Rotating a team's join code now signs that team out.** `setTeamJoinCode` deletes
+  that team's sessions, matching what commissioner code rotation already did. Without
+  it the rotation was cosmetic: the person being removed kept a 30-day token.
+
+- **Join code policy** - minimum 8 characters (matching `PIGSKIN_COMMISSIONER_CODE`),
+  maximum 64, printable ASCII. Enforced **on set, never on verify**, so no existing code
+  stops working: hashes are one-way, so there is no query that finds which live codes
+  are short, and enforcing at login would sign those people out mid-season with no way
+  to warn them first. The rule lives in `src/storage/codePolicy.js` because the browser
+  and the server must not disagree about it. The UI states it inline rather than only
+  enforcing it.
+
+- **Session idle expiry** - 14 days, alongside the unchanged absolute 30-day cap, with
+  `last_used_at` refreshed on use (coarsely, at most hourly, to avoid a write per
+  request). An active manager is never signed out mid-season; an abandoned token dies
+  well before the cap. A commissioner "sign out devices" action per team covers the lost
+  phone, where the code is fine and only the live sessions are the problem.
+
+## Phase 3b + 3c - accounts
+
+The inversion begins here, and it begins **additively**. Nothing was switched over.
+
+### The two credentials, one answer
+
+`verifySession()` is the hinge. It accepts either a join-code session token or a
+Supabase access token and resolves both to the same `{leagueId, role, teamId}`, so
+nothing in `server/operations.js` knows there are two kinds of sign-in at all.
+
+Which one a request is carrying is decided on **shape** - a JWT is three dot-separated
+segments, a session token is 64 hex characters - rather than by trying one lookup and
+falling back to the other, which would cost a wasted round trip on every request.
+
+| | Join code | Account |
+|---|---|---|
+| Who you are | whoever holds the team's code | a person |
+| Where the role lives | the `sessions` row | `league_members` |
+| Verified by | scrypt hash comparison here | Supabase, then `league_members` |
+| Expiry | 30 days absolute, 14 days idle | refreshes itself |
+
+**The role never comes from the token.** Supabase says who you are; `league_members`
+says what you may do. A perfectly valid account that nobody invited is correctly nobody
+in this league - which is what will make multi-league safe in 3d.
+
+Verification is delegated to Supabase rather than done locally with the JWT secret.
+Checking a signature here would miss the things that matter in practice - a revoked
+session, a deleted user, a rotated key - for the sake of saving a round trip.
+
+### Migration by invitation
+
+`linkAccount` is the whole migration, and it needs **both** credentials at once:
+
+- the **join-code session** proves what you are allowed to be (this league, this role,
+  this team). The membership is minted from the session, never from the request body.
+- the **account token** proves who you are.
+
+An account therefore cannot grant itself a role, which is the obvious attack and is
+asserted in `tests/server.test.js`. It is idempotent - `unique (league_id, user_id)`
+makes that a guarantee rather than a matter of getting a check-then-insert right - and it
+will not rewrite an existing role, so a commissioner who happens to hold a manager's join
+code is not demoted by signing in.
+
+In the app this is one prompt, after you are already in: *"Connect your email so you do
+not need the join code on every device."* It can be ignored forever. Coming back from the
+magic link completes the link automatically, because pressing Connect and then opening
+the emailed link is consent enough - asking again at that point would be asking someone
+who has already done everything right.
+
+**The join code keeps working afterwards.** That is asserted directly, because if it ever
+stopped, this would be a forced cutover wearing an invitation's clothes. Code-as-login is
+switched off only when everyone has an account, at a season boundary, never mid-season.
+
+### Who can read what
+
+`profiles` and `league_members` are the first tables in the schema about **people** rather
+than about the game, so read access is narrow: a signed-in person sees their own rows and
+nothing else, and `anon` gets no grant at all. A signed-out visitor can still read the
+standings; they cannot enumerate who belongs to which league.
+
+Both policies are scoped to `auth.uid()` alone rather than asking "is the reader a member
+of this league?" - that question queries `league_members` from inside `league_members`'
+own policy and recurses. The app reads teams, not memberships, so nothing is lost.
+
+Every write still goes through the Netlify function. Direct RLS-governed writes become
+possible now that there are real JWTs, but that is an optimization, not a correctness fix.
+
+## Phase 3d - invitations, and more than one league
+
+### The inversion, completed
+
+| | Join code | Invite |
+|---|---|---|
+| What it does | authenticates every session, forever | authorizes ONE join, then is spent |
+| Rotating it | signs that team out | affects only future joins |
+| Sharing it | is account sharing | is an invitation |
+| Readable back | no, and that is a real workflow cost | moot - reissue freely |
+
+Those last three rows are the payoff. An invite can be revoked without locking anybody
+out, because it was never what kept them in.
+
+### Why an invite code has two halves
+
+Codes are scrypt-hashed and scrypt salts randomly, so **a hash cannot be looked up by**.
+Join codes get away with this because you pick your team first and only then is one hash
+checked. An invite arrives with no context at all - someone pastes a code - so its row
+has to be findable.
+
+The tempting fix, an extra fast deterministic hash to index on, would quietly make that
+fast hash the weakest link and defeat the point of scrypt. So a code reads
+`REFERENCE-SECRET`: the reference is public, indexed, and proves nothing; the secret is
+what scrypt protects. A wrong reference and a wrong secret return the **identical** error,
+or the public half becomes an oracle for enumerating live invites.
+
+The alphabet excludes `O/0`, `I/1/L` and `U`. These get read aloud, texted, and retyped
+from a photo of a whiteboard, and each of those is a support conversation waiting to
+happen. It also means a character outside the alphabet is a genuine mistake rather than a
+transcription artefact, so it can be rejected honestly.
+
+### Reads are league-scoped now
+
+Every read policy used to be `using (true)` - correct for one public league, wrong the
+moment there are two. All eleven now ask one question through one `SECURITY DEFINER`
+helper: may this reader see this league? Definer rights are **required**, not tidy: the
+policy on `leagues` calls the function and the function selects from `leagues`, which
+under caller rights is infinite recursion.
+
+`leagues.visibility` is a checked text column, not a boolean, so a later `'listed'` state
+for a public directory needs no policy change. New leagues default to `'members'`, so
+forgetting to choose fails closed; leagues that already existed were set `'public'`, so
+nothing changed for the league being played.
+
+### Roles, and the one guard that matters
+
+A role is a `league_members` row, which is what makes "commissioner of one league,
+manager in another" expressible. Commissioner transfer and second commissioners are the
+same act.
+
+**The last commissioner cannot step down or be removed.** Such a league could not deal a
+week, add a team, or issue an invite, and no screen in the app could repair it. Transfer
+is promote-then-demote, and the guard makes the wrong order impossible.
+
+### Identity is per league
+
+`whoami` is re-asked whenever the league in the URL changes. Resolving it once at startup
+was right when there was one league and is a bug now - you would walk into a league you
+had just created and be shown a login screen for it.
+
+---
+
+### The operational dependency - READ THIS BEFORE DEPLOYING
+
+Magic links are only as good as the email behind them, and this is the part that is not
+done by code:
+
+**`docs/EMAIL-SETUP.md` is the runbook.** In short: Resend SMTP and a verified sending
+domain, the redirect allow-list, and the branded template pasted into the dashboard -
+because the hosted project does not read `supabase/config.toml` or
+`supabase/templates/`.
+
+Then prove it, rather than assuming:
+
+```bash
+npm run verify:email -- you@your-address.com
+```
+
+That sends one real sign-in email and names the two failures worth naming - a 429 from
+the built-in sender's throttle, and a rejected redirect URL. Both are otherwise silent,
+which is why the check exists as a command rather than a paragraph.
+
+All of it is one-time, and the same SMTP setup is exactly what OQ-6 notifications would
+need - so doing it here turns "rosters are dealt, submit your scheme" into a feature
+later rather than an infrastructure project.
+
+---
+
+### What is still deliberately weak
+
+- **`sessions` is hand-rolled.** It is small - a hashed token, a role, an expiry, a last
+  use - and it is confined to this phase. Phase 3b/3c replaces it with Supabase Auth
+  rather than growing it. The idle expiry above is maintenance on a mechanism that is
+  meant to be retired, not investment in it. Hand-rolled auth that quietly becomes
+  permanent is a normal way for a project like this to end up with a security problem.
+
+- **Short codes already in the database still work**, by design - see the on-set/on-verify
+  note above. **Rotating them once is an operational step at cutover**, not something the
+  code can do for you.
+
+Neither is worse than the Artifact's position, where the codes were simply public, and
+both are resolved by the accounts layer rather than by patching this one further.
 
 ---
 

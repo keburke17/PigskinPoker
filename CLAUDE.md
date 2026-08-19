@@ -59,6 +59,7 @@ in a league that is actually being played is worse than a bug everyone has adapt
 ```
 src/
   engine/       pure game logic - no React, no I/O, fully tested
+  routing/      hand-written URL routing - no dependency, see the note in index.js
   storage/      ALL persistence, behind one interface
   hooks/        useLeague.js - the read/write lifecycle
   components/   the UI, extracted from the original single file
@@ -112,6 +113,10 @@ commissioner `DEMO-COMMISH`, managers `DEMO-TEAM-1` .. `DEMO-TEAM-6`. Refresh re
 
 **This is the right mode for trying rule changes.** It cannot touch the live league.
 
+**If `tests/server.test.js` skips itself complaining about extra leagues**, you made one
+through the UI (Phase 3d added that button). The demo seed refuses to run where other
+leagues exist, on purpose. `npx supabase db reset` clears it.
+
 For the real stack (Docker required):
 
 ```bash
@@ -129,7 +134,7 @@ never talk to each other; only migrations cross, and only when someone runs `db 
 npm test
 ```
 
-190 tests. Three groups worth knowing about:
+293 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -138,7 +143,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (`npx supabase start`) and **skip themselves silently without it** - 59 of the 190
+  (`npx supabase start`) and **skip themselves silently without it** - 149 of the 293
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -165,9 +170,24 @@ matters.
 
 Migrations are **forward-only**. Never edit one that has been applied - add a new one.
 Every table ships with its RLS policies in the same migration; a table without them is
-unreachable. After any `db push` to a hosted project, run `npm run verify:grants` -
-hosted Supabase grants permissive defaults on new tables that local does not, so this
-class of mistake is invisible locally. `docs/DEPLOYMENT.md` explains.
+unreachable.
+
+**Push with `npm run db:push`, never with `npx supabase db push` directly.**
+
+```bash
+npm run db:push
+```
+
+That runs the push and then `verify:grants`, which is not optional and must not be left
+to anyone's memory. Hosted Supabase grants permissive defaults on new tables that the
+local stack does not, so **every** table added by a migration is born with `GRANT ALL`
+to `anon` - the role the public browser key uses. It is invisible locally, no unit test
+can catch it, and it has happened once already on this project
+(`supabase/migrations/20260818020000_revoke_default_grants.sql` exists because of it).
+
+If you add a table that must be unreachable from a browser, add it to `SECRETS` in
+`scripts/verify-grants.mjs` in the same change, or the verifier will not know to check
+it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 
 ---
 
@@ -175,13 +195,11 @@ class of mistake is invisible locally. `docs/DEPLOYMENT.md` explains.
 
 | | |
 |---|---|
-| **Rate limiting on login** | None. The single thing to fix before a league anyone cares about is on a public URL. |
-| **Team join code length** | No minimum. A two-character code is currently possible. |
-| **Real accounts** | Join codes only. `docs/AUTH.md` has the migration path; the schema is ready for it. |
+| **Real accounts** | Built (Phase 3b/3c) - magic-link sign-in runs *beside* join codes, and codes still work. Not yet switched off; that happens at a season boundary. Needs SMTP configured on the hosted project - see `docs/AUTH.md`. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
-| **Routing** | Navigation is component state. No deep links, no back button. |
+
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
-| **Multiple leagues** | The database supports it; the app does not. See OQ-10. |
+| **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |
 
 ---
 
@@ -191,7 +209,8 @@ class of mistake is invisible locally. `docs/DEPLOYMENT.md` explains.
 |---|---|
 | `docs/OPEN-QUESTIONS.md` | **Decisions waiting on the designer.** Start here if you are him. |
 | `docs/DATA-MODEL.md` | Schema, concurrency design, RLS plan |
-| `docs/AUTH.md` | How login works, path to real accounts |
+| `docs/AUTH.md` | How login works, and how join codes and accounts coexist |
+| `docs/EMAIL-SETUP.md` | **Making magic links arrive.** Dashboard steps; required before accounts work in production |
 | `docs/DEPLOYMENT.md` | Getting it live, operations, troubleshooting |
 | `docs/MIGRATION-NOTES.md` | What changed from the Artifact, and every bug found on the way |
 

@@ -33,6 +33,7 @@ import {
   seededRng,
   startPlayoffs,
 } from "../engine/index.js";
+import { validateCode } from "./codePolicy.js";
 import { decomposeLeague } from "./decompose.js";
 import { hydrateLeague, vkey } from "./hydrate.js";
 
@@ -451,9 +452,47 @@ export function createMemoryStore(initialDb, opts = {}) {
     },
 
     async setTeamJoinCode(teamLegacyId, code) {
+      /* The same policy the server enforces, duplicated here on purpose. This adapter
+       * is the default with no configuration and is where rule changes get tried, so a
+       * code it accepts and production rejects would be a trap - the dev run works and
+       * the deploy fails. Kept to the same three rules, stated once in the UI. */
+      const bad = validateCode(code);
+      if (bad) return { ok: false, reason: "invalid", message: bad };
       codes.teams[teamLegacyId] = code;
       notify();
       return { ok: true };
+    },
+
+    /* ----------------------------- accounts ------------------------------ */
+
+    /* Accounts need a real auth provider, and this adapter deliberately has no backend
+     * at all - that is what makes it boot with no configuration. Rather than pretend,
+     * these say plainly that the feature is not available here, and the UI hides the
+     * email door when `signInWithEmail` is missing. Faking a magic link would be worse
+     * than not offering one: it would make the demo diverge from production in exactly
+     * the area where being sure matters most. */
+    async getAccount() {
+      return null;
+    },
+
+    /* Multi-league needs accounts, and accounts need an auth provider this adapter
+     * deliberately does not have. It holds exactly one demo league and always has.
+     *
+     * These exist as honest refusals rather than being absent, so the UI can ask "can
+     * this store do leagues?" once and hide the doors, instead of every call site
+     * guarding a missing method. */
+    getLeagueId: () => "demo",
+    setLeagueId: () => false,
+    async myLeagues() {
+      return { ok: true, leagues: [] };
+    },
+
+    /* No sessions exist in the in-memory adapter - login is a local comparison and
+     * there is nothing persisted to revoke - so this is honestly a no-op rather than a
+     * missing method. It exists so the commissioner UI does not have to ask which
+     * store it is talking to. */
+    async signOutTeam() {
+      return { ok: true, signedOut: 0 };
     },
 
     /** Test/debug only. Not part of the interface. */

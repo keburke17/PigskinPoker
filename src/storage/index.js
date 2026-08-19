@@ -48,7 +48,7 @@ export function createDemoRows() {
  * inline any VITE_-prefixed variable into the bundle, which is exactly why the secret
  * one is not prefixed.
  */
-export function createStore(env = import.meta.env) {
+export function createStore(env = import.meta.env, options = {}) {
   const url = env?.VITE_SUPABASE_URL;
   const publishableKey = env?.VITE_SUPABASE_PUBLISHABLE_KEY;
 
@@ -77,7 +77,14 @@ export function createStore(env = import.meta.env) {
       url,
       publishableKey,
       apiPath: env.VITE_API_PATH || "/api",
-      leagueName: env.VITE_LEAGUE_NAME || "Pigskin Poker",
+      /* RETIRED BY MULTI-LEAGUE, and still read.
+       *
+       * `/l/<id>` is now how a league is chosen, so naming one in the environment is no
+       * longer how this works. It is still honoured because an existing deployment sets
+       * it, and an upgrade that needs a dashboard edit to keep working is an upgrade
+       * that breaks on a Sunday. It only applies when no league id came from the URL. */
+      leagueName: env.VITE_LEAGUE_NAME || null,
+      leagueId: options.leagueId ?? null,
     });
   }
 

@@ -21,7 +21,16 @@ const READABLE = [
   "leagues", "seasons", "teams", "team_totals", "players",
   "periods", "roster_slots", "stat_lines", "period_results", "events",
 ];
-const SECRETS = ["league_secrets", "team_secrets", "sessions"];
+const SECRETS = ["league_secrets", "team_secrets", "sessions", "auth_throttle", "invites"];
+/* Phase 3b. A THIRD category, because these fit neither of the other two: they are
+ * about people rather than about the game, so a signed-in visitor may read their own
+ * rows (SELECT to `authenticated`, narrowed further by an RLS policy scoped to
+ * auth.uid()) while a signed-out one gets nothing at all.
+ *
+ * Filed separately on purpose. Putting them in READABLE would assert `anon` can read
+ * them, which is exactly wrong; putting them in SECRETS would assert nobody can, which
+ * would fail on the grant the app actually needs. */
+const ACCOUNT_TABLES = ["profiles", "league_members"];
 const BROWSER_ROLES = ["anon", "authenticated"];
 
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pigskin-grants-")), "schema.sql");
@@ -48,7 +57,7 @@ function grantsFor(table) {
 const rlsOn = (t) => new RegExp('"public"\\."' + t + '" ENABLE ROW LEVEL SECURITY').test(sql);
 
 /* 1. RLS must be on everywhere. */
-for (const t of [...READABLE, ...SECRETS, "schemes"]) {
+for (const t of [...READABLE, ...SECRETS, ...ACCOUNT_TABLES, "schemes"]) {
   if (rlsOn(t)) ok.push("RLS enabled on " + t);
   else problems.push("RLS is NOT enabled on " + t);
 }
@@ -77,7 +86,35 @@ for (const t of READABLE) {
   } else ok.push("SELECT-only on " + t);
 }
 
-/* 4. schemes must be column-level, withholding submitted_at. */
+/* 4. Account tables: SELECT to `authenticated`, and NOTHING to `anon`.
+ *
+ * The anon half is the half that matters. These tables say which real people belong to
+ * which leagues, which is not something a signed-out visitor with the publishable key
+ * should be able to enumerate - and on a hosted project the default grant would have
+ * handed them exactly that. */
+for (const t of ACCOUNT_TABLES) {
+  const anonGrants = grantsFor(t).filter(([, role]) => role === "anon");
+  const authGrants = grantsFor(t).filter(([, role]) => role === "authenticated");
+  const overreach = authGrants.filter(([p]) => p !== "SELECT");
+
+  if (anonGrants.length) {
+    problems.push(
+      t + " grants " + anonGrants.map(([p]) => p).join(", ") +
+      " to anon - a signed-OUT visitor must not see who belongs to a league"
+    );
+  } else if (authGrants.length === 0) {
+    problems.push(t + " grants authenticated nothing - a signed-in person cannot read their own row");
+  } else if (overreach.length) {
+    problems.push(
+      t + " grants " + overreach.map(([p]) => p).join(", ") +
+      " to authenticated - reads only; every write goes through the function"
+    );
+  } else {
+    ok.push("SELECT-to-authenticated-only on " + t + " (nothing to anon)");
+  }
+}
+
+/* 5. schemes must be column-level, withholding submitted_at. */
 const schemeBrowser = grantsFor("schemes").filter(([, r]) => BROWSER_ROLES.includes(r));
 const wholeTable = schemeBrowser.filter(([p]) => p === "ALL" || p === "SELECT");
 const leaksSubmittedAt = schemeBrowser.some(([p]) => /submitted_at/.test(p));

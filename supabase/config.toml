@@ -156,11 +156,19 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://localhost:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# The Vite dev server, on both spellings of localhost. A magic link redirects back to
+# the app, and an address that is not listed here is rejected outright - which looks
+# like a broken link rather than a configuration problem, so it is worth getting right.
+# The HOSTED project needs its own site URL and redirect list set in the Supabase
+# dashboard; this file only configures the local stack. See docs/AUTH.md.
+# Wildcards, so a magic link can return someone to the PAGE they left rather than the
+# front door - `/join/<code>` above all, where dropping them at `/` would discard the
+# invite code they were part-way through redeeming.
+additional_redirect_urls = ["http://localhost:5173/**", "http://127.0.0.1:5173/**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -233,20 +241,38 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
+# Production SMTP - Resend.
+#
+# LEAVE THIS COMMENTED FOR LOCAL DEVELOPMENT. The local stack captures every message at
+# http://127.0.0.1:54324 and never sends anything, which is what you want while working:
+# no real mail, no rate limits, no cost. Uncomment only to rehearse the real sender
+# before deploying, and set RESEND_SMTP_PASSWORD in .env.local first.
+#
+# THE HOSTED PROJECT DOES NOT READ THIS FILE. Its SMTP is configured in the Supabase
+# dashboard, and configuring it there is REQUIRED before magic links work in production:
+# the built-in sender is rate limited and not intended for production use, so it
+# throttles silently - the worst possible failure mode for a login. docs/EMAIL-SETUP.md.
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
+# host = "smtp.resend.com"
 # port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# user = "resend"
+# pass = "env(RESEND_SMTP_PASSWORD)"
+# admin_email = "noreply@your-verified-domain"
+# sender_name = "Pigskin Poker"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
+
+# The sign-in email. Committed to the repo so local and hosted can be kept identical -
+# the HOSTED project does not read this file, so the same subject and the contents of
+# supabase/templates/magic_link.html must be pasted into the Supabase dashboard under
+# Authentication -> Emails -> Magic Link. docs/EMAIL-SETUP.md has the steps.
+[auth.email.template.magic_link]
+subject = "Sign in to Pigskin Poker"
+content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
