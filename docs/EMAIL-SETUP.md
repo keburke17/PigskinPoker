@@ -93,7 +93,12 @@ rejected outright.
    guide, including this one: they differ by region and they do change.
 3. Wait for Resend to show the domain **verified**. Minutes to hours - it is DNS, so it
    is not instant.
-4. Create an **SMTP credential** (not just an API key - Supabase speaks SMTP here).
+4. Create an **API key** (Resend -> API Keys -> Add). Give it **Sending access**, not
+   full access: it only ever needs to send. Full access would also let that key manage
+   your domains and other keys, which is not something to hand to a config field.
+
+   Resend has no separate "SMTP credential" - **the API key is the SMTP password.**
+   Copy it now; Resend shows it once and cannot show it again.
 
 **Do not skip verification.** Unverified mail gets filed as spam, which looks exactly
 like it was never sent.
@@ -108,8 +113,8 @@ Authentication -> Emails -> SMTP Settings. Enable custom SMTP and enter:
 |---|---|
 | Host | `smtp.resend.com` |
 | Port | `587` |
-| Username | `resend` |
-| Password | the Resend SMTP credential |
+| Username | `resend` - literally that word, not your address |
+| Password | your Resend API key - the whole `re_...` string |
 | Sender email | an address at your **verified** domain |
 | Sender name | `Pigskin Poker` |
 
