@@ -1,6 +1,9 @@
 # Phase 3 - plan
 
-Status: **3a, 3b+3c and 3d are BUILT and green.** 3e is still held for the designer.
+Status: **3a, 3b+3c and 3d are BUILT, green, and DEPLOYED** as of 2026-08-19 - all six
+migrations applied to the hosted project (`verify:grants` clean, 36 checks), Resend
+verified on the sending subdomain, and account creation exercised against the live site.
+3e is still held for the designer.
 
 3d shipped whole: `invites`, league-scoped RLS, `leagues.visibility`, league creation,
 commissioner transfer and multiple commissioners, and routing. Routing is **hand-written**

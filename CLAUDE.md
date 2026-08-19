@@ -195,9 +195,8 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 
 | | |
 |---|---|
-| **Real accounts** | Built (Phase 3b/3c) - magic-link sign-in runs *beside* join codes, and codes still work. Not yet switched off; that happens at a season boundary. Needs SMTP configured on the hosted project - see `docs/AUTH.md`. |
+| **Real accounts** | Built and **deployed** (Phase 3b/3c/3d). Magic-link sign-in works in production - SMTP is configured and verified. It runs *beside* join codes, and codes still work. Switching code-as-login off is the cutover, and happens at a season boundary - see `docs/AUTH.md`. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
-
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |
 
