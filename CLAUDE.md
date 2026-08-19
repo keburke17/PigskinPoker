@@ -129,7 +129,7 @@ never talk to each other; only migrations cross, and only when someone runs `db 
 npm test
 ```
 
-190 tests. Three groups worth knowing about:
+217 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -138,7 +138,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (`npx supabase start`) and **skip themselves silently without it** - 59 of the 190
+  (`npx supabase start`) and **skip themselves silently without it** - 86 of the 217
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -175,8 +175,6 @@ class of mistake is invisible locally. `docs/DEPLOYMENT.md` explains.
 
 | | |
 |---|---|
-| **Rate limiting on login** | None. The single thing to fix before a league anyone cares about is on a public URL. |
-| **Team join code length** | No minimum. A two-character code is currently possible. |
 | **Real accounts** | Join codes only. `docs/AUTH.md` has the migration path; the schema is ready for it. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
 | **Routing** | Navigation is component state. No deep links, no back button. |

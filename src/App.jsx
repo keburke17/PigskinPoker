@@ -49,6 +49,30 @@ function errText(e) {
   }
 }
 
+
+/* A rejected login now has THREE shapes, not one, and they want different words.
+ *
+ *   throttled     - too many attempts. The code may well be right; saying "incorrect
+ *                   code" here would send someone hunting for a typo that is not there.
+ *                   Says how long to wait when the server told us.
+ *   unauthorized  - genuinely the wrong code.
+ *   network       - the request never got an answer. Also not a wrong code.
+ */
+function loginFailureText(result, fallback) {
+  if (result?.reason === "throttled") {
+    const secs = result.retryAfter;
+    if (!secs) return result.message || "Too many sign-in attempts. Wait a moment and try again.";
+    const wait = secs < 60
+      ? secs + " second" + (secs === 1 ? "" : "s")
+      : Math.ceil(secs / 60) + " minute" + (Math.ceil(secs / 60) === 1 ? "" : "s");
+    return "Too many sign-in attempts. Try again in about " + wait + ".";
+  }
+  if (result?.reason === "network") {
+    return "Could not reach the server - check your connection and try again.";
+  }
+  return result?.message || fallback;
+}
+
 export default function App() {
   const store = useMemo(() => createStore(), []);
   const league = useLeague(store);
@@ -97,7 +121,7 @@ export default function App() {
     setLoginError(null);
     const r = await store.loginCommissioner(code);
     if (!r.ok) {
-      setLoginError(r.message || "Incorrect commissioner code.");
+      setLoginError(loginFailureText(r, "Incorrect commissioner code."));
       return;
     }
     if (r.token) saveSessionToken(r.token);
@@ -112,7 +136,7 @@ export default function App() {
     }
     const r = await store.loginManager(teamId, joinCode);
     if (!r.ok) {
-      setLoginError(r.message || "Incorrect join code.");
+      setLoginError(loginFailureText(r, "Incorrect join code."));
       return;
     }
     if (r.token) saveSessionToken(r.token);
@@ -169,10 +193,13 @@ export default function App() {
       });
     });
   const onRenameTeam = (id, name) => onRenameMyTeam(id, name);
-  const onSetJoinCode = async (id, code) => {
-    const r = await store.setTeamJoinCode(id, code);
-    if (r && r.ok === false) setLoginError(r.message || "Couldn't set that join code.");
-  };
+  /* Returns the result rather than swallowing it. It used to route failures into
+   * `loginError`, whose banner only renders on the login screen - so a commissioner who
+   * was, by definition, already signed in never saw them. CommTeamRow shows the outcome
+   * next to the field instead. */
+  const onSetJoinCode = async (id, code) => store.setTeamJoinCode(id, code);
+  const onSignOutTeam = async (id) =>
+    (store.signOutTeam ? store.signOutTeam(id) : { ok: true, signedOut: 0 });
   const onRemoveTeam = (id) =>
     ops.mutate("removeTeam:" + id, (s) => {
       s.teams = s.teams.filter((t) => t.id !== id);
@@ -427,7 +454,7 @@ export default function App() {
           {tab === "comm" && isCommissioner && (
             <CommissionerTab
               state={state}
-              onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onSetJoinCode={onSetJoinCode} onRemoveTeam={onRemoveTeam}
+              onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onSetJoinCode={onSetJoinCode} onSignOutTeam={onSignOutTeam} onRemoveTeam={onRemoveTeam}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               onSwap={onSwap} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}

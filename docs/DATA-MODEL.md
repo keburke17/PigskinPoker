@@ -395,9 +395,33 @@ create table sessions (
   team_id    uuid references teams(id) on delete cascade,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null,
+  -- Phase 3a. `expires_at` is the absolute cap; this is what idle expiry (14 days)
+  -- measures against, refreshed on use so an active manager is never signed out.
+  last_used_at timestamptz not null default now(),
   check (role = 'commissioner' or team_id is not null)
 );
 create index on sessions (expires_at);
+create index on sessions (last_used_at);
+
+-- Phase 3a. The login rate limiter's counter. Also zero policies, zero grants: a
+-- browser that could write here would clear its own lockout, or set one on someone
+-- else and lock the commissioner out of his league.
+--
+-- It lives in Postgres because Netlify Functions are stateless and horizontally
+-- scaled - there is no process to hold an in-memory counter, and two concurrent
+-- invocations would each hold their own. The database is the only thing they share.
+--
+-- bucket_key is either `ip:<sha256(ip + pepper)>` - hashed, so this is a counter and
+-- not a visitor log - or `league:<id>` / `team:<leagueId>:<legacyId>`. The two kinds
+-- are deliberately different controls; see server/throttle.js and AUTH.md.
+create table auth_throttle (
+  bucket_key   text primary key,
+  attempts     int not null default 0,
+  window_start timestamptz not null default now(),
+  locked_until timestamptz,
+  updated_at   timestamptz not null default now()
+);
+create index on auth_throttle (updated_at);   -- pruning scans by age
 ```
 
 ---
@@ -432,6 +456,7 @@ alter table events         enable row level security;
 alter table league_secrets enable row level security;   -- and NO policy, ever
 alter table team_secrets   enable row level security;   -- and NO policy, ever
 alter table sessions       enable row level security;   -- and NO policy, ever
+alter table auth_throttle  enable row level security;   -- and NO policy, ever
 
 -- Public-readable league state. `anon` here is the PostgREST role the
 -- publishable key authenticates as; the key format is new, the role name is not.

@@ -1,7 +1,18 @@
 # Phase 3 - plan
 
-Status: **scope agreed - 3a, 3b+3c and 3d are in; 3e is held for the designer.** Nothing
-is built yet.
+Status: **3a is BUILT and green.** 3b+3c and 3d remain agreed and unstarted; 3e is held
+for the designer.
+
+3a shipped as described below, with two differences worth recording:
+
+- **OQ-B was already enforced.** `submitScheme` had the your-own-starters validator from
+  Phase 2c; only OQ-E needed adding. The plan's table overstated the remaining work.
+- **The per-target bucket's real cost is now documented rather than glossed.** It is a
+  slowdown, but a slowdown implemented as a short lock, so during an attack a legitimate
+  sign-in to that league can meet a few seconds' wait. That is the accepted price, it is
+  bounded in seconds, and `tests/server.test.js` asserts the asymmetry (attacker in
+  minutes and climbing, bystander in seconds and flat) rather than pretending bystanders
+  are untouched.
 
 Phase 3 was originally scoped as *"real authorization now, real accounts later"*. Most of
 the "real authorization now" half was **borrowed forward into Phase 2c** - codes are
@@ -44,10 +55,11 @@ deliberately still weak":
 
 ## The slices
 
-### 3a - Harden what shipped (no decisions needed, ship on its own)
+### 3a - Harden what shipped **[DONE]**
 
 Independent of every open question except the two rule confirmations at the end. This is
-the slice that should land first and could land alone.
+the slice that landed first, and it landed alone. What follows is what was built; where
+the built thing differs from the plan, the note at the top of this document says so.
 
 **1. Rate limiting on login.**
 Netlify Functions are stateless and horizontally scaled, so the counter has to live in
@@ -68,7 +80,7 @@ Two buckets are checked per login attempt:
   A hard per-target lock would let anyone lock the real commissioner out of his own league
   by hammering the login, which is a worse failure than a slow brute force.
 
-Proposed policy: 10 failures in 15 minutes on a bucket, then exponential backoff capped at
+Policy as built: 10 failures in 15 minutes on a bucket, then exponential backoff capped at
 1 hour for the IP bucket and capped at a fixed delay for the target bucket. A successful
 login clears its buckets. Failures return 429 with `Retry-After`. Rows older than the
 window are pruned opportunistically on write, so nothing accumulates.
@@ -93,8 +105,8 @@ Supabase Auth replaces this mechanism, so this is maintenance, not investment.
 **5. The two server-side rule validations that 2c deferred.** Both are the designer's
 rules, both are listed as confirmation items:
 
-- **OQ-B** - Block must name one of *your own starters*. The form already allows nothing
-  else; the server does not re-check, so a crafted request can block another team's player.
+- **OQ-B** - Block must name one of *your own starters*. **Already enforced in Phase 2c**;
+  this plan was wrong to list it as outstanding. No change was needed.
 - **OQ-E** - reject stat writes while the roster is unlocked, which closes the
   stats-follow-the-slot gap without changing anything anyone would notice.
 
@@ -104,8 +116,8 @@ behaviour for valid input does not change, and only the server rejects input the
 never have produced.
 
 *Verification:* every one of these lands in `tests/server.test.js` / `tests/rls.test.js`,
-which **skip silently without a local Supabase stack** (59 of 190 tests). Check the skip
-count, not the pass.
+which **skip silently without a local Supabase stack** (86 of 217 tests after 3a). Check
+the skip count, not the pass.
 
 ---
 
@@ -321,7 +333,7 @@ Destructive reset stays, renamed to what it is.
 
 | | Slice | Depends on | Rough size |
 |---|---|---|---|
-| 1 | 3a hardening | nothing (bar two rule confirmations) | ~1 working session |
+| 1 | 3a hardening | nothing (bar two rule confirmations) | **done** |
 | 2 | 3b + 3c accounts | Resend account and verified sending domain | ~2-3 sessions |
 | 3 | 3d multi-league | 3c | ~3-4 sessions - it grew: invites, redemption, landing page, routing, RLS rewrite |
 | - | 3e season archive | **held for the designer** | not this phase |

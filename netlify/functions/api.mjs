@@ -39,7 +39,28 @@ const ROUTES = {
 
   replaceLeague: (db, p) => ops.replaceLeague(db, p),
   setTeamJoinCode: (db, p) => ops.setTeamJoinCode(db, p),
+  signOutTeam: (db, p) => ops.signOutTeam(db, p),
 };
+
+/* The client's address, for login rate limiting ONLY.
+ *
+ * Netlify sets x-nf-client-connection-ip from the edge connection itself, so it cannot
+ * be spoofed by a client header. x-forwarded-for CAN be, and is only consulted as a
+ * fallback for other hosts and `netlify dev` - its FIRST entry is used, and it is
+ * treated as a hint rather than a fact. That is acceptable precisely because the
+ * per-target bucket does not depend on it: someone forging addresses defeats their own
+ * IP bucket and still meets the target slowdown.
+ *
+ * The address is never stored. server/throttle.js hashes it with a pepper before it
+ * reaches the database, so the throttle table is a counter and not a visitor log. */
+function clientIp(headers = {}) {
+  const get = (name) => headers[name] || headers[name.toLowerCase()] || null;
+  const direct = get("x-nf-client-connection-ip");
+  if (direct) return String(direct).trim();
+  const forwarded = get("x-forwarded-for");
+  if (forwarded) return String(forwarded).split(",")[0].trim();
+  return null;
+}
 
 export async function handler(event) {
   if (event.httpMethod !== "POST") return json(405, { ok: false, error: "Use POST." });
@@ -68,7 +89,19 @@ export async function handler(event) {
   }
 
   try {
-    const result = await route(db, { ...(payload.params || {}), token });
+    const result = await route(db, { ...(payload.params || {}), token, ip: clientIp(event.headers) });
+    /* A throttled login answers with Retry-After so a browser - and anything else
+     * speaking HTTP - is told how long to wait, rather than being left to guess. */
+    if (result.status === 429 && result.body?.retryAfter) {
+      return {
+        ...json(429, result.body),
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+          "retry-after": String(result.body.retryAfter),
+        },
+      };
+    }
     return json(result.status, result.body);
   } catch (e) {
     return json(500, { ok: false, error: e?.message || "Unexpected server error." });

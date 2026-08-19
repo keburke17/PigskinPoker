@@ -34,10 +34,22 @@ import {
   canActForTeam,
   createSession,
   destroySession,
+  destroySessionsForTeam,
+  hashCode,
   isCommissioner,
+  validateCode,
   verifyCode,
   verifySession,
 } from "./auth.js";
+import {
+  THROTTLED,
+  checkThrottle,
+  clearBuckets,
+  ipBucket,
+  leagueBucket,
+  recordFailure,
+  teamBucket,
+} from "./throttle.js";
 
 const PHASE_RULES = {
   dealPeriod: ["pre-deal"],
@@ -97,23 +109,45 @@ const playerRow = (rows, legacyId) =>
 
 /* --------------------------------- auth ---------------------------------- */
 
-export async function loginCommissioner(db, { leagueId, code }) {
+/* `ip` comes from the Netlify edge (x-nf-client-connection-ip), plumbed through
+ * netlify/functions/api.mjs. It is optional everywhere: the operations are unit-tested
+ * directly, with no HTTP layer to supply one, and a missing address simply means the
+ * per-IP bucket is not counted while the per-target bucket still is. */
+export async function loginCommissioner(db, { leagueId, code, ip = null }) {
+  /* CHECKED BEFORE ANY WORK, and before scrypt above all. scrypt is the expensive
+   * part by design, which makes it the thing an attacker is trying to spend on our
+   * behalf as well as the thing slowing him down. */
+  const buckets = [ipBucket(ip), leagueBucket(leagueId)];
+  const throttled = await checkThrottle(db, buckets);
+  if (throttled) return fail(THROTTLED.status, THROTTLED.error, { retryAfter: throttled.retryAfterSeconds });
+
   const { data } = await db
     .from("league_secrets")
     .select("commissioner_code_hash")
     .eq("league_id", leagueId)
     .maybeSingle();
   if (!data || !verifyCode(code, data.commissioner_code_hash)) {
+    await recordFailure(db, buckets);
     return fail(AUTH_ERRORS.badCode.status, AUTH_ERRORS.badCode.error);
   }
+  // Getting it right wipes the slate: four mistyped codes then a correct one leaves no
+  // strike behind.
+  await clearBuckets(db, buckets);
   const { token, expiresAt } = await createSession(db, { leagueId, role: "commissioner" });
   return good({ token, expiresAt, role: "commissioner", teamId: null });
 }
 
-export async function loginManager(db, { leagueId, teamLegacyId, code }) {
+export async function loginManager(db, { leagueId, teamLegacyId, code, ip = null }) {
+  const buckets = [ipBucket(ip), teamBucket(leagueId, teamLegacyId)];
+  const throttled = await checkThrottle(db, buckets);
+  if (throttled) return fail(THROTTLED.status, THROTTLED.error, { retryAfter: throttled.retryAfterSeconds });
+
   const rows = await fetchLeagueRows(db, leagueId);
   if (!rows) return fail(404, "League not found.");
   const team = teamRow(rows, teamLegacyId);
+  /* A bad team id is NOT counted as a failed attempt. It is a 404 about the shape of
+   * the request, not a wrong guess at a credential, and counting it would let a typo
+   * in a link burn someone's allowance. */
   if (!team) return fail(404, "That team doesn't exist.");
 
   const { data } = await db
@@ -125,8 +159,10 @@ export async function loginManager(db, { leagueId, teamLegacyId, code }) {
     return fail(401, "This team doesn't have a join code set yet - ask your commissioner to set one.");
   }
   if (!verifyCode(code, data.join_code_hash)) {
+    await recordFailure(db, buckets);
     return fail(AUTH_ERRORS.badCode.status, AUTH_ERRORS.badCode.error);
   }
+  await clearBuckets(db, buckets);
   const { token, expiresAt } = await createSession(db, {
     leagueId,
     role: "manager",
@@ -150,6 +186,26 @@ export async function setStatLine(db, { leagueId, token, teamId, slot, line, exp
   }
   const bad = guard(ctx, "setStatLine", expect, [vkey.statLine(teamId, slot)]);
   if (bad) return bad;
+
+  /* OQ-E: stats are keyed by SLOT, not by player. If a lineup swap lands after a stat
+   * line is entered, the numbers stay attached to the slot and silently apply to
+   * whoever now occupies it - the points move to a different player with nothing in the
+   * UI to show it happened.
+   *
+   * The rule is preserved (slot-keyed is the designer's behaviour, and changing it
+   * would move real scores). What is closed is the window in which it can bite: the
+   * roster is already locked throughout the stats phase in normal play, so this rejects
+   * only requests the UI could never have produced. Nobody following the weekly flow
+   * will ever see this message.
+   *
+   * Provisionally confirmed, on the same footing as OQ-B above; it is the designer's
+   * rule and is on his confirmation list. */
+  if (!ctx.period.roster_locked) {
+    return fail(409, "Lock the rosters before entering stats - otherwise a lineup change would move these numbers to a different player.", {
+      reason: "unlocked",
+      view: ctx.view,
+    });
+  }
 
   const team = teamRow(ctx.rows, teamId);
   if (!team) return fail(404, "Unknown team.");
@@ -488,7 +544,12 @@ export async function setTeamJoinCode(db, { leagueId, token, teamId, code }) {
   }
   const team = teamRow(ctx.rows, teamId);
   if (!team) return fail(404, "Unknown team.");
-  const { hashCode } = await import("./auth.js");
+
+  // On SET only. See the note on validateCode: enforcing this on verify would sign out
+  // whoever is holding a short code today, and no query can find them to warn first.
+  const badCode = validateCode(code);
+  if (badCode) return fail(400, badCode, { reason: "code-policy" });
+
   const { error } = await db
     .from("team_secrets")
     .upsert({ team_id: team.id, join_code_hash: hashCode(code), updated_at: new Date().toISOString() });
@@ -496,5 +557,31 @@ export async function setTeamJoinCode(db, { leagueId, token, teamId, code }) {
   // Keep the public flag in step with the hash it describes, or the team picker will
   // lie about whether the team is joinable.
   await db.from("teams").update({ has_join_code: true }).eq("id", team.id);
-  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+
+  /* Rotating a code means "someone should no longer have this" - there is no other
+   * reason to do it. Leaving their 30-day session alive made the rotation cosmetic.
+   * The commissioner path already did this (scripts/set-commissioner-code.mjs); this
+   * is the same delete on the team path. */
+  const signedOut = await destroySessionsForTeam(db, team.id);
+  return good({ signedOut, view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Sign out every device holding a session for one team, without changing its code.
+ *
+ * The code-rotation path above covers "this person should be locked out". This covers
+ * the other case - a phone left somewhere, a shared laptop - where the code is fine and
+ * only the live sessions are the problem. Rotating a code to achieve it would force the
+ * whole team to be told a new one.
+ */
+export async function signOutTeam(db, { leagueId, token, teamId }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const team = teamRow(ctx.rows, teamId);
+  if (!team) return fail(404, "Unknown team.");
+  const signedOut = await destroySessionsForTeam(db, team.id);
+  return good({ signedOut, view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }

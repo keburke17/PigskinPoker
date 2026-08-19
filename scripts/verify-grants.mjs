@@ -21,7 +21,7 @@ const READABLE = [
   "leagues", "seasons", "teams", "team_totals", "players",
   "periods", "roster_slots", "stat_lines", "period_results", "events",
 ];
-const SECRETS = ["league_secrets", "team_secrets", "sessions"];
+const SECRETS = ["league_secrets", "team_secrets", "sessions", "auth_throttle"];
 const BROWSER_ROLES = ["anon", "authenticated"];
 
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pigskin-grants-")), "schema.sql");

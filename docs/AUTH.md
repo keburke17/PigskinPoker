@@ -124,28 +124,58 @@ The schema was built so this is **additive**, not a migration.
 - **Notifications.** "Rosters are dealt - submit your scheme before Sunday" needs an
   email address, which is the one thing join codes cannot give you. See OQ-6.
 
-### What is deliberately still weak
+### What Phase 3a closed
 
-- **`sessions` is hand-rolled.** It is small - a hashed token, a role, an expiry - and
-  it is confined to this phase. It should be replaced by real Supabase sessions in Phase
-  3 rather than grown. Hand-rolled auth that quietly becomes permanent is a normal way
-  for a project like this to end up with a security problem.
-- **No rate limiting on login.** A short shared code plus unlimited attempts is
-  brute-forceable. scrypt makes each guess cost ~20ms, which is meaningful but not a
-  substitute. **This is the one to fix before a league anyone cares about is on a public URL.**
-  A per-IP limit in the function is the smallest useful version.
-- **Team join codes have no minimum length.** The commissioner sets them through the UI
-  and nothing stops a two-character one. Same exposure as above, lower stakes: a
-  compromised manager session can edit that team's lineup and schemes, not run the
-  league. `PIGSKIN_COMMISSIONER_CODE` enforces 8 characters; `setTeamJoinCode` should
-  do the same.
-- **Sessions expire but never rotate.** A 30-day token is not revoked if a device is
-  lost, and changing a *team's* join code does not sign out that team's existing
-  sessions. Rotating the **commissioner** code does now sign out commissioner sessions
-  (see below); `setTeamJoinCode` needs the same one-line delete.
+Phase 2c shipped real authorization and left four gaps open on purpose. Phase 3a shuts
+them. Each is asserted in `tests/server.test.js`, which **skips silently without a local
+Supabase stack** - check the skip count before believing a pass.
 
-None of these are worse than the Artifact's position, where the codes were simply
-public - but none should survive Phase 3.
+- **Rate limiting on login** - `server/throttle.js`, backed by the `auth_throttle`
+  table. Two buckets per attempt, and they are deliberately different controls: the
+  **per-IP** bucket is a real lockout with exponential backoff (a minute, doubling,
+  capped at an hour), while the **per-target** bucket (league or team) is a fixed
+  few-second slowdown that never escalates. An escalating per-target lock would let
+  anyone lock the real commissioner out of his own league by hammering the login - a
+  denial of service an attacker would choose on purpose, and worse than a slow brute
+  force. Ten failures are free; the eleventh attempt is refused with a 429 and a
+  `Retry-After`. A successful login clears its buckets. The IP is hashed with a
+  server-side pepper before storage, so the table is a counter and not a visitor log.
+
+  **It fails open.** If the throttle table itself errors, login proceeds. A broken
+  counter must not become an outage that locks the league out on a Sunday.
+
+- **Rotating a team's join code now signs that team out.** `setTeamJoinCode` deletes
+  that team's sessions, matching what commissioner code rotation already did. Without
+  it the rotation was cosmetic: the person being removed kept a 30-day token.
+
+- **Join code policy** - minimum 8 characters (matching `PIGSKIN_COMMISSIONER_CODE`),
+  maximum 64, printable ASCII. Enforced **on set, never on verify**, so no existing code
+  stops working: hashes are one-way, so there is no query that finds which live codes
+  are short, and enforcing at login would sign those people out mid-season with no way
+  to warn them first. The rule lives in `src/storage/codePolicy.js` because the browser
+  and the server must not disagree about it. The UI states it inline rather than only
+  enforcing it.
+
+- **Session idle expiry** - 14 days, alongside the unchanged absolute 30-day cap, with
+  `last_used_at` refreshed on use (coarsely, at most hourly, to avoid a write per
+  request). An active manager is never signed out mid-season; an abandoned token dies
+  well before the cap. A commissioner "sign out devices" action per team covers the lost
+  phone, where the code is fine and only the live sessions are the problem.
+
+### What is still deliberately weak
+
+- **`sessions` is hand-rolled.** It is small - a hashed token, a role, an expiry, a last
+  use - and it is confined to this phase. Phase 3b/3c replaces it with Supabase Auth
+  rather than growing it. The idle expiry above is maintenance on a mechanism that is
+  meant to be retired, not investment in it. Hand-rolled auth that quietly becomes
+  permanent is a normal way for a project like this to end up with a security problem.
+
+- **Short codes already in the database still work**, by design - see the on-set/on-verify
+  note above. **Rotating them once is an operational step at cutover**, not something the
+  code can do for you.
+
+Neither is worse than the Artifact's position, where the codes were simply public, and
+both are resolved by the accounts layer rather than by patching this one further.
 
 ---
 

@@ -210,6 +210,13 @@
 }
 .pp-error-banner code{ display:block; margin-top:4px; font-family:var(--font-mono); font-size:11px; opacity:0.9; word-break:break-word; }
 
+/* Inline field guidance and per-field outcomes, added with the Phase 3a join code
+   policy. A code can now be REJECTED, and a rejection whose message appears on a
+   screen the commissioner is not looking at is the same as no message at all. */
+.pp-hint{ font-size:11px; color:var(--text-faint); margin-top:4px; line-height:1.4; }
+.pp-hint-bad{ color:#ffb4a8; }
+.pp-hint-good{ color:var(--ok); }
+
 .pp-savebar{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
   font-size:11.5px; color:var(--text-faint); padding: 4px 2px 0 2px;

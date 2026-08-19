@@ -74,6 +74,11 @@ export function createSupabaseStore(config) {
     if (res.status === 409) {
       return { ok: false, reason: body.reason || "stale", view: body.view, key: body.key, message: body.error };
     }
+    if (res.status === 429) {
+      // Rate limited. `retryAfter` is seconds, and the login screen shows it rather
+      // than telling someone to "try again later" with no idea how much later.
+      return { ok: false, reason: "throttled", message: body.error, retryAfter: body.retryAfter ?? null };
+    }
     if (res.status === 401) return { ok: false, reason: "unauthorized", message: body.error };
     if (res.status === 403) return { ok: false, reason: "forbidden", message: body.error };
     if (res.status >= 500) return { ok: false, reason: "network", message: body.error };
@@ -229,6 +234,7 @@ export function createSupabaseStore(config) {
     finalizePeriod: (expect) => call("finalizePeriod", { expect }),
     startPlayoffs: (bracketSize, advancement) => call("startPlayoffs", { bracketSize, advancement }),
     setTeamJoinCode: (teamId, code) => call("setTeamJoinCode", { teamId, code }),
+    signOutTeam: (teamId) => call("signOutTeam", { teamId }),
 
     async mutateLeague(fn) {
       const view = await readView();

@@ -287,3 +287,389 @@ gate()("the weekly cycle, server-side", () => {
     expect([400, 409]).toContain(view.status);
   });
 });
+
+/* ============================================================================
+ *  PHASE 3a - the gaps Phase 2c knowingly left behind.
+ *
+ *  Every one of these is listed in docs/AUTH.md under "what is deliberately still
+ *  weak", and each is now closed. They all need the local stack, which is exactly
+ *  the point: these are the tests that skip silently without it.
+ * ==========================================================================*/
+
+/* Buckets are keyed on the league and on hashed IPs, and nothing in seed.sql knows
+ * about auth_throttle - so without this a lockout earned by one test leaks into the
+ * next, and the failure looks like flakiness rather than a missing reset. */
+const clearThrottle = () => db.from("auth_throttle").delete().neq("bucket_key", "");
+
+const { POLICY: THROTTLE_POLICY, ipBucket } = await import("../server/throttle.js");
+
+gate()("login rate limiting", () => {
+  beforeEach(clearThrottle);
+
+  const wrongTimes = async (n, ip) => {
+    const results = [];
+    for (let i = 0; i < n; i += 1) {
+      results.push(await ops.loginCommissioner(db, { leagueId, code: "WRONG-CODE-" + i, ip }));
+    }
+    return results;
+  };
+
+  it("allows the free attempts, then locks the IP out with a Retry-After", async () => {
+    const ip = "203.0.113.10";
+    const early = await wrongTimes(10, ip);
+    // The allowance is for people who mistype, so all ten must be ordinary refusals.
+    expect(early.every((r) => r.status === 401)).toBe(true);
+
+    const eleventh = await ops.loginCommissioner(db, { leagueId, code: "STILL-WRONG", ip });
+    expect(eleventh.status).toBe(429);
+    expect(eleventh.body.retryAfter).toBeGreaterThan(0);
+  });
+
+  it("locks out the CORRECT code too, once the IP is locked", async () => {
+    // The whole point: a lockout that the right code walks straight through would let
+    // an attacker confirm a guess the moment he found it.
+    const ip = "203.0.113.11";
+    await wrongTimes(11, ip);
+    const r = await ops.loginCommissioner(db, { leagueId, code: "DEMO-COMMISH", ip });
+    expect(r.status).toBe(429);
+  });
+
+  it("a successful login clears the buckets", async () => {
+    const ip = "203.0.113.12";
+    await wrongTimes(4, ip);
+    const ok = await ops.loginCommissioner(db, { leagueId, code: "DEMO-COMMISH", ip });
+    expect(ok.status).toBe(200);
+    // Four mistypes then a correct code must not leave a strike behind: the next four
+    // mistakes have to be free again.
+    const after = await wrongTimes(4, ip);
+    expect(after.every((r) => r.status === 401)).toBe(true);
+  });
+
+  it("punishes the attacker's address far harder than any bystander", async () => {
+    /* THE ASYMMETRY, asserted directly, because it is the design.
+     *
+     * A bystander is not immune during an attack - the league's own bucket imposes its
+     * few-second slowdown on everyone, and pretending otherwise would be a nicer test
+     * of a system nobody built. What must hold is the RATIO: the attacker is measured
+     * in minutes and climbing, the bystander in seconds and flat. */
+    await wrongTimes(12, "203.0.113.13");
+
+    const attacker = await ops.loginCommissioner(db, { leagueId, code: "DEMO-COMMISH", ip: "203.0.113.13" });
+    expect(attacker.status).toBe(429);
+    expect(attacker.body.retryAfter).toBeGreaterThan(30);
+
+    const bystander = await ops.loginCommissioner(db, { leagueId, code: "DEMO-COMMISH", ip: "203.0.113.99" });
+    if (bystander.status === 429) {
+      // Seconds, and only for as long as the attack is actually in flight.
+      expect(bystander.body.retryAfter).toBeLessThanOrEqual(10);
+    } else {
+      expect(bystander.status).toBe(200);
+    }
+  });
+
+  it("the per-TARGET bucket slows down but never locks out", async () => {
+    /* This is the deliberate asymmetry. Hammering one league from many addresses must
+     * not lock the real commissioner out of his own league on game day - that is a
+     * denial of service an attacker would choose on purpose, and it is worse than a
+     * slow brute force. The target bucket's delay is fixed and short. */
+    for (let i = 0; i < 30; i += 1) {
+      await ops.loginCommissioner(db, { leagueId, code: "WRONG", ip: "198.51.100." + i });
+    }
+    const { data } = await db
+      .from("auth_throttle").select("locked_until").eq("bucket_key", "league:" + leagueId).maybeSingle();
+    expect(data).toBeTruthy();
+    const heldForMs = new Date(data.locked_until).getTime() - Date.now();
+    expect(heldForMs).toBeLessThanOrEqual(10 * 1000); // seconds, not an hour
+  });
+
+  it("throttles manager login per team, and a bad team id costs nothing", async () => {
+    const ip = "203.0.113.20";
+    for (let i = 0; i < 11; i += 1) {
+      await ops.loginManager(db, { leagueId, teamLegacyId: T1, code: "WRONG" + i, ip });
+    }
+    const locked = await ops.loginManager(db, { leagueId, teamLegacyId: T1, code: "DEMO-TEAM-1", ip });
+    expect(locked.status).toBe(429);
+
+    await clearThrottle();
+    // A typo'd team id is a 404 about the request's shape, not a guess at a credential.
+    // Counting it would let a stale link burn someone's whole allowance.
+    for (let i = 0; i < 12; i += 1) {
+      const r = await ops.loginManager(db, { leagueId, teamLegacyId: "no_such_team", code: "X", ip: "203.0.113.21" });
+      expect(r.status).toBe(404);
+    }
+    const fine = await ops.loginManager(db, { leagueId, teamLegacyId: T1, code: "DEMO-TEAM-1", ip: "203.0.113.21" });
+    expect(fine.status).toBe(200);
+  });
+
+  it("holds a long lockout for its full duration, not just the counting window", async () => {
+    /* REGRESSION. checkThrottle once required the counting window to still be open
+     * before it would honour a lock, which capped every lockout at the 15-minute
+     * window: an IP that had earned an hour was back in after fifteen minutes and the
+     * entire exponential backoff above that was decorative.
+     *
+     * Set up directly rather than by climbing the backoff. Escalation only advances one
+     * step per lock actually served - you cannot dig deeper while locked out - so
+     * earning an hour honestly would take an hour. The state below is the state that
+     * matters: a long lock still in force, over a counting window that has long since
+     * elapsed. */
+    const ip = "203.0.113.40";
+    const key = ipBucket(ip);
+    await db.from("auth_throttle").upsert({
+      bucket_key: key,
+      attempts: 16,
+      window_start: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // long gone
+      locked_until: new Date(Date.now() + 60 * 60 * 1000).toISOString(),     // still an hour to serve
+    });
+
+    const r = await ops.loginCommissioner(db, { leagueId, code: "DEMO-COMMISH", ip });
+    expect(r.status).toBe(429);
+    // And for very nearly the whole hour, not the fifteen minutes of the window.
+    expect(r.body.retryAfter).toBeGreaterThan(THROTTLE_POLICY.windowMs / 1000);
+  });
+
+  it("sitting out a lockout does not clear the count", async () => {
+    // Otherwise the backoff never escalates: wait out the minute, get ten free guesses,
+    // repeat forever. Serving a sentence must not also erase the record of it.
+    const ip = "203.0.113.41";
+    const key = ipBucket(ip);
+    await db.from("auth_throttle").upsert({
+      bucket_key: key,
+      attempts: 11,
+      window_start: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // window elapsed
+      locked_until: new Date(Date.now() - 1000).toISOString(),           // sentence served
+    });
+
+    const next = await ops.loginCommissioner(db, { leagueId, code: "WRONG-AGAIN", ip });
+    expect(next.status).toBe(401); // the attempt itself is allowed through again
+
+    const { data: row } = await db
+      .from("auth_throttle").select("attempts, locked_until").eq("bucket_key", key).single();
+    expect(row.attempts).toBe(12); // continued, not restarted at 1
+    expect(new Date(row.locked_until).getTime()).toBeGreaterThan(Date.now()); // and re-locked, harder
+  });
+
+  it("never stores the raw IP address", async () => {
+    // The table is a rate-limit counter, not a visitor log.
+    const ip = "203.0.113.77";
+    await ops.loginCommissioner(db, { leagueId, code: "WRONG", ip });
+    const { data } = await db.from("auth_throttle").select("bucket_key");
+    expect(JSON.stringify(data)).not.toMatch(/203\.0\.113\.77/);
+    expect(data.some((r) => r.bucket_key.startsWith("ip:"))).toBe(true);
+  });
+
+  it("logs in normally when the platform gives us no IP at all", async () => {
+    // netlify dev, and the unit tests themselves. A missing address must degrade to
+    // "count the target bucket only", never to a refusal.
+    const r = await ops.loginCommissioner(db, { leagueId, code: "DEMO-COMMISH" });
+    expect(r.status).toBe(200);
+  });
+});
+
+gate()("join code policy", () => {
+  beforeEach(clearThrottle);
+
+  it("refuses a code that is too short to be a credential", async () => {
+    const token = await asCommissioner();
+    const r = await ops.setTeamJoinCode(db, { leagueId, token, teamId: T1, code: "ab" });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/at least 8/);
+  });
+
+  it("refuses characters nobody can type back", async () => {
+    const token = await asCommissioner();
+    // A smart quote or an accent fails at login looking exactly like a wrong code.
+    const r = await ops.setTeamJoinCode(db, {
+      leagueId, token, teamId: T1, code: "CAF" + String.fromCodePoint(0xe9) + "CODE1",
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("counts the code as it will be STORED, not as it was typed", async () => {
+    // normalize() trims before hashing, so "  ab  " is a two-character code wearing
+    // eight characters of whitespace.
+    const token = await asCommissioner();
+    const r = await ops.setTeamJoinCode(db, { leagueId, token, teamId: T1, code: "  ab    " });
+    expect(r.status).toBe(400);
+  });
+
+  it("accepts a decent code and it works for logging in", async () => {
+    const token = await asCommissioner();
+    const set = await ops.setTeamJoinCode(db, { leagueId, token, teamId: T2, code: "GOOD-CODE-2026" });
+    expect(set.status).toBe(200);
+    const login = await ops.loginManager(db, { leagueId, teamLegacyId: T2, code: "good-code-2026" });
+    expect(login.status).toBe(200);
+    expect(login.body.role).toBe("manager");
+  });
+
+  it("is NOT enforced on verify, so codes set before the policy still work", async () => {
+    /* The distinction the whole design rests on. Hashes are one way, so there is no
+     * query that finds which existing codes are short - enforcing this at login would
+     * sign those people out mid-season with no way to find or warn them first. */
+    const { hashCode: hash } = await import("../server/auth.js");
+    const { data: team } = await db
+      .from("teams").select("id").eq("legacy_id", T1).eq("league_id", leagueId).single();
+    await db.from("team_secrets").upsert({ team_id: team.id, join_code_hash: hash("ab") });
+
+    const r = await ops.loginManager(db, { leagueId, teamLegacyId: T1, code: "ab" });
+    expect(r.status).toBe(200);
+    resetDemo();
+  });
+});
+
+gate()("rotating a join code signs that team out", () => {
+  beforeEach(() => { resetDemo(); return clearThrottle(); });
+
+  it("invalidates existing sessions for that team", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    // Prove the session works before the rotation, or the test proves nothing.
+    const before = await ops.swapLineupSlot(db, { leagueId, token: mgr, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(before.status).not.toBe(401);
+
+    const token = await asCommissioner();
+    const set = await ops.setTeamJoinCode(db, { leagueId, token, teamId: T1, code: "ROTATED-CODE-1" });
+    expect(set.status).toBe(200);
+    expect(set.body.signedOut).toBeGreaterThan(0);
+
+    // A 30-day token surviving the rotation is what made rotating cosmetic.
+    const after = await ops.swapLineupSlot(db, { leagueId, token: mgr, teamId: T1, slot: "QB", benchIndex: 1 });
+    expect(after.status).toBe(401);
+  });
+
+  it("does not sign out OTHER teams", async () => {
+    const other = await asManager(T2, "DEMO-TEAM-2");
+    const token = await asCommissioner();
+    await ops.setTeamJoinCode(db, { leagueId, token, teamId: T1, code: "ROTATED-CODE-2" });
+    const still = await ops.swapLineupSlot(db, { leagueId, token: other, teamId: T2, slot: "QB", benchIndex: 0 });
+    expect(still.status).not.toBe(401);
+  });
+
+  it("does not sign out the commissioner who did it", async () => {
+    const token = await asCommissioner();
+    await ops.setTeamJoinCode(db, { leagueId, token, teamId: T1, code: "ROTATED-CODE-3" });
+    const r = await ops.toggleRosterLock(db, { leagueId, token });
+    expect(r.status).not.toBe(401);
+  });
+});
+
+gate()("signOutTeam", () => {
+  beforeEach(() => { resetDemo(); return clearThrottle(); });
+
+  it("signs a team's devices out while leaving the join code working", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const token = await asCommissioner();
+
+    const r = await ops.signOutTeam(db, { leagueId, token, teamId: T1 });
+    expect(r.status).toBe(200);
+    expect(r.body.signedOut).toBeGreaterThan(0);
+
+    const dead = await ops.swapLineupSlot(db, { leagueId, token: mgr, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(dead.status).toBe(401);
+
+    // The difference from rotating: the team is not left needing a new code.
+    const back = await ops.loginManager(db, { leagueId, teamLegacyId: T1, code: "DEMO-TEAM-1" });
+    expect(back.status).toBe(200);
+  });
+
+  it("is commissioner-only - a manager cannot sign out their own team, let alone another", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const r = await ops.signOutTeam(db, { leagueId, token: mgr, teamId: T2 });
+    expect(r.status).toBe(403);
+  });
+});
+
+gate()("session lifecycle", () => {
+  beforeEach(() => { resetDemo(); return clearThrottle(); });
+
+  const sessionRow = async (teamLegacy) => {
+    const { data: team } = await db
+      .from("teams").select("id").eq("legacy_id", teamLegacy).eq("league_id", leagueId).single();
+    const { data } = await db
+      .from("sessions").select("id, token_hash, last_used_at, expires_at")
+      .eq("team_id", team.id).order("created_at", { ascending: false }).limit(1);
+    return data[0];
+  };
+
+  it("stamps last_used_at when the session is created", async () => {
+    await asManager(T1, "DEMO-TEAM-1");
+    const row = await sessionRow(T1);
+    expect(row.last_used_at).toBeTruthy();
+  });
+
+  it("rejects a session idle beyond the idle window, and deletes the dead row", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const row = await sessionRow(T1);
+
+    /* Backdated rather than waited for. The absolute 30-day expiry is left untouched
+     * so this proves IDLE expiry specifically, not the cap that already existed. */
+    const idle = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+    await db.from("sessions").update({ last_used_at: idle }).eq("id", row.id);
+
+    const r = await ops.swapLineupSlot(db, { leagueId, token: mgr, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(r.status).toBe(401);
+
+    // It can never become valid again, so it is removed rather than left to accumulate.
+    const { data } = await db.from("sessions").select("id").eq("id", row.id);
+    expect(data).toHaveLength(0);
+  });
+
+  it("keeps a session alive that is used inside the window - an active manager is never signed out", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const row = await sessionRow(T1);
+
+    // 13 days idle, one day inside the 14-day window: still good, and USING it must
+    // push the window forward rather than counting down from first login.
+    const nearly = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString();
+    await db.from("sessions").update({ last_used_at: nearly }).eq("id", row.id);
+
+    const r = await ops.swapLineupSlot(db, { leagueId, token: mgr, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(r.status).not.toBe(401);
+
+    const refreshed = await sessionRow(T1);
+    const movedForwardMs = new Date(refreshed.last_used_at).getTime() - new Date(nearly).getTime();
+    expect(movedForwardMs).toBeGreaterThan(0);
+  });
+
+  it("still honours the absolute 30-day cap regardless of activity", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const row = await sessionRow(T1);
+    await db.from("sessions")
+      .update({ expires_at: new Date(Date.now() - 1000).toISOString() })
+      .eq("id", row.id);
+    const r = await ops.swapLineupSlot(db, { leagueId, token: mgr, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(r.status).toBe(401);
+  });
+});
+
+gate()("OQ-E: stats cannot be entered while the roster is unlocked", () => {
+  beforeEach(() => { resetDemo(); return clearThrottle(); });
+
+  it("refuses a stat write with the rosters unlocked, and accepts it once locked", async () => {
+    /* Stats are keyed by SLOT, not by player (the designer's behaviour, preserved). So
+     * a lineup swap landing after a stat line is entered silently moves those points to
+     * whoever now occupies the slot. Locking is what makes that unreachable; this
+     * refuses the writes that could still slip through the gap.
+     *
+     * Provisional, on the same footing as OQ-B - it is the designer's rule to confirm. */
+    const token = await asCommissioner();
+    const state = (await ops.toggleRosterLock(db, { leagueId, token })).body.view;
+    const line = { yards: 100, tds: 1 };
+
+    if (state.rosterLocked) {
+      const ok = await ops.setStatLine(db, { leagueId, token, teamId: T1, slot: "QB", line });
+      expect([200, 409]).toContain(ok.status);
+      if (ok.status === 409) expect(ok.body.reason).not.toBe("unlocked");
+      await ops.toggleRosterLock(db, { leagueId, token });
+    }
+
+    const blocked = await ops.setStatLine(db, { leagueId, token, teamId: T1, slot: "QB", line });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.reason).toBe("unlocked");
+    expect(blocked.body.error).toMatch(/Lock the rosters/);
+
+    // And the normal flow, which locks before stats, is unaffected.
+    const relocked = await ops.toggleRosterLock(db, { leagueId, token });
+    expect(relocked.body.view.rosterLocked).toBe(true);
+    const accepted = await ops.setStatLine(db, { leagueId, token, teamId: T1, slot: "QB", line });
+    expect(accepted.status).toBe(200);
+  });
+});

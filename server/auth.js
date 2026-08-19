@@ -23,13 +23,40 @@
 
 import crypto from "node:crypto";
 
+/* The code rule and its normalization live in src/storage/codePolicy.js so the browser
+ * and the server cannot disagree about what a valid code is - see the note there.
+ * server/ importing from src/ is the allowed direction; the reverse never is. */
+import { CODE_POLICY, normalizeCode, validateCode } from "../src/storage/codePolicy.js";
+
+export { CODE_POLICY, validateCode };
+
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32, saltBytes: 16 };
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days; a league season is long
+
+/* Idle expiry, added in Phase 3a. The absolute cap above answers "how long may a
+ * session live"; it never answered "how long may an ABANDONED one live". A token left
+ * on a borrowed phone or a library computer stayed valid for a month of not being
+ * touched.
+ *
+ * 14 days is chosen against the actual usage pattern: this league logs in weekly. Two
+ * weeks is a bye plus a miss, so an active manager is never signed out mid-season,
+ * while a genuinely forgotten session dies well before the 30-day cap.
+ *
+ * The refresh below is what makes that true - without it, idle expiry would sign
+ * everyone out on day 14 regardless of use. */
+const SESSION_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/* Refreshing `last_used_at` on EVERY verified request would mean a database write on
+ * every privileged action, purely to move a timestamp a few seconds. The refresh is
+ * therefore coarse: only write when the stored value is more than an hour old. That
+ * costs at most one hour of idle-expiry precision against a 14-day window, and saves
+ * a write on effectively every request. */
+const SESSION_REFRESH_AFTER_MS = 60 * 60 * 1000;
 
 /** Format: scrypt$N$r$p$saltHex$hashHex */
 export function hashCode(code) {
   const salt = crypto.randomBytes(SCRYPT.saltBytes);
-  const hash = crypto.scryptSync(normalize(code), salt, SCRYPT.keylen, {
+  const hash = crypto.scryptSync(normalizeCode(code), salt, SCRYPT.keylen, {
     N: SCRYPT.N,
     r: SCRYPT.r,
     p: SCRYPT.p,
@@ -46,7 +73,7 @@ export function verifyCode(code, stored) {
   try {
     const salt = Buffer.from(saltHex, "hex");
     const expected = Buffer.from(hashHex, "hex");
-    const actual = crypto.scryptSync(normalize(code), salt, expected.length, {
+    const actual = crypto.scryptSync(normalizeCode(code), salt, expected.length, {
       N: Number(N),
       r: Number(r),
       p: Number(p),
@@ -55,13 +82,6 @@ export function verifyCode(code, stored) {
   } catch {
     return false;
   }
-}
-
-/* Codes are shared, spoken aloud and typed on phones. Trim and case-fold so
- * "demo-commish " logs in the same as "DEMO-COMMISH" - this is a usability decision,
- * applied identically at hash time and verify time so the two can never disagree. */
-function normalize(code) {
-  return String(code ?? "").trim().toUpperCase();
 }
 
 /* ------------------------------- sessions -------------------------------- */
@@ -74,12 +94,14 @@ const tokenHash = (token) => crypto.createHash("sha256").update(token).digest("h
 export async function createSession(db, { leagueId, role, teamId = null }) {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  const now = new Date().toISOString();
   const { error } = await db.from("sessions").insert({
     token_hash: tokenHash(token),
     league_id: leagueId,
     role,
     team_id: teamId,
     expires_at: expiresAt,
+    last_used_at: now,
   });
   if (error) throw new Error("Could not create session: " + error.message);
   return { token, expiresAt };
@@ -88,19 +110,55 @@ export async function createSession(db, { leagueId, role, teamId = null }) {
 /** @returns {{leagueId, role, teamId}|null} */
 export async function verifySession(db, token) {
   if (!token || typeof token !== "string") return null;
+  const hash = tokenHash(token);
   const { data, error } = await db
     .from("sessions")
-    .select("league_id, role, team_id, expires_at")
-    .eq("token_hash", tokenHash(token))
+    .select("league_id, role, team_id, expires_at, last_used_at")
+    .eq("token_hash", hash)
     .maybeSingle();
   if (error || !data) return null;
-  if (new Date(data.expires_at).getTime() < Date.now()) return null;
+
+  const now = Date.now();
+  if (new Date(data.expires_at).getTime() < now) return null;
+
+  /* Idle expiry. An expired-by-idleness row is DELETED rather than left to rot: it can
+   * never become valid again, and leaving it means the sessions table grows a tail of
+   * dead rows that only the 30-day cap ever clears. */
+  const lastUsed = new Date(data.last_used_at ?? data.expires_at).getTime();
+  if (now - lastUsed > SESSION_IDLE_MS) {
+    await db.from("sessions").delete().eq("token_hash", hash);
+    return null;
+  }
+
+  if (now - lastUsed > SESSION_REFRESH_AFTER_MS) {
+    // Best effort. A failed refresh must not fail an otherwise valid request - the
+    // worst case is that the session expires by idleness slightly early.
+    await db.from("sessions").update({ last_used_at: new Date(now).toISOString() }).eq("token_hash", hash);
+  }
+
   return { leagueId: data.league_id, role: data.role, teamId: data.team_id };
 }
 
 export async function destroySession(db, token) {
   if (!token) return;
   await db.from("sessions").delete().eq("token_hash", tokenHash(token));
+}
+
+/* Every session belonging to one team, signed out at once.
+ *
+ * This is what makes rotating a join code MEAN something. Before Phase 3a, a
+ * commissioner who changed a team's code - which is the "someone should no longer have
+ * this" action, there is no other reason to do it - left the person he was removing
+ * holding a token valid for another 30 days. The rotation looked like it worked and
+ * did nothing.
+ *
+ * It is also the mechanism behind the commissioner's explicit "sign out this team's
+ * devices" action, for the phone-left-at-a-bar case where the code itself is fine. */
+export async function destroySessionsForTeam(db, teamUuid) {
+  if (!teamUuid) return 0;
+  const { data, error } = await db.from("sessions").delete().eq("team_id", teamUuid).select("id");
+  if (error) throw new Error("Could not sign out that team: " + error.message);
+  return data?.length ?? 0;
 }
 
 /* ------------------------------ authorization ---------------------------- */
@@ -120,4 +178,5 @@ export const AUTH_ERRORS = {
   notCommissioner: { status: 403, error: "Only the commissioner can do that." },
   notYourTeam: { status: 403, error: "You can only change your own team." },
   badCode: { status: 401, error: "Incorrect code." },
+  badCodePolicy: { status: 400 },
 };

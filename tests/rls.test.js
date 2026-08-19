@@ -113,7 +113,7 @@ gate()("RLS: what a browser holding the publishable key can READ", () => {
 });
 
 gate()("RLS: what it can NOT read", () => {
-  for (const table of ["league_secrets", "team_secrets", "sessions"]) {
+  for (const table of ["league_secrets", "team_secrets", "sessions", "auth_throttle"]) {
     it("cannot read " + table + " - no policy exists, and none ever should", async () => {
       const { data, error } = await anon.from(table).select("*");
       // RLS with no policy returns zero rows rather than an error. Either way, the
@@ -171,6 +171,10 @@ gate()("RLS: what it can NOT write - the whole write-security model", () => {
     ["league_secrets", () => ({ league_id: ids.league, commissioner_code_hash: "x" })],
     ["team_secrets", () => ({ team_id: ids.team, join_code_hash: "x" })],
     ["sessions", () => ({ token_hash: "x", league_id: ids.league, role: "commissioner", expires_at: new Date().toISOString() })],
+    /* auth_throttle joins the unreachable set in Phase 3a. Writable from a browser it
+     * would be worse than useless: an attacker could clear his own lockout, or set one
+     * on someone else and lock the commissioner out of his league. */
+    ["auth_throttle", () => ({ bucket_key: "ip:hacked", attempts: 0 })],
   ];
 
   for (const [table, row] of cases) {

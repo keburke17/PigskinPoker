@@ -329,6 +329,14 @@ My schema keys `stat_lines` the same way for behavioural fidelity, but also reco
 and additionally have the server reject stat writes while the roster is unlocked**, which
 closes the gap without changing anything you would notice.
 
+**[IMPLEMENTED PROVISIONALLY IN PHASE 3a - still yours to confirm.]** `setStatLine` now
+returns 409 if the roster is unlocked. The slot-keyed rule itself is untouched; only the
+window in which it can misattribute points is closed. The rosters are already locked
+throughout the stats phase in normal play, so this rejects only requests the weekly flow
+cannot produce - nobody following it will ever see the message. Same footing as OQ-B: if
+you want it the other way, it is a few lines in `server/operations.js`, not a schema
+change.
+
 ### OQ-F. Locks are per-player today, per-slot in my schema.
 
 `lockedPlayerIds` (line 414) is keyed by player id for the whole period; I put `locked` on
@@ -345,8 +353,8 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 
 | Question | Needed before | Why it can wait |
 |---|---|---|
-| **OQ-B** blocks validated server-side | **Phase 3a** | Provisionally yes; still awaiting the designer's final confirmation. |
-| **OQ-E** reject stat writes while unlocked | **Phase 3a** | Same conversation as OQ-B; it is his rule to confirm. |
+| **OQ-B** blocks validated server-side | **Done (Phase 2c)** | Enforced in `submitScheme`. Provisionally yes; still awaiting the designer's final confirmation. |
+| **OQ-E** reject stat writes while unlocked | **Done (Phase 3a)** | Enforced in `setStatLine`. Same conversation as OQ-B; it is his rule to confirm. |
 | **OQ-6** notifications | Phase 3c | Now nearly free: magic-link sign-in needs the same SMTP provider notifications would. |
 | **league visibility** (new, from OQ-10) | Phase 3d | Members-only or link-public, per league. Recommended: a setting, defaulting to members-only, with the existing league set public so nothing changes for it. |
 | **OQ-4b** is `TEAM_ROWS` curated or typed? | Phase 4 | Decides whether a feed enriches the pool or replaces it. |

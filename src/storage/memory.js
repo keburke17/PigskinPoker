@@ -33,6 +33,7 @@ import {
   seededRng,
   startPlayoffs,
 } from "../engine/index.js";
+import { validateCode } from "./codePolicy.js";
 import { decomposeLeague } from "./decompose.js";
 import { hydrateLeague, vkey } from "./hydrate.js";
 
@@ -451,9 +452,23 @@ export function createMemoryStore(initialDb, opts = {}) {
     },
 
     async setTeamJoinCode(teamLegacyId, code) {
+      /* The same policy the server enforces, duplicated here on purpose. This adapter
+       * is the default with no configuration and is where rule changes get tried, so a
+       * code it accepts and production rejects would be a trap - the dev run works and
+       * the deploy fails. Kept to the same three rules, stated once in the UI. */
+      const bad = validateCode(code);
+      if (bad) return { ok: false, reason: "invalid", message: bad };
       codes.teams[teamLegacyId] = code;
       notify();
       return { ok: true };
+    },
+
+    /* No sessions exist in the in-memory adapter - login is a local comparison and
+     * there is nothing persisted to revoke - so this is honestly a no-op rather than a
+     * missing method. It exists so the commissioner UI does not have to ask which
+     * store it is talking to. */
+    async signOutTeam() {
+      return { ok: true, signedOut: 0 };
     },
 
     /** Test/debug only. Not part of the interface. */
