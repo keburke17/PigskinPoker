@@ -8,6 +8,12 @@ is exactly why the accounts layer was built alongside them rather than instead o
 Local development needs none of this. The local stack captures every message at
 <http://127.0.0.1:54324> and never sends anything.
 
+**Done once already, on 2026-08-19**, for the current deployment: sending domain
+verified at Resend, SMTP configured, **both** email templates branded, and real mail
+received on the signup path and the sign-in path. Keep this document
+as the runbook - it has to be repeated for any new Supabase project or sending domain,
+and the DNS half is the part that bites (see the note on nameservers in step 1).
+
 ---
 
 ## Why not just use Supabase's built-in sender
@@ -91,6 +97,29 @@ rejected outright.
 2. Resend shows you the exact DNS records to add - DKIM, SPF, and an MX for bounces. Add
    them wherever that domain's DNS lives. Copy them from Resend rather than from any
    guide, including this one: they differ by region and they do change.
+
+   **Find out where the DNS actually lives first - the registrar is often not the
+   answer.** A domain can be registered in one place and served from another, and the
+   registrar will still show you a DNS panel that accepts records and does nothing with
+   them. Ask the internet rather than a dashboard:
+
+   ```
+   dig +short NS yourdomain.com @8.8.8.8
+   ```
+
+   Whatever that prints is the only place records take effect. This exact trap cost an
+   hour on 2026-08-19: correct values, entered at the registrar, while the nameservers
+   pointed elsewhere. Resend reported `Failed` and gave no hint as to why.
+
+   Verify the records resolve before asking Resend to check them:
+
+   ```
+   dig +short TXT resend._domainkey.mail.yourdomain.com
+   dig +short TXT send.mail.yourdomain.com
+   dig +short MX  send.mail.yourdomain.com
+   ```
+
+   Three empty answers means Resend will fail too, and the problem is not propagation.
 3. Wait for Resend to show the domain **verified**. Minutes to hours - it is DNS, so it
    is not instant.
 4. Create an **API key** (Resend -> API Keys -> Add). Give it **Sending access**, not
@@ -149,15 +178,37 @@ project.
 The branded sign-in email lives at `supabase/templates/magic_link.html`, and the hosted
 project **does not read it from the repo**.
 
-Authentication -> Emails -> Magic Link. Set:
+Authentication -> Emails. **Paste it into BOTH of these templates:**
+
+| Template | Who gets it |
+|---|---|
+| **Magic Link** | someone whose address is already a user - signing in again |
+| **Confirm signup** | someone whose address is NEW - every first-time member |
+
+For each, set:
 
 - **Subject**: `Sign in to Pigskin Poker`
 - **Body**: paste the contents of `supabase/templates/magic_link.html`
 
-If you skip this, sign-in still works - the email is just Supabase's generic default,
+The same file serves both. It uses only `{{ .ConfirmationURL }}`, which both templates
+provide, and in a passwordless app confirming a signup is signing in.
+
+**Doing only Magic Link is the easy mistake, and it fails in the worst direction.**
+GoTrue picks the template by whether the address already exists, so the people who get
+the unbranded default are precisely the first-timers - the ones with no reason yet to
+trust an email from you. Everyone testing with their own already-registered address sees
+the branded one and concludes it is fine.
+
+It also makes testing lie to you. `npm run verify:email` sends `create_user: true`, so a
+**fresh** address takes the signup path and receives Confirm signup. If the branded
+template does not appear, check which of the two you configured before assuming the paste
+did not save. To test Magic Link specifically, send twice to the same address: the second
+send takes the sign-in path.
+
+If you skip both, sign-in still works - the email is just Supabase's generic default,
 which is the kind of message people ignore or report as phishing.
 
-Keep the two in step. If you edit the template in the repo, paste it again.
+Keep them in step. If you edit the template in the repo, paste it again in both places.
 
 ---
 

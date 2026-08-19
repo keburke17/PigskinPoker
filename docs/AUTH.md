@@ -215,6 +215,14 @@ who has already done everything right.
 stopped, this would be a forced cutover wearing an invitation's clothes. Code-as-login is
 switched off only when everyone has an account, at a season boundary, never mid-season.
 
+> **Update, 2026-08-19 - this migration will not happen.** Every league in the deployed
+> database is test data and will be wiped before the app moves to its long-term domain,
+> so there is no population of code-holders to migrate. Join codes are **invitations
+> only**; accounts authenticate. The end state below is reached directly rather than via
+> a cutover, and "at a season boundary, never mid-season" is not a live constraint for
+> it. The reasoning is kept because it is the right shape if a real league is ever
+> onboarded from codes.
+
 ### Who can read what
 
 `profiles` and `league_members` are the first tables in the schema about **people** rather
@@ -328,7 +336,16 @@ later rather than an infrastructure project.
 
 - **Short codes already in the database still work**, by design - see the on-set/on-verify
   note above. **Rotating them once is an operational step at cutover**, not something the
-  code can do for you.
+  code can do for you. *(2026-08-19: moot for the current data, which is all test data
+  and will be wiped. It applies to any real league onboarded from codes later.)*
+
+- **Retiring `sessions` is now unblocked but NOT free.** With no migration to perform,
+  nothing depends on code-as-login in production - but `loginCommissioner` and
+  `loginManager` are also what make `npm run dev` work with no database and no keys, via
+  the in-memory demo league. Deleting them costs either the zero-config dev mode or a
+  synthetic signed-in session for demo mode, and keeping code-login in the memory adapter
+  while dropping it from Supabase would breach the rule that the two adapters must not
+  diverge (see the comment at `src/storage/memory.js:457`). Undecided, and not urgent.
 
 Neither is worse than the Artifact's position, where the codes were simply public, and
 both are resolved by the accounts layer rather than by patching this one further.
