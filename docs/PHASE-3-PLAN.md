@@ -1,6 +1,7 @@
 # Phase 3 - plan
 
-Status: **draft for review.** Nothing in here is built yet.
+Status: **scope agreed - 3a, 3b+3c and 3d are in; 3e is held for the designer.** Nothing
+is built yet.
 
 Phase 3 was originally scoped as *"real authorization now, real accounts later"*. Most of
 the "real authorization now" half was **borrowed forward into Phase 2c** - codes are
@@ -108,7 +109,7 @@ count, not the pass.
 
 ---
 
-### 3b + 3c - Membership and real accounts (gated on OQ-5)
+### 3b + 3c - Membership and real accounts (**agreed**)
 
 These ship together or not at all. `league_members` with no accounts to populate it is
 dead schema, and accounts without it have nowhere to record a role.
@@ -138,25 +139,142 @@ dead schema, and accounts without it have nowhere to record a role.
 
 ---
 
-### 3d - League ownership and multi-league (gated on OQ-10 - **the blocking question**)
+### 3d - League ownership and multi-league (**agreed**)
 
-Only if multi-league is on the roadmap at all. If it is, it belongs *with* accounts, not
-after them, because "who owns this league" otherwise gets answered twice.
+Multi-league is on the roadmap, so league ownership lands *with* accounts rather than
+after them. The landing page grows three doors:
 
-- reads become league-scoped in RLS (`using (league_id = ...)`) - today every read policy
-  is `using (true)`, which is correct for one public league and wrong the moment there are
-  two
-- league creation in the app, with **the creator becoming its commissioner** - which also
-  retires the land-grab that `bootstrap-league.mjs` exists to prevent
+1. **Sign in** - magic link or Google, then your leagues. One league, go straight in.
+2. **I have an invite code** - type the code first (that is the texted-to-you flow, and it
+   should not be gated behind a sign-in wall), then sign in to complete the redemption.
+3. **Create a league** - sign in, name it, and you are its commissioner. From there: create
+   teams, issue invite codes, share them.
+
+What that requires:
+
+- reads become league-scoped in RLS - today every read policy is `using (true)`, correct
+  for one public league and wrong the moment there are two
+- an `invites` table (below), replacing `team_secrets` as the way people get in
+- league creation, with the creator inserted as commissioner - which retires the land-grab
+  that `bootstrap-league.mjs` exists to prevent, and makes that script dev-only
 - `VITE_LEAGUE_NAME` goes away
-- routing, because leagues need URLs - the one place Phase 3 might justify a dependency
-
-If the answer is "one league forever", all of the above is deleted from the plan and
-Phase 3 gets materially smaller.
+- routing, because leagues now need URLs - the one place Phase 3 justifies a dependency
+- commissioner transfer, and more than one commissioner per league, so an account going
+  away cannot strand a league
 
 ---
 
-### 3e - Season archive (candidate; raise now, schedule separately)
+## The auth model after multi-league
+
+This is the part worth being precise about, because it is a genuine inversion rather than
+an addition.
+
+### The inversion
+
+**Today the code is the credential.** Type the team's join code, get a session, and that
+session *is* the team. Identity is per-team and per-device; there is no person in the
+system at all. That works exactly as long as there is one league and everyone in it is a
+friend.
+
+**Afterwards the account is the credential and the code is the invitation.** You sign in
+as yourself, you redeem a code once, and that mints a membership. From then on your
+account is how you get in; the code has done its job.
+
+| | Today | After |
+|---|---|---|
+| Who you are | "whoever holds team 3's code" | a person, with an account, across leagues |
+| How you log in | type the code, every device, forever | sign in - magic link or Google |
+| What a code does | authenticates every session | authorizes one join, then is spent |
+| Where the role lives | on the session row | on `league_members` |
+| Rotating a code | signs that team out | affects only future joins |
+| Can you be in two leagues? | no - the code *is* the identity | yes, with different roles in each |
+| Codes readable back | no, and that is a real workflow cost today | moot - reissue freely, it locks nobody out |
+
+The last three rows are the payoff. Sharing a code stops being account sharing; rotating a
+code stops being a lockout; and "commissioner of one league, manager in another" becomes
+expressible, which single-code auth literally cannot represent.
+
+### What the pieces are
+
+**Authentication: Supabase Auth.** Email magic link as the primary route - nothing to
+store, no password reset flow to build, and it suits a dozen people who sign in a few
+times a season. Google is one dashboard toggle on top. Sessions, refresh and revocation
+all become Supabase's problem rather than the hand-rolled `sessions` table's.
+
+**Authorization: `league_members`.** `(league_id, user_id, role, team_id)`, one row per
+person per league. Commissioner is a role on that row, not a different kind of login.
+Creating a league inserts your row with `role = 'commissioner'`.
+
+**Invitation: an `invites` table**, which is what `team_secrets` becomes:
+
+```
+invites(id, league_id, team_id null, role, code_hash, created_by,
+        expires_at null, max_uses null, uses, revoked_at null)
+```
+
+- still hashed - a code is shown once when issued and reissued freely afterwards, which is
+  safe precisely because it no longer grants standing access
+- `team_id` nullable, so the same mechanism issues "join team 3" and "help me run this
+  league" invites
+- multi-use by default, because the social flow is pasting one code into a group chat;
+  revocable, and optionally expiring
+
+**Redemption** is the only new flow: verify the code, require a signed-in user, insert
+`league_members`, increment `uses`. Idempotent - redeeming twice is a no-op, not a second
+membership.
+
+### What this does to the existing league
+
+Nothing, until each person chooses. `verifySession()` accepts **either** credential and
+resolves both to the same `{leagueId, role, teamId}`, so:
+
+1. 3b/3c ship, and the league carries on typing codes exactly as now.
+2. Each manager, next time they log in, is offered "sign in with your email so this
+   sticks". Their existing join-code session mints their `league_members` row - the
+   invitation migration `docs/AUTH.md` already commits to.
+3. Code-as-login is switched off only once everyone has an account, **at a season
+   boundary, never mid-season**.
+
+The commissioner code is the one piece that simply retires: you said it is really a
+testing artefact, and with league creation the commissioner is whoever made the league. It
+stays for local development and the demo seed, and Scott's existing league gets its
+commissioner row set by a one-off script at cutover.
+
+### Reads, and who can see a league
+
+Scoping reads is the actual multi-league change, and it forces a question that single
+league never had to ask. Today every read policy is `using (true)` - anyone with the link
+sees the standings. Proposed:
+
+```sql
+using (
+  league_id in (select league_id from league_members where user_id = auth.uid())
+  or exists (select 1 from leagues l where l.id = league_id and l.visibility = 'public')
+)
+```
+
+with `leagues.visibility` defaulting to `'members'` for new leagues and the existing league
+set to whatever matches today's behaviour.
+
+**Writes still go through the Netlify function.** Direct RLS-governed writes become
+possible once there are real JWTs, but that is an optimization, not a correctness fix, and
+it is not Phase 3's business.
+
+### The operational dependency
+
+Magic links need email that actually arrives. **Supabase's built-in sender is rate limited
+and is not intended for production** - it will silently throttle. That means an SMTP
+provider (Resend or Postmark; both have free tiers that comfortably cover a league) before
+sign-in works for real. Google sign-in has no such dependency but needs a Google Cloud
+OAuth client instead.
+
+Worth noting: that same SMTP setup is exactly what OQ-6 notifications would need. Doing it
+here means "rosters are dealt - submit your scheme before Sunday" is later a feature rather
+than an infrastructure project.
+
+---
+
+### 3e - Season archive (**held for the designer** - not this phase)
 
 Not auth, but it is the one place where an **answered** question is only half delivered, so
 it should not sit unnoticed.
@@ -182,9 +300,9 @@ Destructive reset stays, renamed to what it is.
 | | Slice | Depends on | Rough size |
 |---|---|---|---|
 | 1 | 3a hardening | nothing (bar two rule confirmations) | ~1 working session |
-| 2 | 3b + 3c accounts | OQ-5 yes | ~2-3 sessions |
-| 3 | 3d multi-league | OQ-10 yes, and 3c | ~2-3 sessions, plus an RLS rewrite |
-| 4 | 3e season archive | scheduling, not a decision | ~1 session |
+| 2 | 3b + 3c accounts | SMTP or Google OAuth set up | ~2-3 sessions |
+| 3 | 3d multi-league | 3c, and the visibility decision | ~3-4 sessions - it grew: invites, redemption, landing page, routing, RLS rewrite |
+| - | 3e season archive | **held for the designer** | not this phase |
 
 3a first regardless of the answers. It is the smallest slice, it is the one with an actual
 security hole in it, and it makes every later slice safer to develop against.
