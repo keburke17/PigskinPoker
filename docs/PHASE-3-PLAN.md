@@ -377,3 +377,8 @@ security hole in it, and it makes every later slice safer to develop against.
 - **Cutover is one-way in places.** Enforcing OQ-B server-side, rotating short join codes,
   and any session-lifecycle change will sign people out or reject requests that used to
   succeed. None of it should land mid-week without telling the league.
+
+  *(2026-08-19: the code-to-account cutover specifically is moot - all existing leagues
+  are test data and will be wiped, so there is nobody to migrate and no season boundary
+  to respect. The warning still holds for OQ-B and for session-lifecycle changes once a
+  real league is running. `docs/AUTH.md` has the detail.)*

@@ -195,7 +195,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 
 | | |
 |---|---|
-| **Real accounts** | Built and **deployed** (Phase 3b/3c/3d). Magic-link sign-in works in production - SMTP is configured and verified. It runs *beside* join codes, and codes still work. Switching code-as-login off is the cutover, and happens at a season boundary - see `docs/AUTH.md`. |
+| **Real accounts** | Built and **deployed** (Phase 3b/3c/3d). Magic-link sign-in works in production - SMTP is configured and verified. It runs *beside* join codes, and codes still work. **Join codes are invitations only now** - all existing leagues are test data due to be wiped, so there is no code-to-account migration and no season boundary to wait for. Whether to delete code-as-login outright is open: it is also what makes `npm run dev` work with no configuration. See `docs/AUTH.md`. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |

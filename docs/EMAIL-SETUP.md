@@ -9,7 +9,8 @@ Local development needs none of this. The local stack captures every message at
 <http://127.0.0.1:54324> and never sends anything.
 
 **Done once already, on 2026-08-19**, for the current deployment: sending domain
-verified at Resend, SMTP configured, and a real magic link received. Keep this document
+verified at Resend, SMTP configured, **both** email templates branded, and real mail
+received on the signup path and the sign-in path. Keep this document
 as the runbook - it has to be repeated for any new Supabase project or sending domain,
 and the DNS half is the part that bites (see the note on nameservers in step 1).
 
