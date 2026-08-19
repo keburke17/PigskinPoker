@@ -26,17 +26,77 @@ infrastructure project.
 
 ---
 
+## What you need first: a domain, but NOT email hosting
+
+This trips people up, so it is worth being exact.
+
+**Sending and receiving are separate things.** You need a domain you control. You do
+**not** need a mailbox, an email host, Google Workspace, or any monthly email fee.
+
+| | Needs | You need it? |
+|---|---|---|
+| **Receiving** mail at `you@yourdomain` | MX records pointing at a mail host | **No** |
+| **Sending** through Resend | SPF and DKIM records proving you own the domain | **Yes** |
+
+So a domain that is parked, or just serving a website, is fine exactly as it is. Adding
+Resend does not give the domain a mailbox and does not stop you setting one up later.
+
+**The site's own address will not work.** `pigskinpoker.netlify.app` is a subdomain of
+`netlify.app`, and verification means adding DNS records - which you cannot do to
+someone else's domain. Use a domain you actually own.
+
+### Use a subdomain for sending
+
+Point Resend at `mail.yourdomain.com` (or `send.`), not the root. It costs nothing extra
+and buys three things:
+
+- the root domain's DNS stays clean, and free for real email later;
+- sending reputation is isolated from the root domain;
+- **no SPF collision.** A domain may only have ONE SPF record. If you ever add Google
+  Workspace to the root, a sending SPF already sitting there has to be merged by hand -
+  and a broken SPF record is a deliverability problem that is genuinely unpleasant to
+  diagnose.
+
+### About the MX record Resend asks for
+
+Resend will ask you to add an **MX record on the sending subdomain**. That is not a
+mailbox - it is where bounces and complaints are returned. It applies only to the
+subdomain, so it does not touch the root domain or interfere with any email you set up
+there later.
+
+### Which domain to pick
+
+Whichever one a recipient would recognise. A sign-in link from `noreply@` a domain that
+looks nothing like the league is the kind of thing people delete or report. If one of
+yours suits the league, use that - and consider pointing the site at it too, so the URL
+and the email agree.
+
+### The "from" address
+
+An invented address at that domain: `noreply@mail.yourdomain.com`. **There is no inbox
+behind it and no account to create.** It is a sending identity.
+
+Replies to it will bounce, which is normal for sign-in mail. If you would rather they
+did not, most registrars offer free forwarding to a real address.
+
+And you cannot send from a personal Gmail even if you wanted to: Resend can only
+authenticate domains you verify, and Gmail's own DMARC policy would have the message
+rejected outright.
+
+---
+
 ## 1. Resend, and the sending domain
 
-1. Create a Resend account and add the domain you will send from.
-2. Resend gives you DNS records - typically SPF, DKIM and a return-path CNAME. Add them
-   wherever the domain's DNS lives, the same way the site's records were added.
-3. Wait for Resend to show the domain **verified**. This can take minutes or hours; it is
-   DNS, so it is not instant.
+1. Create a Resend account and add your sending subdomain (`mail.yourdomain.com`).
+2. Resend shows you the exact DNS records to add - DKIM, SPF, and an MX for bounces. Add
+   them wherever that domain's DNS lives. Copy them from Resend rather than from any
+   guide, including this one: they differ by region and they do change.
+3. Wait for Resend to show the domain **verified**. Minutes to hours - it is DNS, so it
+   is not instant.
 4. Create an **SMTP credential** (not just an API key - Supabase speaks SMTP here).
 
-**Do not skip domain verification.** Sending from an unverified domain gets the mail
-filed as spam, which looks identical to it not being sent.
+**Do not skip verification.** Unverified mail gets filed as spam, which looks exactly
+like it was never sent.
 
 ---
 
