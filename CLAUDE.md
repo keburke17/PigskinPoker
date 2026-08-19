@@ -59,6 +59,7 @@ in a league that is actually being played is worse than a bug everyone has adapt
 ```
 src/
   engine/       pure game logic - no React, no I/O, fully tested
+  routing/      hand-written URL routing - no dependency, see the note in index.js
   storage/      ALL persistence, behind one interface
   hooks/        useLeague.js - the read/write lifecycle
   components/   the UI, extracted from the original single file
@@ -112,6 +113,10 @@ commissioner `DEMO-COMMISH`, managers `DEMO-TEAM-1` .. `DEMO-TEAM-6`. Refresh re
 
 **This is the right mode for trying rule changes.** It cannot touch the live league.
 
+**If `tests/server.test.js` skips itself complaining about extra leagues**, you made one
+through the UI (Phase 3d added that button). The demo seed refuses to run where other
+leagues exist, on purpose. `npx supabase db reset` clears it.
+
 For the real stack (Docker required):
 
 ```bash
@@ -129,7 +134,7 @@ never talk to each other; only migrations cross, and only when someone runs `db 
 npm test
 ```
 
-231 tests. Three groups worth knowing about:
+293 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -138,7 +143,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (`npx supabase start`) and **skip themselves silently without it** - 100 of the 231
+  (`npx supabase start`) and **skip themselves silently without it** - 149 of the 293
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -192,9 +197,9 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 |---|---|
 | **Real accounts** | Built (Phase 3b/3c) - magic-link sign-in runs *beside* join codes, and codes still work. Not yet switched off; that happens at a season boundary. Needs SMTP configured on the hosted project - see `docs/AUTH.md`. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
-| **Routing** | Navigation is component state. No deep links, no back button. |
+
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
-| **Multiple leagues** | The database supports it; the app does not. See OQ-10. |
+| **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |
 
 ---
 

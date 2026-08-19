@@ -309,18 +309,114 @@ export function CommBackupPanel({ state, onDownload, onRestore, restoreError }) 
   );
 }
 
-export function CommInvitePanel({ state }) {
-  const publicMsg = "Join our Pigskin Poker league! Ask the commissioner for your team's private join code to log in.";
+export function CommInvitePanel({ state, invites, onCreateInvite, onRevokeInvite, invitesAvailable }) {
+  const [teamId, setTeamId] = useState("");
+  const [role, setRole] = useState("manager");
+  const [issued, setIssued] = useState(null);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const issue = async () => {
+    setError(null); setIssued(null); setCopied(false);
+    const r = await onCreateInvite(role === "manager" ? teamId : null, role);
+    if (!r || r.ok === false) { setError(r?.message || "Could not create that invite."); return; }
+    setIssued(r.code);
+  };
+
+  const link = issued ? (globalThis.location?.origin ?? "") + "/join/" + issued : "";
+
+  /* The in-memory demo has no accounts, so it has nothing to invite anyone TO. Rather
+     than show a door that cannot open, say why. */
+  if (!invitesAvailable) {
+    return (
+      <div className="pp-card">
+        <h3 className="pp-h3">Invites</h3>
+        <p className="pp-sub">
+          Invite codes need the hosted database - they are not available in the demo.
+          Set a team&apos;s join code under Teams instead.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="pp-card">
-      <h3 className="pp-h3">Public Invite Message</h3>
-      <p className="pp-sub">Safe to post publicly - contains no codes.</p>
-      <div className="pp-input" style={{ marginBottom: 10 }}>{publicMsg}</div>
-      <h3 className="pp-h3">Private Join Codes</h3>
+      <h3 className="pp-h3">Invite Someone</h3>
+      <p className="pp-sub" style={{ marginBottom: 10 }}>
+        An invite lets someone join with their own account. Unlike a join code it is spent
+        once redeemed - so you can revoke or reissue one freely without locking anybody out.
+      </p>
+
+      <div className="pp-grid-2">
+        <div className="pp-field">
+          <label className="pp-label">Joining As</label>
+          <select className="pp-select" value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="manager">A team manager</option>
+            <option value="commissioner">Another commissioner</option>
+          </select>
+        </div>
+        {role === "manager" ? (
+          <div className="pp-field">
+            <label className="pp-label">Which Team</label>
+            <select className="pp-select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+              <option value="">Select a team...</option>
+              {state.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+        ) : null}
+      </div>
+
+      <button className="pp-btn pp-btn-gold" disabled={role === "manager" && !teamId} onClick={issue}>
+        Create Invite
+      </button>
+      {error ? <div className="pp-hint pp-hint-bad">{error}</div> : null}
+
+      {issued ? (
+        <div style={{ marginTop: 12 }}>
+          {/* Shown ONCE. There is no route that reads a code back - which is safe here
+              precisely because reissuing costs nothing. Said plainly so nobody closes
+              the tab expecting to find it again. */}
+          <div className="pp-hint pp-hint-good">
+            Copy this now - it is shown once. Lost it? Just make another.
+          </div>
+          <div className="pp-input" style={{ margin: "6px 0", fontFamily: "var(--font-mono)", letterSpacing: "0.06em" }}>{issued}</div>
+          <div className="pp-input" style={{ marginBottom: 6, fontSize: 11, wordBreak: "break-all" }}>{link}</div>
+          <button
+            className="pp-btn pp-btn-sm"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setCopied(false); }
+            }}
+          >
+            {copied ? "Copied" : "Copy Link"}
+          </button>
+        </div>
+      ) : null}
+
+      <h3 className="pp-h3" style={{ marginTop: 18 }}>Outstanding Invites</h3>
+      {(invites ?? []).length === 0 ? (
+        <p className="pp-sub">None yet.</p>
+      ) : (
+        (invites ?? []).map((i) => (
+          <div key={i.id} className="pp-roster-slot">
+            <div style={{ flex: 1 }}>
+              <span style={{ fontFamily: "var(--font-mono)" }}>{i.ref}</span>
+              <span className="pp-roster-slot-meta">
+                {"  " + (i.role === "commissioner" ? "commissioner" : (state.teams.find((t) => t.id === i.teamId)?.name ?? "a team"))}
+                {"  -  used " + i.uses + (i.maxUses ? " of " + i.maxUses : " times")}
+              </span>
+            </div>
+            {i.revoked ? <Tag>revoked</Tag> : (
+              <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => onRevokeInvite(i.id)}>Revoke</button>
+            )}
+          </div>
+        ))
+      )}
+
+      <h3 className="pp-h3" style={{ marginTop: 18 }}>Join Codes (the old way)</h3>
       <p className="pp-sub">
-        Codes are stored encrypted and can&apos;t be shown again after you set them - that&apos;s
-        what keeps them out of every visitor&apos;s browser. If someone loses theirs, set a new
-        one for that team under Teams and send them the new code.
+        Still work, and still fine. A join code signs in a whole team on any device; an
+        invite signs in one person as themselves. Both will keep working until everyone
+        has an account.
       </p>
       {state.teams.map((t) => (
         <div key={t.id} className="pp-roster-slot"><div style={{ flex: 1 }}>{t.name}</div><Tag>{t.hasJoinCode ? "code set" : "no code set"}</Tag></div>
@@ -345,7 +441,7 @@ export function CommissionerTab(props) {
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
       {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
       {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onStart={props.onStartPlayoffs} />}
-      {sub === "invite" && <CommInvitePanel state={props.state} />}
+      {sub === "invite" && <CommInvitePanel state={props.state} invites={props.invites} onCreateInvite={props.onCreateInvite} onRevokeInvite={props.onRevokeInvite} invitesAvailable={props.invitesAvailable} />}
       {sub === "backup" && <CommBackupPanel state={props.state} onDownload={props.onDownloadBackup} onRestore={props.onRestoreBackup} restoreError={props.restoreError} />}
       {sub === "reset" && <CommResetPanel onReset={props.onResetLeague} />}
     </div>

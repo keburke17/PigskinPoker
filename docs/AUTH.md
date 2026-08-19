@@ -229,6 +229,69 @@ own policy and recurses. The app reads teams, not memberships, so nothing is los
 Every write still goes through the Netlify function. Direct RLS-governed writes become
 possible now that there are real JWTs, but that is an optimization, not a correctness fix.
 
+## Phase 3d - invitations, and more than one league
+
+### The inversion, completed
+
+| | Join code | Invite |
+|---|---|---|
+| What it does | authenticates every session, forever | authorizes ONE join, then is spent |
+| Rotating it | signs that team out | affects only future joins |
+| Sharing it | is account sharing | is an invitation |
+| Readable back | no, and that is a real workflow cost | moot - reissue freely |
+
+Those last three rows are the payoff. An invite can be revoked without locking anybody
+out, because it was never what kept them in.
+
+### Why an invite code has two halves
+
+Codes are scrypt-hashed and scrypt salts randomly, so **a hash cannot be looked up by**.
+Join codes get away with this because you pick your team first and only then is one hash
+checked. An invite arrives with no context at all - someone pastes a code - so its row
+has to be findable.
+
+The tempting fix, an extra fast deterministic hash to index on, would quietly make that
+fast hash the weakest link and defeat the point of scrypt. So a code reads
+`REFERENCE-SECRET`: the reference is public, indexed, and proves nothing; the secret is
+what scrypt protects. A wrong reference and a wrong secret return the **identical** error,
+or the public half becomes an oracle for enumerating live invites.
+
+The alphabet excludes `O/0`, `I/1/L` and `U`. These get read aloud, texted, and retyped
+from a photo of a whiteboard, and each of those is a support conversation waiting to
+happen. It also means a character outside the alphabet is a genuine mistake rather than a
+transcription artefact, so it can be rejected honestly.
+
+### Reads are league-scoped now
+
+Every read policy used to be `using (true)` - correct for one public league, wrong the
+moment there are two. All eleven now ask one question through one `SECURITY DEFINER`
+helper: may this reader see this league? Definer rights are **required**, not tidy: the
+policy on `leagues` calls the function and the function selects from `leagues`, which
+under caller rights is infinite recursion.
+
+`leagues.visibility` is a checked text column, not a boolean, so a later `'listed'` state
+for a public directory needs no policy change. New leagues default to `'members'`, so
+forgetting to choose fails closed; leagues that already existed were set `'public'`, so
+nothing changed for the league being played.
+
+### Roles, and the one guard that matters
+
+A role is a `league_members` row, which is what makes "commissioner of one league,
+manager in another" expressible. Commissioner transfer and second commissioners are the
+same act.
+
+**The last commissioner cannot step down or be removed.** Such a league could not deal a
+week, add a team, or issue an invite, and no screen in the app could repair it. Transfer
+is promote-then-demote, and the guard makes the wrong order impossible.
+
+### Identity is per league
+
+`whoami` is re-asked whenever the league in the URL changes. Resolving it once at startup
+was right when there was one league and is a bug now - you would walk into a league you
+had just created and be shown a login screen for it.
+
+---
+
 ### The operational dependency - READ THIS BEFORE DEPLOYING
 
 Magic links are only as good as the email behind them, and this is the part that is not

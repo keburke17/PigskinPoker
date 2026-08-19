@@ -63,6 +63,22 @@ async function setup() {
     return;
   }
   leagueId = data.id;
+
+  /* The demo seed REFUSES to run where other leagues exist - a deliberate safety on a
+   * file that deletes and rebuilds - and resetDemo() is called from beforeEach all over
+   * this file. Left undetected, one stray league turns into fifty confusing 401s and a
+   * psql error buried in the middle of them.
+   *
+   * This became easy to hit in Phase 3d, because creating a league is now a button in
+   * the UI rather than a script nobody runs by accident. Say so up front, with the fix. */
+  const { data: others } = await db.from("leagues").select("id").neq("id", leagueId);
+  if (others?.length) {
+    skipReason =
+      "this database holds " + others.length + " league(s) besides the demo, so the demo " +
+      "seed will refuse to run. Clear them with:  npx supabase db reset";
+    return;
+  }
+
   available = true;
 }
 await setup();
@@ -687,11 +703,23 @@ gate()("OQ-E: stats cannot be entered while the roster is unlocked", () => {
  *  is a forced cutover, which is the one thing the plan rules out.
  * ==========================================================================*/
 
+/* Accounts this file created, so cleanup can be exact.
+ *
+ * The first version of wipeAccounts() deleted EVERY user in the project, which was fine
+ * while this was the only suite making any. Once rls.test.js started creating its own,
+ * the two files - which vitest runs in parallel - began deleting each other's users
+ * mid-test, and the failure looked like flaky RLS rather than a cleanup that was too
+ * broad. Delete only what you made. */
+const createdUserIds = [];
+
 /** Create a confirmed account and return a usable access token for it. */
 async function makeAccount(email) {
   // admin.createUser with email_confirm skips the mail round trip; the magic-link
   // flow itself is exercised in the browser, not here.
-  await db.auth.admin.createUser({ email, password: "test-password-123", email_confirm: true });
+  const { data: created } = await db.auth.admin.createUser({
+    email, password: "test-password-123", email_confirm: true,
+  });
+  if (created?.user?.id) createdUserIds.push(created.user.id);
   const anonClient = createClient(dbUrl, dbPublishable, { auth: { persistSession: false } });
   const { data, error } = await anonClient.auth.signInWithPassword({
     email, password: "test-password-123",
@@ -701,8 +729,10 @@ async function makeAccount(email) {
 }
 
 const wipeAccounts = async () => {
-  const { data } = await db.auth.admin.listUsers();
-  for (const u of data?.users ?? []) await db.auth.admin.deleteUser(u.id);
+  while (createdUserIds.length) {
+    const id = createdUserIds.pop();
+    await db.auth.admin.deleteUser(id).catch(() => {});
+  }
 };
 
 gate()("accounts: linking one to an existing membership", () => {

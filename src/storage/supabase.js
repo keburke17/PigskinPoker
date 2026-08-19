@@ -39,6 +39,11 @@ export function saveSessionToken(token) {
 
 export function createSupabaseStore(config) {
   const { url, publishableKey, apiPath = "/api", leagueName = null } = config;
+  /* Phase 3d. WHICH league this store is looking at, set from the URL by the router.
+   * Before multi-league there was only ever one, discovered by scanning; now the route
+   * is the authority and the scan is a fallback for a single-league deployment that has
+   * not been given an id. */
+  let pinnedLeagueId = config.leagueId ?? null;
   /* Phase 3c turns the auth half of this client ON.
    *
    * `persistSession` is what makes an account worth having: without it a magic-link
@@ -67,6 +72,28 @@ export function createSupabaseStore(config) {
   sb.auth.onAuthStateChange((_event, session) => {
     accountToken = session?.access_token ?? null;
   });
+
+  /* For operations that identify an ACCOUNT rather than a league session: creating a
+   * league, listing your leagues, redeeming an invite. The token goes in the BODY,
+   * because the Authorization header means "this league session" to the server. */
+  async function callWithAccount(action, params) {
+    if (!accountToken) {
+      return { ok: false, reason: "unauthorized", message: "Sign in first." };
+    }
+    let res;
+    try {
+      res = await fetch(apiPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, params: { ...params, accountToken } }),
+      });
+    } catch (e) {
+      return { ok: false, reason: "network", message: e?.message || "Network error" };
+    }
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.ok) return { ...body, ok: true };
+    return { ok: false, reason: res.status === 401 ? "unauthorized" : "invalid", message: body.error };
+  }
 
   async function call(action, params) {
     /* An account, if there is one, otherwise the join code session.
@@ -114,34 +141,52 @@ export function createSupabaseStore(config) {
   }
 
   async function fetchRows() {
-    /* Find the league. VITE_LEAGUE_NAME is an OPTIONAL disambiguator, not a
-     * requirement: a deployment normally holds exactly one league, and demanding an
-     * exact name match (punctuation and all) turned a harmless typo into an app that
-     * hangs on "Loading..." with nothing to explain why. */
-    const all = await sb.from("leagues").select("*");
-    if (all.error) throw new Error("Couldn't read the league: " + all.error.message);
+    /* WHICH LEAGUE.
+     *
+     * The URL decides, when it says. `/l/<id>` is now the normal way to reach a league,
+     * so the id arrives from the route and nothing has to be guessed.
+     *
+     * The scan below is what happens without one - a single-league deployment opened at
+     * `/`, which is every deployment that existed before this phase. It stays because
+     * taking it away would mean the existing league's bookmarks stop working.
+     *
+     * Note what the scan now returns: reads are league-scoped, so `select *` returns
+     * only leagues this visitor may see. "More than one" therefore means genuinely
+     * ambiguous FOR THEM, not merely that the database holds several. */
+    let chosen = null;
 
-    const leagues = all.data ?? [];
-    if (leagues.length === 0) return null; // schema exists, nothing bootstrapped yet
-
-    let chosen;
-    if (leagueName) {
-      chosen = leagues.find((l) => l.name === leagueName);
-      if (!chosen) {
-        throw new Error(
-          'No league named "' + leagueName + '". This database has: ' +
-          leagues.map((l) => '"' + l.name + '"').join(", ") +
-          ". Fix VITE_LEAGUE_NAME, or remove it to use the only league."
-        );
-      }
-    } else if (leagues.length === 1) {
-      chosen = leagues[0];
+    if (pinnedLeagueId) {
+      const one = await sb.from("leagues").select("*").eq("id", pinnedLeagueId).maybeSingle();
+      if (one.error) throw new Error("Couldn't read the league: " + one.error.message);
+      /* Null here is indistinguishable from "exists but you may not see it", and that
+       * is deliberate: telling a stranger a private league exists is the leak the read
+       * policies were rewritten to prevent. */
+      if (!one.data) return null;
+      chosen = one.data;
     } else {
-      throw new Error(
-        "This database holds " + leagues.length + " leagues (" +
-        leagues.map((l) => '"' + l.name + '"').join(", ") +
-        "). Set VITE_LEAGUE_NAME to choose one."
-      );
+      const all = await sb.from("leagues").select("*");
+      if (all.error) throw new Error("Couldn't read the league: " + all.error.message);
+
+      const leagues = all.data ?? [];
+      if (leagues.length === 0) return null; // nothing bootstrapped, or nothing visible
+
+      if (leagueName) {
+        // VITE_LEAGUE_NAME is retired by multi-league but still honoured, so an existing
+        // deployment that sets it does not break on upgrade.
+        chosen = leagues.find((l) => l.name === leagueName);
+        if (!chosen) {
+          throw new Error(
+            'No league named "' + leagueName + '". This database has: ' +
+            leagues.map((l) => '"' + l.name + '"').join(", ") +
+            ". Fix VITE_LEAGUE_NAME, or remove it to use the only league."
+          );
+        }
+      } else if (leagues.length === 1) {
+        chosen = leagues[0];
+      } else {
+        // Ambiguous. The landing page's league picker is the answer, not an error.
+        return { ambiguous: leagues.map((l) => ({ id: l.id, name: l.name })) };
+      }
     }
 
     leagueId = chosen.id;
@@ -189,7 +234,10 @@ export function createSupabaseStore(config) {
 
   async function readView() {
     const rows = await fetchRows();
-    return rows ? hydrateLeague(rows) : null;
+    if (!rows) return null;
+    // More than one visible league and nothing chosen - the caller shows a picker.
+    if (rows.ambiguous) return { _ambiguous: rows.ambiguous };
+    return hydrateLeague(rows);
   }
 
   return {
@@ -268,7 +316,16 @@ export function createSupabaseStore(config) {
       const { error } = await sb.auth.signInWithOtp({
         email: String(email || "").trim(),
         options: {
-          emailRedirectTo: redirectTo || globalThis.location?.origin,
+          /* COME BACK TO THE PAGE THEY LEFT, not to the front door.
+           *
+           * This matters most on `/join/<code>`: sending them to the origin would
+           * discard the invite code, and the screen has just promised them it would be
+           * waiting. They would have to go and find the text message again.
+           *
+           * The hosted project's redirect allow-list must therefore permit paths -
+           * `https://your-site/**`, not just the bare origin - or these are rejected
+           * outright and look like broken links. docs/EMAIL-SETUP.md says so. */
+          emailRedirectTo: redirectTo || globalThis.location?.href || globalThis.location?.origin,
           // Nobody is created by typing an address here. An account only becomes a
           // MEMBER by linking against a join-code session, so a stray sign-up is inert
           // - but not creating one at all keeps the user table honest.
@@ -314,6 +371,33 @@ export function createSupabaseStore(config) {
 
     /** What the server says this credential is - the only authority on an account's role. */
     whoami: () => call("whoami", {}),
+
+    /* --------------------- leagues, invites, membership ------------------ */
+
+    /** Point this store at a league. The router calls it; nothing else should. */
+    setLeagueId(id) {
+      if (id === pinnedLeagueId) return false;
+      pinnedLeagueId = id ?? null;
+      leagueId = id ?? null;
+      return true; // changed - the caller reloads
+    },
+    getLeagueId: () => pinnedLeagueId || leagueId,
+
+    /* These three are about an ACCOUNT rather than a league, so they carry the account
+     * token in the body. `call` would send it as the Authorization header, which the
+     * server reads as a league session - correct everywhere else, wrong here. */
+    createLeague: (name, year, visibility) =>
+      callWithAccount("createLeague", { name, year, visibility }),
+    myLeagues: () => callWithAccount("myLeagues", {}),
+    redeemInvite: (code) => callWithAccount("redeemInvite", { code }),
+
+    createInvite: (teamId, role, opts = {}) =>
+      call("createInvite", { teamId, role, expiresAt: opts.expiresAt ?? null, maxUses: opts.maxUses ?? null }),
+    listInvites: () => call("listInvites", {}),
+    revokeInvite: (inviteId) => call("revokeInvite", { inviteId }),
+    listMembers: () => call("listMembers", {}),
+    setMemberRole: (userId, role) => call("setMemberRole", { userId, role }),
+    setLeagueVisibility: (visibility) => call("setLeagueVisibility", { visibility }),
 
     /* ------------------------------- writes ------------------------------ */
     setStatLine: (teamId, slot, line, expect) => call("setStatLine", { teamId, slot, line, expect }),

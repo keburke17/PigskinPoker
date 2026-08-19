@@ -475,6 +475,18 @@ export function createMemoryStore(initialDb, opts = {}) {
       return null;
     },
 
+    /* Multi-league needs accounts, and accounts need an auth provider this adapter
+     * deliberately does not have. It holds exactly one demo league and always has.
+     *
+     * These exist as honest refusals rather than being absent, so the UI can ask "can
+     * this store do leagues?" once and hide the doors, instead of every call site
+     * guarding a missing method. */
+    getLeagueId: () => "demo",
+    setLeagueId: () => false,
+    async myLeagues() {
+      return { ok: true, leagues: [] };
+    },
+
     /* No sessions exist in the in-memory adapter - login is a local comparison and
      * there is nothing persisted to revoke - so this is honestly a no-op rather than a
      * missing method. It exists so the commissioner UI does not have to ask which

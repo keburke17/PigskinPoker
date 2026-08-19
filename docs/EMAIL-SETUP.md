@@ -63,8 +63,13 @@ default is tuned for the built-in sender and is far lower than Resend needs.
 Authentication -> URL Configuration.
 
 - **Site URL**: `https://pigskinpoker.netlify.app`
-- **Redirect URLs**: add the same, plus any Netlify deploy-preview domains you want to be
-  able to sign in on.
+- **Redirect URLs**: `https://pigskinpoker.netlify.app/**` - **with the wildcard**, plus
+  any Netlify deploy-preview domains you want to be able to sign in on.
+
+**The wildcard is not optional.** A sign-in link returns people to the page they left,
+and the one that matters is `/join/<code>`: without path matching, someone part-way
+through redeeming an invite is dropped at the front door and has to go and find the text
+message again. Registering only the bare origin makes every such link fail.
 
 An address that is not on this list is **rejected outright**, and the failure looks like a
 broken link rather than a misconfiguration - so it is worth being generous here.

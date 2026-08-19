@@ -1,7 +1,17 @@
 # Phase 3 - plan
 
-Status: **3a and 3b+3c are BUILT and green.** 3d remains agreed and unstarted; 3e is
-held for the designer.
+Status: **3a, 3b+3c and 3d are BUILT and green.** 3e is still held for the designer.
+
+3d shipped whole: `invites`, league-scoped RLS, `leagues.visibility`, league creation,
+commissioner transfer and multiple commissioners, and routing. Routing is **hand-written**
+(`src/routing/`) rather than a dependency - CLAUDE.md's rule that dependencies stay boring
+won, the app needs four URL shapes and no nesting, and the whole router costs about 2kB
+against react-router's ~20kB.
+
+Driven end to end in the browser: sign in, create a league, add a team, issue an invite,
+open the invite link as a different person, sign in with the code preserved across the
+magic link, and land in the league as that team's manager. Two real bugs were found that
+way and fixed - see the commit.
 
 3b+3c shipped as planned: `profiles` and `league_members`, `verifySession()` accepting
 either credential, magic-link sign-in beside the code box, and migration by invitation.
@@ -125,7 +135,7 @@ behaviour for valid input does not change, and only the server rejects input the
 never have produced.
 
 *Verification:* every one of these lands in `tests/server.test.js` / `tests/rls.test.js`,
-which **skip silently without a local Supabase stack** (100 of 231 tests after 3b/3c). Check
+which **skip silently without a local Supabase stack** (149 of 293 tests after 3d). Check
 the skip count, not the pass.
 
 ---
@@ -160,7 +170,7 @@ dead schema, and accounts without it have nowhere to record a role.
 
 ---
 
-### 3d - League ownership and multi-league (**agreed**)
+### 3d - League ownership and multi-league **[DONE]**
 
 Multi-league is on the roadmap, so league ownership lands *with* accounts rather than
 after them. The landing page grows three doors:
@@ -344,7 +354,7 @@ Destructive reset stays, renamed to what it is.
 |---|---|---|---|
 | 1 | 3a hardening | nothing (bar two rule confirmations) | **done** |
 | 2 | 3b + 3c accounts | Resend account and verified sending domain | **done** (bar the SMTP setup, which is not code) |
-| 3 | 3d multi-league | 3c | ~3-4 sessions - it grew: invites, redemption, landing page, routing, RLS rewrite |
+| 3 | 3d multi-league | 3c | **done** |
 | - | 3e season archive | **held for the designer** | not this phase |
 
 3a first regardless of the answers. It is the smallest slice, it is the one with an actual

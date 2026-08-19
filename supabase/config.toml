@@ -165,7 +165,10 @@ site_url = "http://localhost:5173"
 # like a broken link rather than a configuration problem, so it is worth getting right.
 # The HOSTED project needs its own site URL and redirect list set in the Supabase
 # dashboard; this file only configures the local stack. See docs/AUTH.md.
-additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173"]
+# Wildcards, so a magic link can return someone to the PAGE they left rather than the
+# front door - `/join/<code>` above all, where dropping them at `/` would discard the
+# invite code they were part-way through redeeming.
+additional_redirect_urls = ["http://localhost:5173/**", "http://127.0.0.1:5173/**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.

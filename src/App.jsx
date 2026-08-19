@@ -18,6 +18,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
+import { useRoute } from "./routing/useRoute.js";
+import { LandingScreen } from "./components/LandingScreen.jsx";
 import { saveSessionToken } from "./storage/supabase.js";
 import { useLeague } from "./hooks/useLeague.js";
 import { validateBackup } from "./storage/backup.js";
@@ -74,7 +76,15 @@ function loginFailureText(result, fallback) {
 }
 
 export default function App() {
-  const store = useMemo(() => createStore(), []);
+  /* THE URL DECIDES WHICH LEAGUE, from Phase 3d.
+   *
+   * The store is built once with whatever league the initial URL named. Moving between
+   * leagues afterwards goes through store.setLeagueId + retryLoad rather than a new
+   * store, so the realtime channel and the write queue are not torn down and rebuilt on
+   * every navigation. */
+  const [route, go] = useRoute();
+  const routeLeagueId = route.name === "league" ? route.leagueId : null;
+  const store = useMemo(() => createStore(undefined, { leagueId: routeLeagueId }), []); // eslint-disable-line react-hooks/exhaustive-deps
   const league = useLeague(store);
 
   const {
@@ -97,7 +107,11 @@ export default function App() {
 
   const [loginError, setLoginError] = useState(null);
   const [restoreError, setRestoreError] = useState(null);
-  const [tab, setTab] = useState("home");
+  /* The tab lives in the URL now, so it is shareable and the back button works - which
+   * is the whole of what P6 was about. Local state would immediately disagree with the
+   * address bar the first time someone pressed back. */
+  const tab = route.name === "league" ? route.tab : "home";
+  const setTab = (next) => go({ name: "league", leagueId: routeLeagueId ?? store.getLeagueId?.(), tab: next });
   /* The signed-in ACCOUNT, if there is one. Separate from `identity` on purpose:
    * identity is "what may this device do here", which a join code can answer on its
    * own; this is "who is the person", which only an account can. */
@@ -151,7 +165,7 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, [store, setIdentity]);
+  }, [store, setIdentity, routeLeagueId]);
 
   /* Signed in by code, with an account attached, but not yet joined up. This is the
    * "migration by invitation" moment: it is offered, never forced, and declining it
@@ -169,6 +183,75 @@ export default function App() {
         ? "That email is already connected to this league."
         : "Connected. Next time you can just sign in with your email - the join code still works too.",
     });
+  };
+
+  /* Following the URL to another league. Reuses the store rather than rebuilding it, so
+   * the realtime channel and write queue survive the move. */
+  useEffect(() => {
+    if (!routeLeagueId || !store.setLeagueId) return;
+    if (store.setLeagueId(routeLeagueId)) retryLoad();
+  }, [routeLeagueId, store, retryLoad]);
+
+  /* The landing page's data. Only fetched when actually on the landing page - there is
+   * no reason to ask "which leagues am I in" while someone is looking at one. */
+  const [myLeagues, setMyLeagues] = useState([]);
+  const [leaguesLoading, setLeaguesLoading] = useState(false);
+  useEffect(() => {
+    if (route.name === "league" || !account || !store.myLeagues) return;
+    let cancelled = false;
+    setLeaguesLoading(true);
+    store.myLeagues()
+      .then((r) => { if (!cancelled && r?.ok) setMyLeagues(r.leagues ?? []); })
+      .finally(() => { if (!cancelled) setLeaguesLoading(false); });
+    return () => { cancelled = true; };
+  }, [route.name, account, store]);
+
+  const onOpenLeague = (id) => go({ name: "league", leagueId: id, tab: "home" });
+
+  /* Invites, for the commissioner panel. Loaded only when that tab is open - it is an
+   * administrative list, not something the weekly flow needs. */
+  const [invites, setInvites] = useState([]);
+  const refreshInvites = async () => {
+    if (!store.listInvites) return;
+    const r = await store.listInvites();
+    if (r?.ok) setInvites(r.invites ?? []);
+  };
+  useEffect(() => {
+    if (tab !== "comm" || identity.role !== "commissioner") return;
+    refreshInvites();
+  }, [tab, identity.role]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onCreateInvite = async (teamId, role) => {
+    const r = await store.createInvite?.(teamId, role);
+    if (r?.ok) refreshInvites();
+    return r;
+  };
+  const onRevokeInvite = async (inviteId) => {
+    const r = await store.revokeInvite?.(inviteId);
+    if (r?.ok) refreshInvites();
+    return r;
+  };
+
+  const onRedeemInvite = async (code) => {
+    setLoginError(null);
+    const r = await store.redeemInvite?.(code);
+    if (!r || r.ok === false) {
+      setLoginError(r?.message || "Could not redeem that code.");
+      return;
+    }
+    /* REPLACE rather than push. Pressing back from a league should not land someone
+     * back on a code they have already spent. */
+    go({ name: "league", leagueId: r.leagueId, tab: "home" }, { replace: true });
+  };
+
+  const onCreateLeague = async (name) => {
+    setLoginError(null);
+    const r = await store.createLeague?.(name);
+    if (!r || r.ok === false) {
+      setLoginError(r?.message || "Could not create that league.");
+      return;
+    }
+    go({ name: "league", leagueId: r.leagueId, tab: "comm" });
   };
 
   const onSignInWithEmail = async (email) => {
@@ -396,6 +479,37 @@ export default function App() {
 
   /* ------------------------------- render ------------------------------- */
 
+  /* THE LANDING PAGE COMES FIRST, before every league gate below.
+   *
+   * Those gates all reason about a league that failed to load, and on the landing route
+   * there is no league to load - so without this, arriving at `/` would show "no league
+   * here yet" rather than the front door. The multi-league store correctly reports
+   * nothing when it has not been pointed at one.
+   *
+   * `accountsAvailable` is false for the in-memory demo, which has no auth provider and
+   * exactly one league. There, `/` falls through to the ordinary join-code login, which
+   * is what `npm run dev` should still do. */
+  const accountsAvailable = !!store.signInWithEmail;
+  if (route.name !== "league" && accountsAvailable) {
+    return (
+      <div className="pp-root">
+        <LandingScreen
+          account={account}
+          leagues={myLeagues}
+          leaguesLoading={leaguesLoading}
+          initialCode={route.name === "join" ? route.code : ""}
+          onSignInWithEmail={onSignInWithEmail}
+          onRedeemInvite={onRedeemInvite}
+          onCreateLeague={onCreateLeague}
+          onOpenLeague={onOpenLeague}
+          onSignOut={onLogout}
+          error={loginError}
+          setError={setLoginError}
+        />
+      </div>
+    );
+  }
+
   if (loadFailed) {
     return (
       <div className="pp-root">
@@ -555,6 +669,8 @@ export default function App() {
             <CommissionerTab
               state={state}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onSetJoinCode={onSetJoinCode} onSignOutTeam={onSignOutTeam} onRemoveTeam={onRemoveTeam}
+              invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
+              invitesAvailable={!!store.createInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               onSwap={onSwap} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}
