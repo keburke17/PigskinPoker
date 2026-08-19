@@ -21,7 +21,7 @@ const READABLE = [
   "leagues", "seasons", "teams", "team_totals", "players",
   "periods", "roster_slots", "stat_lines", "period_results", "events",
 ];
-const SECRETS = ["league_secrets", "team_secrets", "sessions", "auth_throttle"];
+const SECRETS = ["league_secrets", "team_secrets", "sessions", "auth_throttle", "invites"];
 /* Phase 3b. A THIRD category, because these fit neither of the other two: they are
  * about people rather than about the game, so a signed-in visitor may read their own
  * rows (SELECT to `authenticated`, narrowed further by an RLS policy scoped to
