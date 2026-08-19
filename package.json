@@ -17,6 +17,7 @@
     "db:push": "supabase db push && node scripts/verify-grants.mjs",
     "bootstrap": "node scripts/bootstrap-league.mjs",
     "verify:grants": "node scripts/verify-grants.mjs",
+    "verify:email": "node scripts/verify-email.mjs",
     "set-code": "node scripts/set-commissioner-code.mjs"
   },
   "dependencies": {

@@ -238,20 +238,38 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
+# Production SMTP - Resend.
+#
+# LEAVE THIS COMMENTED FOR LOCAL DEVELOPMENT. The local stack captures every message at
+# http://127.0.0.1:54324 and never sends anything, which is what you want while working:
+# no real mail, no rate limits, no cost. Uncomment only to rehearse the real sender
+# before deploying, and set RESEND_SMTP_PASSWORD in .env.local first.
+#
+# THE HOSTED PROJECT DOES NOT READ THIS FILE. Its SMTP is configured in the Supabase
+# dashboard, and configuring it there is REQUIRED before magic links work in production:
+# the built-in sender is rate limited and not intended for production use, so it
+# throttles silently - the worst possible failure mode for a login. docs/EMAIL-SETUP.md.
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
+# host = "smtp.resend.com"
 # port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# user = "resend"
+# pass = "env(RESEND_SMTP_PASSWORD)"
+# admin_email = "noreply@your-verified-domain"
+# sender_name = "Pigskin Poker"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
+
+# The sign-in email. Committed to the repo so local and hosted can be kept identical -
+# the HOSTED project does not read this file, so the same subject and the contents of
+# supabase/templates/magic_link.html must be pasted into the Supabase dashboard under
+# Authentication -> Emails -> Magic Link. docs/EMAIL-SETUP.md has the steps.
+[auth.email.template.magic_link]
+subject = "Sign in to Pigskin Poker"
+content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]

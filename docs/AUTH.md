@@ -234,20 +234,24 @@ possible now that there are real JWTs, but that is an optimization, not a correc
 Magic links are only as good as the email behind them, and this is the part that is not
 done by code:
 
-1. **SMTP.** Supabase's built-in sender is rate limited and **not intended for
-   production** - it throttles silently, which is the worst possible failure mode for a
-   login. Resend's SMTP credentials go in the Supabase dashboard under Authentication ->
-   Emails, and the sending domain needs its DNS records verified the same way the site's
-   did. Locally this is a non-issue: the stack captures every message at
-   <http://127.0.0.1:54324>.
-2. **Redirect URLs.** The hosted project needs its Site URL and additional redirect URLs
-   set in the dashboard (Authentication -> URL Configuration). An address that is not
-   listed is rejected outright, and it looks like a broken link rather than a
-   misconfiguration. `supabase/config.toml` configures only the local stack.
+**`docs/EMAIL-SETUP.md` is the runbook.** In short: Resend SMTP and a verified sending
+domain, the redirect allow-list, and the branded template pasted into the dashboard -
+because the hosted project does not read `supabase/config.toml` or
+`supabase/templates/`.
 
-Both are one-time. The same SMTP setup is exactly what OQ-6 notifications would need, so
-doing it here turns "rosters are dealt - submit your scheme" into a feature rather than an
-infrastructure project.
+Then prove it, rather than assuming:
+
+```bash
+npm run verify:email -- you@your-address.com
+```
+
+That sends one real sign-in email and names the two failures worth naming - a 429 from
+the built-in sender's throttle, and a rejected redirect URL. Both are otherwise silent,
+which is why the check exists as a command rather than a paragraph.
+
+All of it is one-time, and the same SMTP setup is exactly what OQ-6 notifications would
+need - so doing it here turns "rosters are dealt, submit your scheme" into a feature
+later rather than an infrastructure project.
 
 ---
 

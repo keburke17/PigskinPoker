@@ -88,6 +88,16 @@ time only new files run. It creates the tables and **no data**.
 `supabase/seed.sql` is *not* run by `db push`. That file is the local demo league, and
 it refuses to run against a database holding real data.
 
+### 2b. Email, if you want account sign-in
+
+Magic-link sign-in needs SMTP configured on the hosted project, and it is a dashboard
+job rather than a migration. **`docs/EMAIL-SETUP.md` has the steps.** Skipping it is
+fine to begin with - join codes work without it - but email sign-in will not, and the
+built-in sender throttles silently rather than erroring, so it fails in a way nobody
+notices until someone is locked out.
+
+Verify it afterwards with `npm run verify:email -- you@your-address.com`.
+
 ### 3. Create the league
 
 The database now has tables but no league, and the app will say *"No league here yet"*.

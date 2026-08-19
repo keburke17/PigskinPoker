@@ -204,7 +204,8 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 |---|---|
 | `docs/OPEN-QUESTIONS.md` | **Decisions waiting on the designer.** Start here if you are him. |
 | `docs/DATA-MODEL.md` | Schema, concurrency design, RLS plan |
-| `docs/AUTH.md` | How login works, path to real accounts |
+| `docs/AUTH.md` | How login works, and how join codes and accounts coexist |
+| `docs/EMAIL-SETUP.md` | **Making magic links arrive.** Dashboard steps; required before accounts work in production |
 | `docs/DEPLOYMENT.md` | Getting it live, operations, troubleshooting |
 | `docs/MIGRATION-NOTES.md` | What changed from the Artifact, and every bug found on the way |
 
