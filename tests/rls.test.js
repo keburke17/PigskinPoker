@@ -38,8 +38,12 @@ async function setup() {
 
   // Seed with the SECRET key (which bypasses RLS) so the read assertions below have
   // something to find and cannot pass vacuously.
+  /* EXPLICITLY public, since Phase 3d. New leagues now default to 'members' - private
+   * to their members - so the read assertions below would otherwise pass vacuously by
+   * finding nothing, which is the failure mode this whole suite exists to avoid. The
+   * private case gets its own block at the bottom of this file. */
   const { data: league, error } = await secret
-    .from("leagues").insert({ name: "RLS Test League" }).select().single();
+    .from("leagues").insert({ name: "RLS Test League", visibility: "public" }).select().single();
   if (error) {
     skipReason = "secret-key seed insert failed: " + error.code + " " + error.message;
     return;
@@ -298,5 +302,181 @@ gate()("RLS: profiles and league_members", () => {
     const { data } = await secret
       .from("league_members").select("role").eq("user_id", userB.id).single();
     expect(data.role).toBe("manager"); // unchanged
+  });
+});
+
+/* ============================================================================
+ *  PHASE 3d - league-scoped reads.
+ *
+ *  Every read policy in this schema used to be `using (true)`: correct for one
+ *  public league, and wrong the moment there are two. THIS is the block that
+ *  proves the second league's data is not readable by the first league's browser,
+ *  and it is the single most important thing in this file - a mistake here does
+ *  not throw, it silently shows one league another league's rosters.
+ * ==========================================================================*/
+
+gate()("RLS: a PRIVATE league is invisible from outside", () => {
+  const priv = {};
+  let outsider = null, member = null, memberUser = null, outsiderUser = null;
+
+  beforeAll(async () => {
+    if (!available) return;
+
+    // A whole second league, defaulting to 'members' - i.e. created the way every
+    // league from now on is created.
+    const { data: league } = await secret
+      .from("leagues").insert({ name: "Private Test League" }).select().single();
+    priv.league = league.id;
+    const { data: season } = await secret.from("seasons")
+      .insert({ league_id: league.id, year: 2091 }).select().single();
+    const { data: team } = await secret.from("teams")
+      .insert({ league_id: league.id, name: "Secret Team" }).select().single();
+    const { data: period } = await secret.from("periods")
+      .insert({ season_id: season.id, type: "week", number: 1 }).select().single();
+    Object.assign(priv, { season: season.id, team: team.id, period: period.id });
+
+    await secret.from("players").insert({
+      league_id: league.id, name: "Confidential Player", position: "QB", nfl_team: "XX",
+    });
+    await secret.from("roster_slots")
+      .insert({ period_id: period.id, team_id: team.id, area: "starter", slot: "QB" });
+    await secret.from("stat_lines")
+      .insert({ period_id: period.id, team_id: team.id, slot: "QB", yards: 4242 });
+    await secret.from("period_results").insert({
+      period_id: period.id, team_id: team.id, rank: 1, raw_score: 999, standings_points: 9,
+    });
+    await secret.from("team_totals")
+      .insert({ season_id: season.id, team_id: team.id, scope: "regular" });
+    await secret.from("events")
+      .insert({ season_id: season.id, type: "note", text: "confidential event" });
+    await secret.from("schemes").insert({
+      period_id: period.id, team_id: team.id, type: "noaction",
+      resolved_at: new Date().toISOString(), outcome: "applied",
+    });
+
+    const mk = async (email) => {
+      const { data } = await secret.auth.admin.createUser({
+        email, password: "rls-test-password-123", email_confirm: true,
+      });
+      return data.user;
+    };
+    memberUser = await mk("priv-member-" + priv.league + "@example.test");
+    outsiderUser = await mk("priv-outsider-" + priv.league + "@example.test");
+    await secret.from("league_members").insert({
+      league_id: priv.league, user_id: memberUser.id, role: "manager", team_id: priv.team,
+    });
+
+    const signIn = async (email) => {
+      const c = createClient(urlForTests, publishableForTests, { auth: { persistSession: false } });
+      await c.auth.signInWithPassword({ email, password: "rls-test-password-123" });
+      return c;
+    };
+    member = await signIn("priv-member-" + priv.league + "@example.test");
+    outsider = await signIn("priv-outsider-" + priv.league + "@example.test");
+  });
+
+  afterAll(async () => {
+    if (!available) return;
+    for (const u of [memberUser, outsiderUser]) if (u) await secret.auth.admin.deleteUser(u.id);
+    if (priv.league) await secret.from("leagues").delete().eq("id", priv.league);
+  });
+
+  it("defaults to 'members' - a new league is private without anyone choosing", async () => {
+    // The default is the whole safety property: forgetting to set visibility must fail
+    // CLOSED. Every league created from here on is private until someone says otherwise.
+    const { data } = await secret.from("leagues").select("visibility").eq("id", priv.league).single();
+    expect(data.visibility).toBe("members");
+  });
+
+  it("a SIGNED-OUT visitor sees nothing of it", async () => {
+    const { data } = await anon.from("leagues").select("*").eq("id", priv.league);
+    expect(data ?? []).toHaveLength(0);
+  });
+
+  it("a signed-in OUTSIDER sees nothing of it either", async () => {
+    // Having an account is not membership. This is the case a `using (true)` policy
+    // would wave straight through.
+    const { data } = await outsider.from("leagues").select("*").eq("id", priv.league);
+    expect(data ?? []).toHaveLength(0);
+  });
+
+  /* Table by table, because a policy is per-table and one missed table is a leak.
+   * `leagues` is covered above; these are the ones that reach a league INDIRECTLY,
+   * through seasons or periods, which is where a join is easy to get wrong. */
+  const hidden = [
+    ["seasons", () => ({ col: "league_id", val: priv.league })],
+    ["teams", () => ({ col: "league_id", val: priv.league })],
+    ["players", () => ({ col: "league_id", val: priv.league })],
+    ["team_totals", () => ({ col: "season_id", val: priv.season })],
+    ["events", () => ({ col: "season_id", val: priv.season })],
+    ["periods", () => ({ col: "season_id", val: priv.season })],
+    ["roster_slots", () => ({ col: "period_id", val: priv.period })],
+    ["stat_lines", () => ({ col: "period_id", val: priv.period })],
+    ["period_results", () => ({ col: "period_id", val: priv.period })],
+  ];
+
+  for (const [table, where] of hidden) {
+    it("hides " + table + " from a signed-out visitor", async () => {
+      const { col, val } = where();
+      const { data } = await anon.from(table).select("*").eq(col, val);
+      expect(data ?? []).toHaveLength(0);
+    });
+
+    it("hides " + table + " from a signed-in outsider", async () => {
+      const { col, val } = where();
+      const { data } = await outsider.from(table).select("*").eq(col, val);
+      expect(data ?? []).toHaveLength(0);
+    });
+  }
+
+  it("hides even a RESOLVED scheme, which the public league would show", async () => {
+    // Two gates stacked: resolved_at (OQ-9) AND league scope. Passing the first must
+    // not be enough.
+    const cols = "id,period_id,team_id,type,position,player_id,resolved_at,outcome";
+    const { data } = await anon.from("schemes").select(cols).eq("period_id", priv.period);
+    expect(data ?? []).toHaveLength(0);
+  });
+
+  it("but a MEMBER reads all of it", async () => {
+    /* The other half, and the reason this cannot just be "deny everything". If the
+     * scoping were too tight the league would be locked out of its own data, and that
+     * would show up as an empty app rather than an error. */
+    const { data: leagues } = await member.from("leagues").select("*").eq("id", priv.league);
+    expect(leagues).toHaveLength(1);
+    expect(leagues[0].name).toBe("Private Test League");
+
+    const { data: players } = await member.from("players").select("name").eq("league_id", priv.league);
+    expect(players.map((p) => p.name)).toContain("Confidential Player");
+
+    const { data: stats } = await member.from("stat_lines").select("yards").eq("period_id", priv.period);
+    expect(stats[0].yards).toBe(4242);
+  });
+
+  it("and the PUBLIC league is still readable by everyone, unchanged", async () => {
+    // Nothing may change for the league that is actually being played.
+    const { data } = await anon.from("leagues").select("name").eq("id", ids.league);
+    expect(data).toHaveLength(1);
+  });
+
+  it("a member of ONE league still cannot read another private one", async () => {
+    /* The multi-league case stated directly: membership is per league, not a global
+     * "is signed in and belongs to something" flag. */
+    const { data: other } = await secret
+      .from("leagues").insert({ name: "Third League" }).select().single();
+    const { data } = await member.from("leagues").select("*").eq("id", other.id);
+    expect(data ?? []).toHaveLength(0);
+    await secret.from("leagues").delete().eq("id", other.id);
+  });
+
+  it("invites are unreachable from a browser, member or not", async () => {
+    await secret.from("invites").insert({
+      league_id: priv.league, role: "manager", team_id: priv.team,
+      code_ref: "TESTRF", code_hash: "invite-hash-must-never-leak",
+    });
+    for (const client of [anon, outsider, member]) {
+      const { data, error } = await client.from("invites").select("*");
+      expect(error ? true : (data ?? []).length === 0).toBe(true);
+      expect(JSON.stringify(data ?? [])).not.toMatch(/must-never-leak/);
+    }
   });
 });

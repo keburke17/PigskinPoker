@@ -28,6 +28,18 @@ const ROUTES = {
   linkAccount: (db, p) => ops.linkAccount(db, p),
   whoami: (db, p) => ops.whoami(db, p),
 
+  /* Phase 3d. `createLeague`, `myLeagues` and `redeemInvite` take an ACCOUNT rather than
+   * a league session, so they are the only routes that work with no leagueId at all. */
+  createLeague: (db, p) => ops.createLeague(db, p),
+  myLeagues: (db, p) => ops.myLeagues(db, p),
+  redeemInvite: (db, p) => ops.redeemInvite(db, p),
+  createInvite: (db, p) => ops.createInvite(db, p),
+  listInvites: (db, p) => ops.listInvites(db, p),
+  revokeInvite: (db, p) => ops.revokeInvite(db, p),
+  listMembers: (db, p) => ops.listMembers(db, p),
+  setMemberRole: (db, p) => ops.setMemberRole(db, p),
+  setLeagueVisibility: (db, p) => ops.setLeagueVisibility(db, p),
+
   setStatLine: (db, p) => ops.setStatLine(db, p),
   swapLineupSlot: (db, p) => ops.swapLineupSlot(db, p),
   submitScheme: (db, p) => ops.submitScheme(db, p),

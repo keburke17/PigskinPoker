@@ -18,6 +18,8 @@
  * and a client cannot re-roll a deal it did not like.
  */
 
+import { createDefaultState } from "../src/engine/index.js";
+import { decomposeLeague } from "../src/storage/decompose.js";
 import {
   dealRosters,
   finalizeCurrentPeriod,
@@ -29,6 +31,13 @@ import {
 } from "../src/engine/index.js";
 import { vkey } from "../src/storage/hydrate.js";
 import { fetchLeagueRows, hydrate, persistBlob } from "./league.js";
+import {
+  generateInviteCode,
+  hashInviteSecret,
+  inviteProblem,
+  parseInviteCode,
+  verifyInviteSecret,
+} from "./invites.js";
 import {
   AUTH_ERRORS,
   canActForTeam,
@@ -271,6 +280,340 @@ export async function linkAccount(db, { leagueId, token, accountToken, displayNa
   if (error && !String(error.message).includes("duplicate key")) return fail(500, error.message);
 
   return good({ linked: true, alreadyMember: false, role: session.role });
+}
+
+/* --------------------- leagues, invites, membership ---------------------- */
+
+/** The account behind a request, or null. Used where an ACCOUNT specifically is required
+ *  - creating a league and redeeming an invite both mint a membership, and a membership
+ *  has to belong to a person rather than to whoever is holding a code. */
+async function accountUser(db, accountToken) {
+  if (!accountToken) return null;
+  const { data, error } = await db.auth.getUser(accountToken);
+  if (error || !data?.user) return null;
+  return data.user;
+}
+
+/**
+ * Create a league. The creator becomes its commissioner.
+ *
+ * THIS RETIRES THE LAND-GRAB. The Artifact let the first person to type a code become
+ * the commissioner, which was fine behind a private link and a free-for-all on a public
+ * URL; `scripts/bootstrap-league.mjs` exists only to close that window by setting the
+ * code before anyone can claim it. With league creation the commissioner is simply
+ * whoever made the league, so that script becomes a development convenience rather than
+ * a deployment step.
+ *
+ * Requires an ACCOUNT. There is deliberately no way to create a league with a join code:
+ * a league whose owner is "whoever holds this string" is the thing this phase exists to
+ * get away from.
+ */
+export async function createLeague(db, { accountToken, name, year, visibility = "members" }) {
+  const user = await accountUser(db, accountToken);
+  if (!user) return fail(401, "Sign in to create a league.");
+
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return fail(400, "Give your league a name.");
+  if (trimmed.length > 80) return fail(400, "That league name is too long.");
+  if (!["members", "public"].includes(visibility)) return fail(400, "Unknown visibility.");
+
+  const seasonYear = Number(year) || new Date().getFullYear();
+
+  /* The same blank league bootstrap-league.mjs builds: one season, week 1 pre-deal, the
+   * full player pool, and ZERO teams. Sharing createDefaultState() rather than
+   * reimplementing it is what keeps a league made here identical to one made there. */
+  const blank = createDefaultState();
+  blank.leagueName = trimmed;
+  const rows = decomposeLeague(blank, {
+    leagueKey: trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ":" + seasonYear + ":" + user.id,
+    year: seasonYear,
+  });
+
+  for (const table of ["leagues", "seasons", "players", "periods"]) {
+    const data = rows[table] ?? [];
+    if (!data.length) continue;
+    const { error } = await db.from(table).insert(data);
+    if (error) return fail(500, "Could not create the league: " + error.message);
+  }
+
+  const leagueId = rows.leagues[0].id;
+  const { error: visError } = await db.from("leagues").update({ visibility }).eq("id", leagueId);
+  if (visError) return fail(500, visError.message);
+
+  const { error: memberError } = await db.from("league_members").insert({
+    league_id: leagueId, user_id: user.id, role: "commissioner", team_id: null,
+  });
+  if (memberError) {
+    /* Without a commissioner row the league would exist and be reachable by nobody -
+     * an orphan that only a database console could fix. Undo it. */
+    await db.from("leagues").delete().eq("id", leagueId);
+    return fail(500, "Could not make you the commissioner: " + memberError.message);
+  }
+
+  await db.from("profiles").upsert({ user_id: user.id }, { onConflict: "user_id" });
+  return good({ leagueId, name: trimmed, visibility });
+}
+
+/** Every league this account belongs to. The landing page's "your leagues" door. */
+export async function myLeagues(db, { accountToken }) {
+  const user = await accountUser(db, accountToken);
+  if (!user) return fail(401, "Sign in to see your leagues.");
+
+  const { data: members, error } = await db
+    .from("league_members").select("league_id, role, team_id").eq("user_id", user.id);
+  if (error) return fail(500, error.message);
+  if (!members?.length) return good({ leagues: [] });
+
+  const { data: leagues } = await db
+    .from("leagues").select("id, name, visibility").in("id", members.map((m) => m.league_id));
+  const { data: teams } = await db
+    .from("teams").select("id, name").in("id", members.map((m) => m.team_id).filter(Boolean));
+
+  return good({
+    leagues: members.map((m) => {
+      const league = leagues?.find((l) => l.id === m.league_id);
+      return {
+        id: m.league_id,
+        name: league?.name ?? "(unavailable)",
+        visibility: league?.visibility ?? null,
+        role: m.role,
+        teamName: teams?.find((t) => t.id === m.team_id)?.name ?? null,
+      };
+    }),
+  });
+}
+
+/**
+ * Issue an invite. Commissioner only. The code is returned ONCE and never stored.
+ *
+ * Multi-use and non-expiring by default, because the actual social flow is pasting one
+ * code into a group chat - a single-use code would mean issuing six and tracking who
+ * used which. It is revocable, which is the control that matters, and revoking one now
+ * costs nobody their access.
+ */
+export async function createInvite(db, { leagueId, token, teamId = null, role = "manager", expiresAt = null, maxUses = null }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (!["commissioner", "manager"].includes(role)) return fail(400, "Unknown role.");
+
+  let teamUuid = null;
+  if (role === "manager") {
+    const team = teamRow(ctx.rows, teamId);
+    if (!team) return fail(404, "Pick a team for this invite.");
+    teamUuid = team.id;
+  }
+
+  const { code, ref, secret } = generateInviteCode();
+  const { error } = await db.from("invites").insert({
+    league_id: leagueId,
+    team_id: teamUuid,
+    role,
+    code_ref: ref,
+    code_hash: hashInviteSecret(secret),
+    created_by: ctx.session.userId ?? null,
+    expires_at: expiresAt,
+    max_uses: maxUses,
+  });
+  if (error) return fail(500, error.message);
+
+  // Shown once. There is no route that reads it back, by design - reissuing is free.
+  return good({ code, role, teamId: role === "manager" ? teamId : null });
+}
+
+/** Invites a commissioner can see - never the codes, which are not recoverable. */
+export async function listInvites(db, { leagueId, token }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const { data, error } = await db
+    .from("invites")
+    .select("id, team_id, role, code_ref, created_at, expires_at, max_uses, uses, revoked_at")
+    .eq("league_id", leagueId)
+    .order("created_at", { ascending: false });
+  if (error) return fail(500, error.message);
+
+  return good({
+    invites: (data ?? []).map((i) => ({
+      id: i.id,
+      role: i.role,
+      // The public half only. Enough to tell two invites apart in a list; useless alone.
+      ref: i.code_ref,
+      teamId: ctx.rows.teams.find((t) => t.id === i.team_id)?.legacy_id ?? null,
+      createdAt: i.created_at,
+      expiresAt: i.expires_at,
+      maxUses: i.max_uses,
+      uses: i.uses,
+      revoked: !!i.revoked_at,
+    })),
+  });
+}
+
+export async function revokeInvite(db, { leagueId, token, inviteId }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const { error } = await db
+    .from("invites")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("id", inviteId)
+    .eq("league_id", leagueId); // scoped, so one league cannot revoke another's invites
+  if (error) return fail(500, error.message);
+  // Deliberately does NOT sign anyone out: an invite authorizes a join, it does not
+  // sustain access. Removing a person is `league_members`, a different act.
+  return good({ revoked: true });
+}
+
+/**
+ * Redeem an invite. The only genuinely new flow in Phase 3d.
+ *
+ * Requires a signed-in account, because redemption mints a MEMBERSHIP and a membership
+ * belongs to a person. This is the "type the code first, then sign in" door: the code is
+ * what gets texted to you, so it must not be gated behind a sign-in wall - but it cannot
+ * complete without one either.
+ *
+ * Idempotent. Redeeming twice is a no-op rather than a second membership or an error,
+ * which matters because "did that work?" is the most natural reason to press it again.
+ */
+export async function redeemInvite(db, { code, accountToken }) {
+  const user = await accountUser(db, accountToken);
+  if (!user) return fail(401, "Sign in to redeem an invite.");
+
+  const parsed = parseInviteCode(code);
+  if (!parsed) return fail(400, "That does not look like an invite code.");
+
+  const { data: invite } = await db
+    .from("invites")
+    .select("id, league_id, team_id, role, code_hash, expires_at, max_uses, uses, revoked_at")
+    .eq("code_ref", parsed.ref)
+    .maybeSingle();
+
+  /* A wrong REFERENCE and a wrong SECRET must be indistinguishable from outside,
+   * otherwise the reference half becomes an oracle for enumerating live invites. Both
+   * paths return the same message. */
+  if (!invite || !verifyInviteSecret(parsed.secret, invite.code_hash)) {
+    return fail(401, "That invite code is not valid.");
+  }
+  const problem = inviteProblem(invite);
+  if (problem) return fail(410, problem);
+
+  const { data: existing } = await db
+    .from("league_members")
+    .select("id, role")
+    .eq("league_id", invite.league_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    // Already in. Not an error, and the use is NOT counted - a multi-use invite should
+    // not be burned down by one person pressing the button twice.
+    return good({ leagueId: invite.league_id, role: existing.role, alreadyMember: true });
+  }
+
+  await db.from("profiles").upsert({ user_id: user.id }, { onConflict: "user_id" });
+  const { error } = await db.from("league_members").insert({
+    league_id: invite.league_id,
+    user_id: user.id,
+    role: invite.role,
+    team_id: invite.team_id,
+  });
+  if (error && !String(error.message).includes("duplicate key")) return fail(500, error.message);
+
+  await db.from("invites").update({ uses: invite.uses + 1 }).eq("id", invite.id);
+  return good({ leagueId: invite.league_id, role: invite.role, alreadyMember: false });
+}
+
+/**
+ * Change a member's role, or remove them.
+ *
+ * Commissioner transfer and second commissioners both live here, because both are the
+ * same act: a role on a row. That is the point of putting the role there.
+ *
+ * THE LAST COMMISSIONER CANNOT STEP DOWN OR BE REMOVED. A league with no commissioner
+ * cannot deal a week, add a team, or issue an invite - it is unadministrable, and no
+ * screen in the app could fix it. Transfer is therefore promote-then-demote, in that
+ * order, and the guard makes the wrong order impossible rather than merely discouraged.
+ */
+export async function setMemberRole(db, { leagueId, token, userId, role }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (!["commissioner", "manager", "remove"].includes(role)) return fail(400, "Unknown role.");
+
+  const { data: target } = await db
+    .from("league_members").select("id, role, team_id")
+    .eq("league_id", leagueId).eq("user_id", userId).maybeSingle();
+  if (!target) return fail(404, "That person is not in this league.");
+
+  if (target.role === "commissioner" && role !== "commissioner") {
+    const { data: commissioners } = await db
+      .from("league_members").select("id").eq("league_id", leagueId).eq("role", "commissioner");
+    if ((commissioners?.length ?? 0) <= 1) {
+      return fail(409, "This is the league's only commissioner. Make someone else a commissioner first.");
+    }
+  }
+
+  if (role === "remove") {
+    const { error } = await db.from("league_members").delete().eq("id", target.id);
+    if (error) return fail(500, error.message);
+    return good({ removed: true });
+  }
+
+  // A commissioner acts for every team, so demoting to manager needs a team to act for.
+  if (role === "manager" && !target.team_id) {
+    return fail(400, "Give them a team before making them a manager.");
+  }
+  const { error } = await db
+    .from("league_members")
+    .update({ role, team_id: role === "commissioner" ? target.team_id : target.team_id })
+    .eq("id", target.id);
+  if (error) return fail(500, error.message);
+  return good({ role });
+}
+
+/** Who is in this league. Commissioner only - it is a list of real people. */
+export async function listMembers(db, { leagueId, token }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const { data: members, error } = await db
+    .from("league_members").select("user_id, role, team_id").eq("league_id", leagueId);
+  if (error) return fail(500, error.message);
+
+  const out = [];
+  for (const m of members ?? []) {
+    const { data: userData } = await db.auth.admin.getUserById(m.user_id);
+    out.push({
+      userId: m.user_id,
+      email: userData?.user?.email ?? null,
+      role: m.role,
+      teamId: ctx.rows.teams.find((t) => t.id === m.team_id)?.legacy_id ?? null,
+    });
+  }
+  return good({ members: out });
+}
+
+/** Public, or members-only. The decision from the plan, as a setting. */
+export async function setLeagueVisibility(db, { leagueId, token, visibility }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (!["members", "public"].includes(visibility)) return fail(400, "Unknown visibility.");
+  const { error } = await db.from("leagues").update({ visibility }).eq("id", leagueId);
+  if (error) return fail(500, error.message);
+  return good({ visibility });
 }
 
 /* -------------------- fine-grained writes: the hot path ------------------- */

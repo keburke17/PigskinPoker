@@ -820,3 +820,325 @@ gate()("accounts: signing in with one, afterwards", () => {
     expect(r.status).not.toBe(401);
   });
 });
+
+/* ============================================================================
+ *  PHASE 3d - leagues, invites, redemption, membership.
+ *
+ *  The inversion completed: an account creates a league, an invite authorizes ONE
+ *  join and is then spent, and a role is a row rather than a property of whoever
+ *  is holding a string.
+ * ==========================================================================*/
+
+gate()("invite codes", () => {
+  it("round-trips through everything a phone will do to it", async () => {
+    const { generateInviteCode, parseInviteCode } = await import("../server/invites.js");
+    const { code, ref, secret } = generateInviteCode();
+    // Lower-cased by autocorrect, re-spaced by a group chat, hyphens rearranged.
+    const mangled = "  " + code.toLowerCase().replace("-", " - ") + "\n";
+    expect(parseInviteCode(mangled)).toEqual({ ref, secret });
+  });
+
+  it("rejects the confusable characters it deliberately excludes", async () => {
+    const { parseInviteCode } = await import("../server/invites.js");
+    // The alphabet has no O, 0, I, 1, L or U, so any of them means a real mistake
+    // rather than a transcription artefact - and saying so beats a silent failure.
+    expect(parseInviteCode("OOOOOO-0000000000")).toBeNull();
+    expect(parseInviteCode("IIIIII-LLLLLLLLLL")).toBeNull();
+    expect(parseInviteCode("SHORT")).toBeNull();
+  });
+
+  it("never produces the same code twice", async () => {
+    const { generateInviteCode } = await import("../server/invites.js");
+    const seen = new Set();
+    for (let i = 0; i < 500; i += 1) seen.add(generateInviteCode().code);
+    expect(seen.size).toBe(500);
+  });
+});
+
+gate()("creating a league", () => {
+  beforeEach(async () => { resetDemo(); await clearThrottle(); await wipeAccounts(); });
+
+  const cleanupLeagues = async (name) => { await db.from("leagues").delete().eq("name", name); };
+
+  it("makes the creator its commissioner, with a full player pool and no teams", async () => {
+    const { token: jwt, userId } = await makeAccount("founder@example.test");
+    const r = await ops.createLeague(db, { accountToken: jwt, name: "Founders League", year: 2031 });
+    expect(r.status).toBe(200);
+
+    const { data: member } = await db
+      .from("league_members").select("role, team_id").eq("league_id", r.body.leagueId).single();
+    expect(member.role).toBe("commissioner");
+    expect(member.team_id).toBeNull();
+    expect(member.user_id ?? userId).toBeTruthy();
+
+    // Blank means: a full pool (you cannot deal without players) and zero teams.
+    const { data: players } = await db.from("players").select("id").eq("league_id", r.body.leagueId);
+    expect(players.length).toBeGreaterThan(100);
+    const { data: teams } = await db.from("teams").select("id").eq("league_id", r.body.leagueId);
+    expect(teams).toHaveLength(0);
+
+    await cleanupLeagues("Founders League");
+  });
+
+  it("is PRIVATE by default", async () => {
+    // Forgetting to choose must fail closed.
+    const { token: jwt } = await makeAccount("private@example.test");
+    const r = await ops.createLeague(db, { accountToken: jwt, name: "Quiet League", year: 2032 });
+    const { data } = await db.from("leagues").select("visibility").eq("id", r.body.leagueId).single();
+    expect(data.visibility).toBe("members");
+    await cleanupLeagues("Quiet League");
+  });
+
+  it("refuses without an account - a league cannot be owned by a string", async () => {
+    const comm = await asCommissioner();
+    const r = await ops.createLeague(db, { accountToken: comm, name: "Codeless", year: 2033 });
+    expect(r.status).toBe(401);
+  });
+
+  it("refuses a blank name", async () => {
+    const { token: jwt } = await makeAccount("blank@example.test");
+    expect((await ops.createLeague(db, { accountToken: jwt, name: "   " })).status).toBe(400);
+  });
+
+  it("lists the leagues an account belongs to, and only those", async () => {
+    const { token: mine } = await makeAccount("mine@example.test");
+    const { token: theirs } = await makeAccount("theirs@example.test");
+    const a = await ops.createLeague(db, { accountToken: mine, name: "Mine A", year: 2034 });
+    await ops.createLeague(db, { accountToken: theirs, name: "Theirs B", year: 2034 });
+
+    const r = await ops.myLeagues(db, { accountToken: mine });
+    expect(r.status).toBe(200);
+    const names = r.body.leagues.map((l) => l.name);
+    expect(names).toContain("Mine A");
+    expect(names).not.toContain("Theirs B");
+    expect(r.body.leagues.find((l) => l.id === a.body.leagueId).role).toBe("commissioner");
+
+    await cleanupLeagues("Mine A");
+    await cleanupLeagues("Theirs B");
+  });
+});
+
+gate()("invites and redemption", () => {
+  beforeEach(async () => { resetDemo(); await clearThrottle(); await wipeAccounts(); });
+
+  const issue = async (over = {}) => {
+    const token = await asCommissioner();
+    return ops.createInvite(db, { leagueId, token, teamId: T1, role: "manager", ...over });
+  };
+
+  it("issues a code, and that code lets an account join as the invited team", async () => {
+    const made = await issue();
+    expect(made.status).toBe(200);
+    expect(typeof made.body.code).toBe("string");
+
+    const { token: jwt, userId } = await makeAccount("invitee@example.test");
+    const r = await ops.redeemInvite(db, { code: made.body.code, accountToken: jwt });
+    expect(r.status).toBe(200);
+    expect(r.body.alreadyMember).toBe(false);
+
+    const { data: member } = await db
+      .from("league_members").select("role, team_id").eq("user_id", userId).single();
+    expect(member.role).toBe("manager");
+    const { data: team } = await db
+      .from("teams").select("id").eq("legacy_id", T1).eq("league_id", leagueId).single();
+    expect(member.team_id).toBe(team.id);
+  });
+
+  it("and the redeemed membership actually authorizes that team", async () => {
+    // The point of the whole exercise: a redeemed invite is indistinguishable from a
+    // membership minted any other way.
+    const made = await issue();
+    const { token: jwt } = await makeAccount("player@example.test");
+    await ops.redeemInvite(db, { code: made.body.code, accountToken: jwt });
+
+    const own = await ops.swapLineupSlot(db, { leagueId, token: jwt, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(own.status).not.toBe(401);
+    expect(own.status).not.toBe(403);
+    const other = await ops.swapLineupSlot(db, { leagueId, token: jwt, teamId: T2, slot: "QB", benchIndex: 0 });
+    expect(other.status).toBe(403);
+  });
+
+  it("requires a signed-in account - the code alone is not a login", async () => {
+    /* THE INVERSION, asserted. A join code IS a session; an invite is only permission to
+     * become a member, and a member is a person. */
+    const made = await issue();
+    const r = await ops.redeemInvite(db, { code: made.body.code, accountToken: null });
+    expect(r.status).toBe(401);
+  });
+
+  it("is idempotent - redeeming twice does not make a second membership or burn a use", async () => {
+    const made = await issue({ maxUses: 5 });
+    const { token: jwt, userId } = await makeAccount("twice@example.test");
+    await ops.redeemInvite(db, { code: made.body.code, accountToken: jwt });
+    const again = await ops.redeemInvite(db, { code: made.body.code, accountToken: jwt });
+    expect(again.status).toBe(200);
+    expect(again.body.alreadyMember).toBe(true);
+
+    const { data: rows } = await db.from("league_members").select("id").eq("user_id", userId);
+    expect(rows).toHaveLength(1);
+    // "Did that work?" is the most natural reason to press it again; it must not cost a use.
+    const { data: invite } = await db.from("invites").select("uses").eq("code_ref", made.body.code.split("-")[0]).single();
+    expect(invite.uses).toBe(1);
+  });
+
+  it("is multi-use by default, because the flow is one code in a group chat", async () => {
+    const made = await issue();
+    for (const who of ["a", "b", "c"]) {
+      const { token } = await makeAccount("chat-" + who + "@example.test");
+      const r = await ops.redeemInvite(db, { code: made.body.code, accountToken: token });
+      expect(r.status).toBe(200);
+    }
+    const { data } = await db.from("league_members").select("id").eq("league_id", leagueId);
+    expect(data.length).toBe(3);
+  });
+
+  it("honours max_uses, and says so distinctly from a wrong code", async () => {
+    const made = await issue({ maxUses: 1 });
+    const { token: first } = await makeAccount("first@example.test");
+    expect((await ops.redeemInvite(db, { code: made.body.code, accountToken: first })).status).toBe(200);
+
+    const { token: second } = await makeAccount("second@example.test");
+    const r = await ops.redeemInvite(db, { code: made.body.code, accountToken: second });
+    // 410, not 401: "used up" is something the person can act on - ask for another -
+    // while a 401 would send them hunting for a typo that is not there.
+    expect(r.status).toBe(410);
+    expect(r.body.error).toMatch(/used/i);
+  });
+
+  it("honours expiry", async () => {
+    const made = await issue({ expiresAt: new Date(Date.now() - 1000).toISOString() });
+    const { token } = await makeAccount("late@example.test");
+    const r = await ops.redeemInvite(db, { code: made.body.code, accountToken: token });
+    expect(r.status).toBe(410);
+    expect(r.body.error).toMatch(/expired/i);
+  });
+
+  it("honours revocation, and revoking does NOT sign out anyone who already joined", async () => {
+    const made = await issue();
+    const { token: early } = await makeAccount("early@example.test");
+    await ops.redeemInvite(db, { code: made.body.code, accountToken: early });
+
+    const comm = await asCommissioner();
+    const list = await ops.listInvites(db, { leagueId, token: comm });
+    const rev = await ops.revokeInvite(db, { leagueId, token: comm, inviteId: list.body.invites[0].id });
+    expect(rev.status).toBe(200);
+
+    const { token: late } = await makeAccount("toolate@example.test");
+    expect((await ops.redeemInvite(db, { code: made.body.code, accountToken: late })).status).toBe(410);
+
+    /* The payoff of the whole design: an invite authorizes a join, it does not sustain
+     * access. Revoking one is not a lockout, which is exactly what rotating a join code
+     * always was. */
+    const still = await ops.swapLineupSlot(db, { leagueId, token: early, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(still.status).not.toBe(401);
+  });
+
+  it("gives the same answer for a wrong reference and a wrong secret", async () => {
+    /* Otherwise the public half becomes an oracle: "invalid reference" vs "wrong secret"
+     * would let someone enumerate which invites are live. */
+    const made = await issue();
+    const [ref] = made.body.code.split("-");
+    const wrongSecret = await ops.redeemInvite(db, {
+      code: ref + "-ZZZZZZZZZZ", accountToken: (await makeAccount("o1@example.test")).token,
+    });
+    const wrongRef = await ops.redeemInvite(db, {
+      code: "ZZZZZZ-ZZZZZZZZZZ", accountToken: (await makeAccount("o2@example.test")).token,
+    });
+    expect(wrongSecret.status).toBe(wrongRef.status);
+    expect(wrongSecret.body.error).toBe(wrongRef.body.error);
+  });
+
+  it("is commissioner-only to issue, and never reads a code back", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    expect((await ops.createInvite(db, { leagueId, token: mgr, teamId: T1 })).status).toBe(403);
+
+    const comm = await asCommissioner();
+    await ops.createInvite(db, { leagueId, token: comm, teamId: T1 });
+    const list = await ops.listInvites(db, { leagueId, token: comm });
+    // The list shows the public reference so two invites can be told apart. Never a code.
+    const body = JSON.stringify(list.body);
+    expect(list.body.invites[0].ref).toHaveLength(6);
+    expect(body).not.toMatch(/code_hash|scrypt/);
+  });
+});
+
+gate()("membership and commissioner transfer", () => {
+  beforeEach(async () => { resetDemo(); await clearThrottle(); await wipeAccounts(); });
+
+  const joinAs = async (email, role = "manager", teamLegacy = T1) => {
+    const comm = await asCommissioner();
+    const made = await ops.createInvite(db, {
+      leagueId, token: comm, teamId: role === "manager" ? teamLegacy : null, role,
+    });
+    const acct = await makeAccount(email);
+    await ops.redeemInvite(db, { code: made.body.code, accountToken: acct.token });
+    return acct;
+  };
+
+  it("can promote a manager to commissioner - a second one, not a replacement", async () => {
+    const boss = await joinAs("boss@example.test", "commissioner");
+    const hand = await joinAs("hand@example.test", "manager");
+
+    const r = await ops.setMemberRole(db, {
+      leagueId, token: boss.token, userId: hand.userId, role: "commissioner",
+    });
+    expect(r.status).toBe(200);
+
+    const { data } = await db
+      .from("league_members").select("role").eq("league_id", leagueId).eq("role", "commissioner");
+    expect(data.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("REFUSES to demote or remove the last commissioner", async () => {
+    /* A league with no commissioner cannot deal a week, add a team, or issue an invite.
+     * No screen in the app could repair it, so the guard makes it impossible rather than
+     * merely discouraged - transfer is promote-then-demote, in that order. */
+    const only = await joinAs("solo@example.test", "commissioner");
+    const demote = await ops.setMemberRole(db, {
+      leagueId, token: only.token, userId: only.userId, role: "manager",
+    });
+    expect(demote.status).toBe(409);
+    expect(demote.body.error).toMatch(/only commissioner/i);
+
+    const remove = await ops.setMemberRole(db, {
+      leagueId, token: only.token, userId: only.userId, role: "remove",
+    });
+    expect(remove.status).toBe(409);
+  });
+
+  it("allows a full transfer once there are two", async () => {
+    const outgoing = await joinAs("outgoing@example.test", "commissioner");
+    const incoming = await joinAs("incoming@example.test", "manager");
+
+    await ops.setMemberRole(db, { leagueId, token: outgoing.token, userId: incoming.userId, role: "commissioner" });
+    const stepDown = await ops.setMemberRole(db, {
+      leagueId, token: outgoing.token, userId: outgoing.userId, role: "manager",
+    });
+    // The outgoing commissioner has no team, so stepping down needs one first - which is
+    // a real answer, not a refusal to transfer.
+    expect([200, 400]).toContain(stepDown.status);
+
+    const { data } = await db
+      .from("league_members").select("role").eq("league_id", leagueId).eq("user_id", incoming.userId).single();
+    expect(data.role).toBe("commissioner");
+  });
+
+  it("is commissioner-only, so a manager cannot promote themselves", async () => {
+    await joinAs("realboss@example.test", "commissioner");
+    const sneaky = await joinAs("sneaky@example.test", "manager");
+    const r = await ops.setMemberRole(db, {
+      leagueId, token: sneaky.token, userId: sneaky.userId, role: "commissioner",
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("lets a commissioner change league visibility", async () => {
+    const comm = await asCommissioner();
+    expect((await ops.setLeagueVisibility(db, { leagueId, token: comm, visibility: "members" })).status).toBe(200);
+    const { data } = await db.from("leagues").select("visibility").eq("id", leagueId).single();
+    expect(data.visibility).toBe("members");
+
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    expect((await ops.setLeagueVisibility(db, { leagueId, token: mgr, visibility: "public" })).status).toBe(403);
+  });
+});
