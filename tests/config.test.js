@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { createStore } from "../src/storage/index.js";
 
 describe("createStore configuration", () => {
@@ -39,5 +41,52 @@ describe("createStore configuration", () => {
     // The Supabase adapter exposes login; the memory one has no realtime channel setup.
     expect(typeof store.loginCommissioner).toBe("function");
     expect(typeof store.subscribe).toBe("function");
+  });
+});
+
+/* GoTrue picks the sign-in email's template by whether the address already EXISTS:
+ * an existing user gets Magic Link, a new one gets Confirm signup. Configuring only
+ * Magic Link therefore leaves every first-time member receiving Supabase's unbranded
+ * default - the people with the least reason to trust an email from us, and the ones
+ * most likely to report it.
+ *
+ * It hides well. Anyone testing with their own already-registered address sees the
+ * branded email and concludes it is fine. It was found only because a test to a fresh
+ * address came back unbranded and looked like a paste that had not saved.
+ *
+ * This asserts the LOCAL config. The hosted project does not read config.toml - both
+ * templates are pasted into the dashboard by hand - so this cannot prove production is
+ * right. What it can do is keep the repo stating that there are two of them, so the
+ * next person configuring a dashboard is told. docs/EMAIL-SETUP.md has the steps.
+ */
+describe("sign-in email templates", () => {
+  const root = path.resolve(__dirname, "..");
+  const toml = fs.readFileSync(path.join(root, "supabase", "config.toml"), "utf8");
+
+  const contentPathFor = (template) => {
+    const m = toml.match(
+      new RegExp("\\[auth\\.email\\.template\\." + template + "\\][^[]*", "m")
+    );
+    if (!m) return null;
+    const c = m[0].match(/^\s*content_path\s*=\s*"([^"]+)"/m);
+    return c ? c[1] : null;
+  };
+
+  it("configures BOTH magic_link and confirmation", () => {
+    expect(contentPathFor("magic_link")).toBeTruthy();
+    expect(contentPathFor("confirmation")).toBeTruthy();
+  });
+
+  it("points both at the same file, so the two cannot drift apart", () => {
+    expect(contentPathFor("confirmation")).toBe(contentPathFor("magic_link"));
+  });
+
+  it("and that file exists and uses a variable BOTH templates provide", () => {
+    const rel = contentPathFor("magic_link").replace(/^\.\//, "");
+    const body = fs.readFileSync(path.join(root, rel), "utf8");
+    expect(body).toMatch(/\{\{\s*\.ConfirmationURL\s*\}\}/);
+    // .Token and .TokenHash exist in both, but a template using anything Confirm signup
+    // does not supply would render blank for exactly the first-time users this protects.
+    expect(body).not.toMatch(/\{\{\s*\.(SiteURL|RedirectTo)\s*\}\}/);
   });
 });

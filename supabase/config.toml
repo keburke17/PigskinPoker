@@ -269,8 +269,27 @@ otp_expiry = 3600
 # The sign-in email. Committed to the repo so local and hosted can be kept identical -
 # the HOSTED project does not read this file, so the same subject and the contents of
 # supabase/templates/magic_link.html must be pasted into the Supabase dashboard under
-# Authentication -> Emails -> Magic Link. docs/EMAIL-SETUP.md has the steps.
+# Authentication -> Emails. docs/EMAIL-SETUP.md has the steps.
+#
+# TWO templates, ONE file, and the second one is easy to miss. GoTrue picks the template
+# by whether the address already exists:
+#
+#   Magic Link     - the address is already a user. Signing in again.
+#   Confirm signup - the address is NEW. This is what a first-time member receives.
+#
+# So configuring only Magic Link leaves every genuinely new person receiving Supabase's
+# unbranded default - the exact "click here to log in" message the template exists to
+# avoid, aimed at the people least likely to trust it. That is also why testing with a
+# fresh address looks like the template did not apply: it did not, because that path
+# sends the other one.
+#
+# The same file serves both: it uses only {{ .ConfirmationURL }}, which both provide,
+# and in a passwordless app confirming a signup IS signing in.
 [auth.email.template.magic_link]
+subject = "Sign in to Pigskin Poker"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
 subject = "Sign in to Pigskin Poker"
 content_path = "./supabase/templates/magic_link.html"
 

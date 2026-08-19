@@ -177,15 +177,37 @@ project.
 The branded sign-in email lives at `supabase/templates/magic_link.html`, and the hosted
 project **does not read it from the repo**.
 
-Authentication -> Emails -> Magic Link. Set:
+Authentication -> Emails. **Paste it into BOTH of these templates:**
+
+| Template | Who gets it |
+|---|---|
+| **Magic Link** | someone whose address is already a user - signing in again |
+| **Confirm signup** | someone whose address is NEW - every first-time member |
+
+For each, set:
 
 - **Subject**: `Sign in to Pigskin Poker`
 - **Body**: paste the contents of `supabase/templates/magic_link.html`
 
-If you skip this, sign-in still works - the email is just Supabase's generic default,
+The same file serves both. It uses only `{{ .ConfirmationURL }}`, which both templates
+provide, and in a passwordless app confirming a signup is signing in.
+
+**Doing only Magic Link is the easy mistake, and it fails in the worst direction.**
+GoTrue picks the template by whether the address already exists, so the people who get
+the unbranded default are precisely the first-timers - the ones with no reason yet to
+trust an email from you. Everyone testing with their own already-registered address sees
+the branded one and concludes it is fine.
+
+It also makes testing lie to you. `npm run verify:email` sends `create_user: true`, so a
+**fresh** address takes the signup path and receives Confirm signup. If the branded
+template does not appear, check which of the two you configured before assuming the paste
+did not save. To test Magic Link specifically, send twice to the same address: the second
+send takes the sign-in path.
+
+If you skip both, sign-in still works - the email is just Supabase's generic default,
 which is the kind of message people ignore or report as phishing.
 
-Keep the two in step. If you edit the template in the repo, paste it again.
+Keep them in step. If you edit the template in the repo, paste it again in both places.
 
 ---
 
