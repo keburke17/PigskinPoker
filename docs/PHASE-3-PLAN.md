@@ -253,8 +253,29 @@ using (
 )
 ```
 
-with `leagues.visibility` defaulting to `'members'` for new leagues and the existing league
-set to whatever matches today's behaviour.
+**Decided:** `leagues.visibility` is a per-league setting, defaulting to `'members'` for
+new leagues, with the existing league set to `'public'` so nothing changes for it.
+
+One thing to get right now rather than later. A future landing-page door - **"browse and
+join a public league"** - needs a *directory*, and being listed in a directory is not the
+same claim as being readable by link. A league might happily let a spouse read the
+standings from a shared URL while having no interest in appearing in a public list.
+
+So `visibility` is a **checked text column, not a boolean**:
+
+```sql
+visibility text not null default 'members'
+  check (visibility in ('members', 'public'))
+```
+
+A later migration adds `'listed'` for leagues that opt into the directory, and the read
+policy above needs no change - it already tests for membership or non-`members`
+visibility. A boolean would have forced a column swap and a backfill to say the same
+thing.
+
+The directory itself is out of scope this phase, but it brings its own questions when it
+lands: open join or commissioner approval, whether a listed league exposes team names
+before you join, and how a full league is shown. Worth answering then, not now.
 
 **Writes still go through the Netlify function.** Direct RLS-governed writes become
 possible once there are real JWTs, but that is an optimization, not a correctness fix, and
@@ -263,10 +284,11 @@ it is not Phase 3's business.
 ### The operational dependency
 
 Magic links need email that actually arrives. **Supabase's built-in sender is rate limited
-and is not intended for production** - it will silently throttle. That means an SMTP
-provider (Resend or Postmark; both have free tiers that comfortably cover a league) before
-sign-in works for real. Google sign-in has no such dependency but needs a Google Cloud
-OAuth client instead.
+and is not intended for production** - it will silently throttle, which is the worst
+possible failure mode for a login. **Resend is being set up**, and its SMTP credentials go
+into the Supabase dashboard; the sending domain needs its DNS records verified the same way
+the site's did. Google sign-in has no such dependency but needs a Google Cloud OAuth client
+instead, and is worth adding beside magic links rather than instead of them.
 
 Worth noting: that same SMTP setup is exactly what OQ-6 notifications would need. Doing it
 here means "rosters are dealt - submit your scheme before Sunday" is later a feature rather
@@ -300,8 +322,8 @@ Destructive reset stays, renamed to what it is.
 | | Slice | Depends on | Rough size |
 |---|---|---|---|
 | 1 | 3a hardening | nothing (bar two rule confirmations) | ~1 working session |
-| 2 | 3b + 3c accounts | SMTP or Google OAuth set up | ~2-3 sessions |
-| 3 | 3d multi-league | 3c, and the visibility decision | ~3-4 sessions - it grew: invites, redemption, landing page, routing, RLS rewrite |
+| 2 | 3b + 3c accounts | Resend account and verified sending domain | ~2-3 sessions |
+| 3 | 3d multi-league | 3c | ~3-4 sessions - it grew: invites, redemption, landing page, routing, RLS rewrite |
 | - | 3e season archive | **held for the designer** | not this phase |
 
 3a first regardless of the answers. It is the smallest slice, it is the one with an actual
