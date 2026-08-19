@@ -68,7 +68,7 @@ const good = (body) => ({ status: 200, body: { ok: true, ...body } });
 /* ------------------------------- context -------------------------------- */
 
 async function context(db, leagueId, token) {
-  const session = await verifySession(db, token);
+  const session = await verifySession(db, token, { leagueId });
   // Distinguish "not signed in" from "signed in but not allowed". The client reacts
   // differently: a 401 means log in again, a 403 means you never could.
   if (!session) return { error: fail(AUTH_ERRORS.noSession.status, AUTH_ERRORS.noSession.error) };
@@ -174,6 +174,103 @@ export async function loginManager(db, { leagueId, teamLegacyId, code, ip = null
 export async function logout(db, { token }) {
   await destroySession(db, token);
   return good({});
+}
+
+/* ----------------------------- accounts ---------------------------------- */
+
+/**
+ * Who is this token, and what may it do?
+ *
+ * Needed because an ACCOUNT does not carry its role. A join-code login answers "which
+ * team am I" in its own response - the code you typed was for exactly one team - but an
+ * account is just a person until league_members is consulted, and the browser cannot
+ * consult it (the policy there is scoped to the reader's own rows, and the role must be
+ * the server's answer regardless).
+ *
+ * Returns the LEGACY team id, not the row uuid: the whole UI is written against legacy
+ * ids, which is why ~90 components survived the port untouched.
+ */
+export async function whoami(db, { leagueId, token }) {
+  const session = await verifySession(db, token, { leagueId });
+  if (!session) return fail(AUTH_ERRORS.noSession.status, AUTH_ERRORS.noSession.error);
+  const rows = await fetchLeagueRows(db, leagueId);
+  if (!rows) return fail(404, "League not found.");
+  const team = session.teamId ? (rows.teams.find((t) => t.id === session.teamId) ?? null) : null;
+  return good({
+    role: session.role,
+    teamId: team?.legacy_id ?? null,
+    hasAccount: !!session.userId,
+  });
+}
+
+/**
+ * Attach a real account to the membership the caller already holds.
+ *
+ * MIGRATION BY INVITATION, NOT BY FORCE - the single most important property here.
+ * Nobody is locked out mid-season, nobody has to create an account to keep playing, and
+ * the join code keeps working afterwards. Each person moves when they next happen to
+ * log in, and the league notices nothing.
+ *
+ * It needs BOTH credentials at once, which is the whole point:
+ *
+ *   token         - the join-code session. Proves what you are ALLOWED to be: this
+ *                   league, this role, this team. The server never takes the client's
+ *                   word for any of it; the membership is minted from the session, not
+ *                   from anything in the request body.
+ *   accountToken  - the Supabase JWT. Proves WHO you are.
+ *
+ * Idempotent on purpose. Signing in again, on a second device or a month later, must be
+ * a no-op rather than a second membership or an error - and `unique (league_id,
+ * user_id)` is what makes that guarantee real rather than a matter of getting the
+ * check-then-insert right.
+ */
+export async function linkAccount(db, { leagueId, token, accountToken, displayName = null }) {
+  /* Deliberately verified as a CODE SESSION, not through verifySession's either/or.
+   * Someone already signed in with an account has nothing to link, and letting a JWT
+   * authorize its own membership would be circular - the account would be granting
+   * itself the role it is supposed to be receiving. */
+  const session = token && !token.includes(".") ? await verifySession(db, token, { leagueId }) : null;
+  if (!session) {
+    return fail(401, "Log in with your team's join code first, then connect your email.");
+  }
+
+  const { data: userData, error: userError } = await db.auth.getUser(accountToken);
+  const user = userData?.user;
+  if (userError || !user) return fail(401, "That sign-in link is no longer valid - request a new one.");
+
+  // The email lives in auth.users, where Supabase manages it. Storing it again here
+  // would be a second source of truth for something we do not own.
+  const { error: profileError } = await db
+    .from("profiles")
+    .upsert({ user_id: user.id, display_name: displayName }, { onConflict: "user_id" });
+  if (profileError) return fail(500, profileError.message);
+
+  const { data: existing } = await db
+    .from("league_members")
+    .select("id, role, team_id")
+    .eq("league_id", leagueId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    /* Already a member. Do NOT quietly rewrite the role from the session - a
+     * commissioner who happens to be holding a manager's join code must not be demoted
+     * by signing in. Changing someone's role is an administrative act, not a side
+     * effect of logging in. */
+    return good({ linked: true, alreadyMember: true, role: existing.role });
+  }
+
+  const { error } = await db.from("league_members").insert({
+    league_id: leagueId,
+    user_id: user.id,
+    role: session.role,
+    team_id: session.teamId,
+  });
+  // A race between two devices linking at once loses to the unique constraint, which is
+  // the correct outcome and not an error worth showing anyone.
+  if (error && !String(error.message).includes("duplicate key")) return fail(500, error.message);
+
+  return good({ linked: true, alreadyMember: false, role: session.role });
 }
 
 /* -------------------- fine-grained writes: the hot path ------------------- */

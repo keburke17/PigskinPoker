@@ -39,14 +39,42 @@ export function saveSessionToken(token) {
 
 export function createSupabaseStore(config) {
   const { url, publishableKey, apiPath = "/api", leagueName = null } = config;
-  const sb = createClient(url, publishableKey, { auth: { persistSession: false } });
+  /* Phase 3c turns the auth half of this client ON.
+   *
+   * `persistSession` is what makes an account worth having: without it a magic-link
+   * session would evaporate on reload and people would be signing in every visit, which
+   * is strictly worse than the join code they already have.
+   *
+   * `detectSessionInUrl` is how a magic link completes - Supabase puts the tokens in
+   * the URL fragment on the way back, and this is what picks them up and then cleans
+   * the address bar.
+   *
+   * Reads are unaffected. Once someone is signed in, PostgREST sees `authenticated`
+   * rather than `anon`, and every read policy and grant in the schema names both roles
+   * deliberately. */
+  const sb = createClient(url, publishableKey, {
+    auth: { persistSession: true, detectSessionInUrl: true, autoRefreshToken: true },
+  });
 
   let leagueId = null;
   let listeners = new Set();
   let channel = null;
+  /* The access token of a signed-in account, mirrored here so `call` stays synchronous.
+   * Kept current by onAuthStateChange below, which also fires on token refresh - so a
+   * long session does not start sending a stale token an hour in. */
+  let accountToken = null;
+  sb.auth.getSession().then(({ data }) => { accountToken = data?.session?.access_token ?? null; });
+  sb.auth.onAuthStateChange((_event, session) => {
+    accountToken = session?.access_token ?? null;
+  });
 
   async function call(action, params) {
-    const token = loadSessionToken();
+    /* An account, if there is one, otherwise the join code session.
+     *
+     * Both are accepted by the server and resolve to the same permissions, so the order
+     * here is a preference rather than a requirement: the account is the credential the
+     * project is moving TO, and it refreshes itself rather than expiring after 30 days. */
+    const token = accountToken || loadSessionToken();
     let res;
     try {
       res = await fetch(apiPath, {
@@ -219,8 +247,73 @@ export function createSupabaseStore(config) {
     async logout() {
       const r = await call("logout", {});
       saveSessionToken(null);
+      // Sign out of BOTH, or "log out" leaves an account session behind and the next
+      // visit silently signs itself back in - which looks exactly like a broken logout.
+      accountToken = null;
+      try {
+        await sb.auth.signOut();
+      } catch {
+        /* already signed out, or offline: the local token is gone either way */
+      }
       return r;
     },
+
+    /* ----------------------------- accounts ------------------------------ */
+
+    /**
+     * Send a magic link. Chosen over passwords deliberately: nothing to store, no reset
+     * flow to build, and it suits a dozen people who sign in a few times a season.
+     */
+    async signInWithEmail(email, redirectTo = null) {
+      const { error } = await sb.auth.signInWithOtp({
+        email: String(email || "").trim(),
+        options: {
+          emailRedirectTo: redirectTo || globalThis.location?.origin,
+          // Nobody is created by typing an address here. An account only becomes a
+          // MEMBER by linking against a join-code session, so a stray sign-up is inert
+          // - but not creating one at all keeps the user table honest.
+          shouldCreateUser: true,
+        },
+      });
+      if (error) return { ok: false, reason: "invalid", message: error.message };
+      return { ok: true };
+    },
+
+    /** @returns {{email, userId}|null} - the signed-in account, if any. */
+    async getAccount() {
+      const { data } = await sb.auth.getUser();
+      if (!data?.user) return null;
+      return { email: data.user.email, userId: data.user.id };
+    },
+
+    /**
+     * Attach the signed-in account to the membership this device already holds.
+     * Sends the join-code session EXPLICITLY, because `call` would otherwise prefer the
+     * account token - and the server needs the code session to know what role to grant.
+     */
+    async linkAccount(displayName = null) {
+      const codeToken = loadSessionToken();
+      if (!codeToken) {
+        return { ok: false, reason: "invalid", message: "Log in with your join code first." };
+      }
+      if (!accountToken) {
+        return { ok: false, reason: "invalid", message: "Sign in with your email first." };
+      }
+      const res = await fetch(apiPath, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + codeToken },
+        body: JSON.stringify({
+          action: "linkAccount",
+          params: { leagueId, accountToken, displayName },
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.ok) return { ...body, ok: true };
+      return { ok: false, reason: "invalid", message: body.error || "Could not connect that account." };
+    },
+
+    /** What the server says this credential is - the only authority on an account's role. */
+    whoami: () => call("whoami", {}),
 
     /* ------------------------------- writes ------------------------------ */
     setStatLine: (teamId, slot, line, expect) => call("setStatLine", { teamId, slot, line, expect }),

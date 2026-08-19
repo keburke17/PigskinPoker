@@ -27,6 +27,9 @@ const SEED_PATH = path.resolve(
 );
 
 let db, available = false, skipReason = "", leagueId = null;
+/* Phase 3c needs a BROWSER-side client too: accounts sign in with the publishable key,
+ * not the secret one, exactly as a real visitor would. */
+let dbUrl = null, dbPublishable = null;
 const T1 = "demo_team_1";
 const T2 = "demo_team_2";
 
@@ -37,7 +40,7 @@ function localEnv() {
       timeout: 120000,
     }).toString();
     const get = (k) => (out.match(new RegExp("^" + k + '="?([^"\n]+)"?$', "m")) || [])[1];
-    return { url: get("API_URL"), secret: get("SECRET_KEY") };
+    return { url: get("API_URL"), secret: get("SECRET_KEY"), publishable: get("PUBLISHABLE_KEY") || get("ANON_KEY") };
   } catch (e) {
     skipReason = "supabase status failed: " + e.message;
     return null;
@@ -51,6 +54,8 @@ async function setup() {
     return;
   }
   db = createClient(env.url, env.secret, { auth: { persistSession: false } });
+  dbUrl = env.url;
+  dbPublishable = env.publishable;
   const { data, error } = await db
     .from("leagues").select("id").eq("name", "Pigskin Poker (Demo League)").maybeSingle();
   if (error || !data) {
@@ -671,5 +676,147 @@ gate()("OQ-E: stats cannot be entered while the roster is unlocked", () => {
     expect(relocked.body.view.rosterLocked).toBe(true);
     const accepted = await ops.setStatLine(db, { leagueId, token, teamId: T1, slot: "QB", line });
     expect(accepted.status).toBe(200);
+  });
+});
+
+/* ============================================================================
+ *  PHASE 3b + 3c - accounts, and the fact that BOTH credentials work at once.
+ *
+ *  The property under test throughout is coexistence. If any of these fail by
+ *  breaking join-code login, the migration is not "by invitation" any more - it
+ *  is a forced cutover, which is the one thing the plan rules out.
+ * ==========================================================================*/
+
+/** Create a confirmed account and return a usable access token for it. */
+async function makeAccount(email) {
+  // admin.createUser with email_confirm skips the mail round trip; the magic-link
+  // flow itself is exercised in the browser, not here.
+  await db.auth.admin.createUser({ email, password: "test-password-123", email_confirm: true });
+  const anonClient = createClient(dbUrl, dbPublishable, { auth: { persistSession: false } });
+  const { data, error } = await anonClient.auth.signInWithPassword({
+    email, password: "test-password-123",
+  });
+  if (error) throw new Error("could not sign in test account: " + error.message);
+  return { token: data.session.access_token, userId: data.user.id };
+}
+
+const wipeAccounts = async () => {
+  const { data } = await db.auth.admin.listUsers();
+  for (const u of data?.users ?? []) await db.auth.admin.deleteUser(u.id);
+};
+
+gate()("accounts: linking one to an existing membership", () => {
+  beforeEach(async () => { resetDemo(); await clearThrottle(); await wipeAccounts(); });
+
+  it("mints a league_members row from the join-code session the caller already holds", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const { token: jwt, userId } = await makeAccount("manager1@example.test");
+
+    const r = await ops.linkAccount(db, { leagueId, token: mgr, accountToken: jwt });
+    expect(r.status).toBe(200);
+    expect(r.body.linked).toBe(true);
+    expect(r.body.alreadyMember).toBe(false);
+
+    const { data: member } = await db
+      .from("league_members").select("role, team_id").eq("user_id", userId).single();
+    expect(member.role).toBe("manager");
+
+    // The role and team come from the SESSION, never from the request body.
+    const { data: team } = await db
+      .from("teams").select("id").eq("legacy_id", T1).eq("league_id", leagueId).single();
+    expect(member.team_id).toBe(team.id);
+  });
+
+  it("is idempotent - linking twice does not make a second membership", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const { token: jwt, userId } = await makeAccount("manager2@example.test");
+
+    await ops.linkAccount(db, { leagueId, token: mgr, accountToken: jwt });
+    const second = await ops.linkAccount(db, { leagueId, token: mgr, accountToken: jwt });
+    expect(second.status).toBe(200);
+    expect(second.body.alreadyMember).toBe(true);
+
+    const { data } = await db.from("league_members").select("id").eq("user_id", userId);
+    expect(data).toHaveLength(1);
+  });
+
+  it("refuses to link without a join-code session - an account cannot grant itself a role", async () => {
+    const { token: jwt } = await makeAccount("nobody@example.test");
+    // Passing the JWT as both credentials is the circular case: the thing being granted
+    // a role would be authorizing the grant.
+    const r = await ops.linkAccount(db, { leagueId, token: jwt, accountToken: jwt });
+    expect(r.status).toBe(401);
+
+    const { data } = await db.from("league_members").select("id");
+    expect(data).toHaveLength(0);
+  });
+
+  it("does not demote a commissioner who happens to hold a manager code", async () => {
+    // Changing someone's role is an administrative act, not a side effect of logging in.
+    const comm = await asCommissioner();
+    const { token: jwt, userId } = await makeAccount("boss@example.test");
+    await ops.linkAccount(db, { leagueId, token: comm, accountToken: jwt });
+
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const again = await ops.linkAccount(db, { leagueId, token: mgr, accountToken: jwt });
+    expect(again.body.role).toBe("commissioner");
+
+    const { data } = await db
+      .from("league_members").select("role").eq("user_id", userId).single();
+    expect(data.role).toBe("commissioner");
+  });
+});
+
+gate()("accounts: signing in with one, afterwards", () => {
+  beforeEach(async () => { resetDemo(); await clearThrottle(); await wipeAccounts(); });
+
+  it("a linked account authorizes exactly what the join code did", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const { token: jwt } = await makeAccount("manager3@example.test");
+    await ops.linkAccount(db, { leagueId, token: mgr, accountToken: jwt });
+
+    // Same operation, same permissions, different credential entirely.
+    const r = await ops.swapLineupSlot(db, { leagueId, token: jwt, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(r.status).not.toBe(401);
+    expect(r.status).not.toBe(403);
+  });
+
+  it("and is still confined to its own team", async () => {
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const { token: jwt } = await makeAccount("manager4@example.test");
+    await ops.linkAccount(db, { leagueId, token: mgr, accountToken: jwt });
+
+    const r = await ops.swapLineupSlot(db, { leagueId, token: jwt, teamId: T2, slot: "QB", benchIndex: 0 });
+    expect(r.status).toBe(403);
+  });
+
+  it("a valid account with no membership in this league is nobody here", async () => {
+    /* Supabase says who you are; league_members says what you may do. A real,
+     * signed-in, perfectly valid account that nobody invited must get nothing - this is
+     * the separation that makes multi-league possible without leaking across leagues. */
+    const { token: jwt } = await makeAccount("stranger@example.test");
+    const r = await ops.swapLineupSlot(db, { leagueId, token: jwt, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(r.status).toBe(401);
+  });
+
+  it("a forged or expired JWT gets nothing", async () => {
+    const junk = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJoYWNrZXIifQ.not-a-real-signature";
+    const r = await ops.swapLineupSlot(db, { leagueId, token: junk, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(r.status).toBe(401);
+  });
+
+  it("THE JOIN CODE STILL WORKS after the account exists", async () => {
+    /* The whole migration rests on this. If linking an account quietly retired the
+     * code, this would be a forced cutover wearing an invitation's clothes. */
+    const mgr = await asManager(T1, "DEMO-TEAM-1");
+    const { token: jwt } = await makeAccount("manager5@example.test");
+    await ops.linkAccount(db, { leagueId, token: mgr, accountToken: jwt });
+
+    const fresh = await ops.loginManager(db, { leagueId, teamLegacyId: T1, code: "DEMO-TEAM-1" });
+    expect(fresh.status).toBe(200);
+    const r = await ops.swapLineupSlot(db, {
+      leagueId, token: fresh.body.token, teamId: T1, slot: "QB", benchIndex: 0,
+    });
+    expect(r.status).not.toBe(401);
   });
 });

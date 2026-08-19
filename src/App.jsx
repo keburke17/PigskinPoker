@@ -16,7 +16,7 @@
  *   - the commissioner-driven weekly flow.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
 import { saveSessionToken } from "./storage/supabase.js";
 import { useLeague } from "./hooks/useLeague.js";
@@ -29,7 +29,7 @@ import {
   POSITIONS,
   SUIT_CH,
 } from "./engine/index.js";
-import { EmptyState, ErrorBanner, SaveStatusBar } from "./components/atoms.jsx";
+import { AccountBar, EmptyState, ErrorBanner, SaveStatusBar } from "./components/atoms.jsx";
 import { LoginScreen } from "./components/LoginScreen.jsx";
 import { LeagueHomeTab } from "./components/LeagueHomeTab.jsx";
 import { MyTeamTab } from "./components/MyTeamTab.jsx";
@@ -98,6 +98,89 @@ export default function App() {
   const [loginError, setLoginError] = useState(null);
   const [restoreError, setRestoreError] = useState(null);
   const [tab, setTab] = useState("home");
+  /* The signed-in ACCOUNT, if there is one. Separate from `identity` on purpose:
+   * identity is "what may this device do here", which a join code can answer on its
+   * own; this is "who is the person", which only an account can. */
+  const [account, setAccount] = useState(null);
+  const [accountChecked, setAccountChecked] = useState(false);
+  const [linkNotice, setLinkNotice] = useState(null);
+
+  /* Pick up an account session on load - either restored from a previous visit, or
+   * just arrived from a magic link, which the Supabase client strips out of the URL.
+   *
+   * The ROLE is asked of the server rather than remembered locally. A join code answers
+   * "which team" by itself, because the code was for exactly one team; an account is
+   * just a person until league_members is consulted, and that answer is the server's to
+   * give. Getting this wrong would mean a stale localStorage identity deciding what UI
+   * someone sees. */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!store.getAccount) { setAccountChecked(true); return; }
+      try {
+        const acct = await store.getAccount();
+        if (cancelled) return;
+        setAccount(acct);
+        if (acct && store.whoami) {
+          let me = await store.whoami();
+          if (cancelled) return;
+
+          /* Signed in with an account that is not a member of this league yet. The
+           * ordinary way to arrive here is having JUST come back from a magic link that
+           * was requested by pressing "Connect" - so finish the job that was already
+           * asked for, rather than showing the same prompt again to someone who has
+           * done everything right.
+           *
+           * linkAccount needs a join-code session on this device and refuses without
+           * one, so a stranger who signs in with an address nobody invited still gets
+           * nothing. Failure here is not an error worth showing: it just means there is
+           * no membership to connect, and the login screen already explains that. */
+          if ((!me?.ok || !me.role) && store.linkAccount) {
+            const linked = await store.linkAccount();
+            if (cancelled) return;
+            if (linked?.ok) me = await store.whoami();
+            if (cancelled) return;
+          }
+          if (me?.ok && me.role) setIdentity({ role: me.role, teamId: me.teamId ?? null });
+        }
+      } catch {
+        /* Offline, or auth unreachable. The join-code path still works, so this must
+         * never block the app - it just means no account was detected. */
+      } finally {
+        if (!cancelled) setAccountChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [store, setIdentity]);
+
+  /* Signed in by code, with an account attached, but not yet joined up. This is the
+   * "migration by invitation" moment: it is offered, never forced, and declining it
+   * costs nothing. */
+  const onLinkAccount = async () => {
+    setLinkNotice(null);
+    const r = await store.linkAccount?.();
+    if (!r || r.ok === false) {
+      setLinkNotice({ bad: true, text: r?.message || "Could not connect that account." });
+      return;
+    }
+    setLinkNotice({
+      bad: false,
+      text: r.alreadyMember
+        ? "That email is already connected to this league."
+        : "Connected. Next time you can just sign in with your email - the join code still works too.",
+    });
+  };
+
+  const onSignInWithEmail = async (email) => {
+    setLoginError(null);
+    if (!store.signInWithEmail) {
+      setLoginError("Email sign-in needs the hosted database - it is not available in the demo.");
+      return { ok: false };
+    }
+    const r = await store.signInWithEmail(email);
+    if (!r.ok) setLoginError(r.message || "Could not send that sign-in link.");
+    return r;
+  };
 
   const saveStatus = saveState.status;
   const lastSavedAt = saveState.lastSavedAt;
@@ -388,7 +471,15 @@ export default function App() {
   if (!identity.role) {
     return (
       <div className="pp-root">
-        <LoginScreen state={state} onCommissionerLogin={onCommissionerLogin} onManagerLogin={onManagerLogin} loginError={loginError} setLoginError={setLoginError} />
+        <LoginScreen
+          state={state}
+          onCommissionerLogin={onCommissionerLogin}
+          onManagerLogin={onManagerLogin}
+          onSignInWithEmail={onSignInWithEmail}
+          accountsAvailable={!!store.signInWithEmail}
+          loginError={loginError}
+          setLoginError={setLoginError}
+        />
       </div>
     );
   }
@@ -418,6 +509,15 @@ export default function App() {
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLogout}>Log Out</button>
           </div>
           <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} onSaveNow={saveNow} />
+          <AccountBar
+            account={account}
+            accountChecked={accountChecked}
+            available={!!store.signInWithEmail}
+            notice={linkNotice}
+            onLink={onLinkAccount}
+            onSignInWithEmail={onSignInWithEmail}
+            onDismissNotice={() => setLinkNotice(null)}
+          />
           {conflict ? (
             <ErrorBanner
               message={{

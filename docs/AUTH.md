@@ -162,6 +162,95 @@ Supabase stack** - check the skip count before believing a pass.
   well before the cap. A commissioner "sign out devices" action per team covers the lost
   phone, where the code is fine and only the live sessions are the problem.
 
+## Phase 3b + 3c - accounts
+
+The inversion begins here, and it begins **additively**. Nothing was switched over.
+
+### The two credentials, one answer
+
+`verifySession()` is the hinge. It accepts either a join-code session token or a
+Supabase access token and resolves both to the same `{leagueId, role, teamId}`, so
+nothing in `server/operations.js` knows there are two kinds of sign-in at all.
+
+Which one a request is carrying is decided on **shape** - a JWT is three dot-separated
+segments, a session token is 64 hex characters - rather than by trying one lookup and
+falling back to the other, which would cost a wasted round trip on every request.
+
+| | Join code | Account |
+|---|---|---|
+| Who you are | whoever holds the team's code | a person |
+| Where the role lives | the `sessions` row | `league_members` |
+| Verified by | scrypt hash comparison here | Supabase, then `league_members` |
+| Expiry | 30 days absolute, 14 days idle | refreshes itself |
+
+**The role never comes from the token.** Supabase says who you are; `league_members`
+says what you may do. A perfectly valid account that nobody invited is correctly nobody
+in this league - which is what will make multi-league safe in 3d.
+
+Verification is delegated to Supabase rather than done locally with the JWT secret.
+Checking a signature here would miss the things that matter in practice - a revoked
+session, a deleted user, a rotated key - for the sake of saving a round trip.
+
+### Migration by invitation
+
+`linkAccount` is the whole migration, and it needs **both** credentials at once:
+
+- the **join-code session** proves what you are allowed to be (this league, this role,
+  this team). The membership is minted from the session, never from the request body.
+- the **account token** proves who you are.
+
+An account therefore cannot grant itself a role, which is the obvious attack and is
+asserted in `tests/server.test.js`. It is idempotent - `unique (league_id, user_id)`
+makes that a guarantee rather than a matter of getting a check-then-insert right - and it
+will not rewrite an existing role, so a commissioner who happens to hold a manager's join
+code is not demoted by signing in.
+
+In the app this is one prompt, after you are already in: *"Connect your email so you do
+not need the join code on every device."* It can be ignored forever. Coming back from the
+magic link completes the link automatically, because pressing Connect and then opening
+the emailed link is consent enough - asking again at that point would be asking someone
+who has already done everything right.
+
+**The join code keeps working afterwards.** That is asserted directly, because if it ever
+stopped, this would be a forced cutover wearing an invitation's clothes. Code-as-login is
+switched off only when everyone has an account, at a season boundary, never mid-season.
+
+### Who can read what
+
+`profiles` and `league_members` are the first tables in the schema about **people** rather
+than about the game, so read access is narrow: a signed-in person sees their own rows and
+nothing else, and `anon` gets no grant at all. A signed-out visitor can still read the
+standings; they cannot enumerate who belongs to which league.
+
+Both policies are scoped to `auth.uid()` alone rather than asking "is the reader a member
+of this league?" - that question queries `league_members` from inside `league_members`'
+own policy and recurses. The app reads teams, not memberships, so nothing is lost.
+
+Every write still goes through the Netlify function. Direct RLS-governed writes become
+possible now that there are real JWTs, but that is an optimization, not a correctness fix.
+
+### The operational dependency - READ THIS BEFORE DEPLOYING
+
+Magic links are only as good as the email behind them, and this is the part that is not
+done by code:
+
+1. **SMTP.** Supabase's built-in sender is rate limited and **not intended for
+   production** - it throttles silently, which is the worst possible failure mode for a
+   login. Resend's SMTP credentials go in the Supabase dashboard under Authentication ->
+   Emails, and the sending domain needs its DNS records verified the same way the site's
+   did. Locally this is a non-issue: the stack captures every message at
+   <http://127.0.0.1:54324>.
+2. **Redirect URLs.** The hosted project needs its Site URL and additional redirect URLs
+   set in the dashboard (Authentication -> URL Configuration). An address that is not
+   listed is rejected outright, and it looks like a broken link rather than a
+   misconfiguration. `supabase/config.toml` configures only the local stack.
+
+Both are one-time. The same SMTP setup is exactly what OQ-6 notifications would need, so
+doing it here turns "rosters are dealt - submit your scheme" into a feature rather than an
+infrastructure project.
+
+---
+
 ### What is still deliberately weak
 
 - **`sessions` is hand-rolled.** It is small - a hashed token, a role, an expiry, a last

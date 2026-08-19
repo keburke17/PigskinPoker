@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import { execSync } from "node:child_process";
 
@@ -23,12 +23,16 @@ function localEnv() {
   }
 }
 
+let urlForTests = null, publishableForTests = null;
+
 async function setup() {
   const env = localEnv();
   if (!env?.url || !env.publishable || !env.secret) {
     skipReason = skipReason || "local Supabase env incomplete";
     return;
   }
+  urlForTests = env.url;
+  publishableForTests = env.publishable;
   anon = createClient(env.url, env.publishable, { auth: { persistSession: false } });
   secret = createClient(env.url, env.secret, { auth: { persistSession: false } });
 
@@ -206,5 +210,93 @@ gate()("RLS: what it can NOT write - the whole write-security model", () => {
     const { data } = await secret.from("stat_lines")
       .select("yards").eq("period_id", ids.period).eq("slot", "QB").single();
     expect(data.yards).toBe(10);
+  });
+});
+
+/* ============================================================================
+ *  PHASE 3b - profiles and league_members.
+ *
+ *  These are the first tables in the schema that are about PEOPLE rather than
+ *  about the game, so "who can read this" stops being a formality. A signed-in
+ *  person may see who they are and what they belong to. Nothing else, and a
+ *  signed-out visitor sees none of it.
+ * ==========================================================================*/
+
+gate()("RLS: profiles and league_members", () => {
+  let userA = null, userB = null, clientA = null;
+
+  const makeUser = async (email) => {
+    const { data } = await secret.auth.admin.createUser({
+      email, password: "rls-test-password-123", email_confirm: true,
+    });
+    return data.user;
+  };
+
+  beforeAll(async () => {
+    if (!available) return;
+    userA = await makeUser("rls-a-" + ids.league + "@example.test");
+    userB = await makeUser("rls-b-" + ids.league + "@example.test");
+
+    await secret.from("profiles").insert([
+      { user_id: userA.id, display_name: "Reader A" },
+      { user_id: userB.id, display_name: "Someone Else B" },
+    ]);
+    await secret.from("league_members").insert([
+      { league_id: ids.league, user_id: userA.id, role: "commissioner" },
+      { league_id: ids.league, user_id: userB.id, role: "manager", team_id: ids.team },
+    ]);
+
+    clientA = createClient(urlForTests, publishableForTests, { auth: { persistSession: false } });
+    await clientA.auth.signInWithPassword({
+      email: "rls-a-" + ids.league + "@example.test", password: "rls-test-password-123",
+    });
+  });
+
+  afterAll(async () => {
+    if (!available) return;
+    for (const u of [userA, userB]) if (u) await secret.auth.admin.deleteUser(u.id);
+  });
+
+  it("a SIGNED-OUT visitor cannot read profiles or memberships at all", async () => {
+    // These tables get no grant to anon whatsoever - being about people, not the game.
+    for (const table of ["profiles", "league_members"]) {
+      const { data, error } = await anon.from(table).select("*");
+      expect(error ? true : data.length === 0).toBe(true);
+      expect(JSON.stringify(data ?? [])).not.toMatch(/Someone Else B/);
+    }
+  });
+
+  it("a signed-in person reads their OWN profile and nobody else's", async () => {
+    const { data, error } = await clientA.from("profiles").select("user_id, display_name");
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+    expect(data[0].display_name).toBe("Reader A");
+  });
+
+  it("a signed-in person reads their OWN membership and nobody else's", async () => {
+    /* Deliberately narrow. A policy asking "is the reader a member of this league?"
+     * would query league_members from inside league_members' own policy and recurse;
+     * scoping to auth.uid() sidesteps that, and the app reads teams rather than
+     * memberships so nothing is lost. */
+    const { data, error } = await clientA.from("league_members").select("user_id, role");
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+    expect(data[0].user_id).toBe(userA.id);
+    expect(data[0].role).toBe("commissioner");
+  });
+
+  it("a signed-in person cannot INSERT a membership for themselves", async () => {
+    // Self-promotion is the obvious attack: every write goes through the function.
+    const { error } = await clientA.from("league_members").insert({
+      league_id: ids.league, user_id: userA.id, role: "commissioner",
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("a signed-in person cannot UPGRADE their own role", async () => {
+    await clientA.from("league_members").update({ role: "commissioner" }).eq("user_id", userB.id);
+    const { data } = await secret
+      .from("league_members").select("role").eq("user_id", userB.id).single();
+    expect(data.role).toBe("manager"); // unchanged
   });
 });

@@ -107,9 +107,38 @@ export async function createSession(db, { leagueId, role, teamId = null }) {
   return { token, expiresAt };
 }
 
-/** @returns {{leagueId, role, teamId}|null} */
-export async function verifySession(db, token) {
+/**
+ * Resolve EITHER credential to the same answer.
+ *
+ * This is the hinge of the whole accounts migration. A join-code session token and a
+ * Supabase JWT are completely different objects, but every caller downstream only wants
+ * to know {leagueId, role, teamId} - so this is the one place that has to know there
+ * are two kinds of sign-in at all. Nothing in server/operations.js changes.
+ *
+ * That is what lets the league carry on typing codes while people move to accounts one
+ * at a time, at whatever pace they like, instead of everyone being cut over on a
+ * Tuesday. Code-as-login is switched off only when everyone has an account, at a season
+ * boundary.
+ *
+ * @param {string} token   a join-code session token, or a Supabase access token
+ * @param {object} [opts]
+ * @param {string} [opts.leagueId]  which league the caller is asking about. Required to
+ *   resolve a JWT, because an account's role lives on league_members and a person can
+ *   be a commissioner in one league and a manager in another.
+ * @returns {{leagueId, role, teamId, userId}|null}
+ */
+export async function verifySession(db, token, { leagueId = null } = {}) {
   if (!token || typeof token !== "string") return null;
+  /* Which kind of credential is this? Decided on SHAPE rather than by trying one lookup
+   * and falling back to the other: a JWT is three base64url segments separated by dots,
+   * a session token is 64 hex characters, and neither can be mistaken for the other.
+   * Guessing wrong costs a wasted round trip on every single request. */
+  if (token.includes(".")) return verifyAccountToken(db, token, leagueId);
+  return verifyCodeSession(db, token);
+}
+
+/** The Phase 2c credential: a random token, stored only as its SHA-256. */
+async function verifyCodeSession(db, token) {
   const hash = tokenHash(token);
   const { data, error } = await db
     .from("sessions")
@@ -136,7 +165,41 @@ export async function verifySession(db, token) {
     await db.from("sessions").update({ last_used_at: new Date(now).toISOString() }).eq("token_hash", hash);
   }
 
-  return { leagueId: data.league_id, role: data.role, teamId: data.team_id };
+  return { leagueId: data.league_id, role: data.role, teamId: data.team_id, userId: null };
+}
+
+/* The Phase 3c credential: a real account.
+ *
+ * Verification is delegated to Supabase rather than done here with the JWT secret.
+ * Checking a signature locally would miss the things that actually matter in practice -
+ * a revoked session, a deleted user, a rotated signing key - and would be one more
+ * piece of security-critical code to keep correct. The cost is a round trip; the
+ * benefit is that revocation works.
+ *
+ * The ROLE does not come from the token. Supabase says who you are; league_members says
+ * what you may do, which is the separation that makes multi-league possible at all. A
+ * valid account with no membership in this league is correctly nobody here. */
+async function verifyAccountToken(db, token, leagueId) {
+  if (!leagueId) return null; // cannot resolve a role without knowing the league
+
+  const { data, error } = await db.auth.getUser(token);
+  const user = data?.user;
+  if (error || !user) return null;
+
+  const { data: member } = await db
+    .from("league_members")
+    .select("league_id, role, team_id")
+    .eq("user_id", user.id)
+    .eq("league_id", leagueId)
+    .maybeSingle();
+  if (!member) return null;
+
+  return {
+    leagueId: member.league_id,
+    role: member.role,
+    teamId: member.team_id,
+    userId: user.id,
+  };
 }
 
 export async function destroySession(db, token) {

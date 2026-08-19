@@ -8,11 +8,13 @@ import { useState } from "react";
 import { SUIT_CH } from "../engine/index.js";
 import { ErrorBanner } from "./atoms.jsx";
 
-export function LoginScreen({ state, onCommissionerLogin, onManagerLogin, loginError, setLoginError }) {
-  const [mode, setMode] = useState(null); // 'commish' | 'manager'
+export function LoginScreen({ state, onCommissionerLogin, onManagerLogin, onSignInWithEmail, accountsAvailable, loginError, setLoginError }) {
+  const [mode, setMode] = useState(null); // 'commish' | 'manager' | 'email'
   const [code, setCode] = useState("");
   const [teamId, setTeamId] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
 
   const hasCode = !!state.commissionerCodeSet;
 
@@ -33,6 +35,71 @@ export function LoginScreen({ state, onCommissionerLogin, onManagerLogin, loginE
             <button className="pp-btn pp-btn-block" onClick={() => { setMode("commish"); setLoginError(null); }}>
               I'm the Commissioner
             </button>
+            {/* An ADDITION beside the code boxes, never a replacement. Anyone who has
+                not connected an email yet must still find the door they already know
+                exactly where it was. */}
+            {accountsAvailable ? (
+              <>
+                <div className="pp-or">or</div>
+                <button className="pp-btn pp-btn-ghost pp-btn-block" onClick={() => { setMode("email"); setLoginError(null); }}>
+                  Sign in with email
+                </button>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {mode === "email" && (
+          <div className="pp-card">
+            <h3 className="pp-h3">Sign In With Email</h3>
+            {sent ? (
+              <>
+                <p className="pp-sub">
+                  Check your email - we sent a sign-in link to <strong>{email}</strong>. Open it on
+                  this device and you will be signed straight in. The link works once.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="pp-btn pp-btn-ghost" onClick={() => { setSent(false); setMode(null); }}>Back</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="pp-sub" style={{ marginBottom: 10 }}>
+                  No password. We email you a link and you tap it.
+                </p>
+                <div className="pp-field">
+                  <label className="pp-label">Email</label>
+                  <input
+                    className="pp-input"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                  />
+                </div>
+                {/* Said up front rather than discovered as a failure. An account is only
+                    connected to a team by redeeming a join code once, so signing in with
+                    an address nobody has connected lands you nowhere. */}
+                <div className="pp-hint">
+                  First time? Log in with your team&apos;s join code, then connect your email
+                  from inside - after that this is all you need.
+                </div>
+                {loginError ? <ErrorBanner message={loginError} onDismiss={() => setLoginError(null)} /> : null}
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    className="pp-btn pp-btn-gold"
+                    disabled={!email.trim()}
+                    onClick={async () => {
+                      const r = await onSignInWithEmail(email);
+                      if (r?.ok) setSent(true);
+                    }}
+                  >
+                    Email Me A Link
+                  </button>
+                  <button className="pp-btn pp-btn-ghost" onClick={() => setMode(null)}>Back</button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

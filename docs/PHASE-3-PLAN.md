@@ -1,7 +1,16 @@
 # Phase 3 - plan
 
-Status: **3a is BUILT and green.** 3b+3c and 3d remain agreed and unstarted; 3e is held
-for the designer.
+Status: **3a and 3b+3c are BUILT and green.** 3d remains agreed and unstarted; 3e is
+held for the designer.
+
+3b+3c shipped as planned: `profiles` and `league_members`, `verifySession()` accepting
+either credential, magic-link sign-in beside the code box, and migration by invitation.
+Driven end to end against the local stack - code login, connect email, magic link, sign
+in with email alone, and the join code still working afterwards.
+
+**Before it can be deployed**, the hosted project needs SMTP (Resend) and its redirect
+URLs configured in the Supabase dashboard. Neither is a code change and neither can be
+done from here; `docs/AUTH.md` has the specifics under "the operational dependency".
 
 3a shipped as described below, with two differences worth recording:
 
@@ -116,12 +125,12 @@ behaviour for valid input does not change, and only the server rejects input the
 never have produced.
 
 *Verification:* every one of these lands in `tests/server.test.js` / `tests/rls.test.js`,
-which **skip silently without a local Supabase stack** (86 of 217 tests after 3a). Check
+which **skip silently without a local Supabase stack** (100 of 231 tests after 3b/3c). Check
 the skip count, not the pass.
 
 ---
 
-### 3b + 3c - Membership and real accounts (**agreed**)
+### 3b + 3c - Membership and real accounts **[DONE]**
 
 These ship together or not at all. `league_members` with no accounts to populate it is
 dead schema, and accounts without it have nowhere to record a role.
@@ -334,7 +343,7 @@ Destructive reset stays, renamed to what it is.
 | | Slice | Depends on | Rough size |
 |---|---|---|---|
 | 1 | 3a hardening | nothing (bar two rule confirmations) | **done** |
-| 2 | 3b + 3c accounts | Resend account and verified sending domain | ~2-3 sessions |
+| 2 | 3b + 3c accounts | Resend account and verified sending domain | **done** (bar the SMTP setup, which is not code) |
 | 3 | 3d multi-league | 3c | ~3-4 sessions - it grew: invites, redemption, landing page, routing, RLS rewrite |
 | - | 3e season archive | **held for the designer** | not this phase |
 

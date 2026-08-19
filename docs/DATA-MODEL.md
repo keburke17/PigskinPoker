@@ -422,7 +422,53 @@ create table auth_throttle (
   updated_at   timestamptz not null default now()
 );
 create index on auth_throttle (updated_at);   -- pruning scans by age
+
+-- Phase 3b. Accounts. auth.users is NOT shadowed - Supabase owns that table, and
+-- adding columns to it is the standard way to get hurt on an upgrade.
+--
+-- `profiles` is deliberately almost empty: the email lives in auth.users where
+-- Supabase manages it, and duplicating it here would be a second source of truth
+-- for something this schema does not own.
+create table profiles (
+  user_id      uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  created_at   timestamptz not null default now()
+);
+
+-- Where authorization moves to. Commissioner is a ROLE ON THIS ROW rather than a
+-- different kind of login, which is what makes "commissioner of one league,
+-- manager in another" expressible at all - single-code auth literally cannot
+-- represent it, because the code IS the identity.
+--
+-- `role` mirrors the check on sessions.role on purpose: verifySession resolves
+-- both credentials to the same shape, so the two vocabularies must not drift.
+create table league_members (
+  id         uuid primary key default gen_random_uuid(),
+  league_id  uuid not null references leagues(id) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  role       text not null check (role in ('commissioner','manager')),
+  team_id    uuid references teams(id) on delete set null,  -- null for a commissioner
+  created_at timestamptz not null default now(),
+  -- Redeeming an invitation twice must be a no-op, not a second membership.
+  unique (league_id, user_id),
+  check (role = 'commissioner' or team_id is not null)
+);
+create index on league_members (league_id);
+create index on league_members (user_id);
 ```
+
+**A third grant category, from Phase 3b.** `profiles` and `league_members` are the first
+tables here about PEOPLE rather than about the game, and they fit neither existing
+category: `anon` gets nothing (a signed-out visitor must not be able to enumerate who
+belongs to which league), while `authenticated` gets `SELECT`, narrowed further by an RLS
+policy scoped to `auth.uid()`. `scripts/verify-grants.mjs` checks them as their own group
+for exactly that reason - filing them under the readable tables would assert `anon` can
+read them, and filing them under the secrets would assert nobody can.
+
+Both policies are scoped to `auth.uid()` rather than asking "is the reader a member of
+this league?". That question queries `league_members` from inside `league_members`' own
+policy and recurses; scoping to the reader sidesteps it, and the app reads teams rather
+than memberships so nothing is lost.
 
 ---
 
@@ -457,6 +503,8 @@ alter table league_secrets enable row level security;   -- and NO policy, ever
 alter table team_secrets   enable row level security;   -- and NO policy, ever
 alter table sessions       enable row level security;   -- and NO policy, ever
 alter table auth_throttle  enable row level security;   -- and NO policy, ever
+alter table profiles       enable row level security;   -- own row only
+alter table league_members enable row level security;   -- own row only
 
 -- Public-readable league state. `anon` here is the PostgREST role the
 -- publishable key authenticates as; the key format is new, the role name is not.

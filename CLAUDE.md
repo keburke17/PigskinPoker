@@ -129,7 +129,7 @@ never talk to each other; only migrations cross, and only when someone runs `db 
 npm test
 ```
 
-217 tests. Three groups worth knowing about:
+231 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -138,7 +138,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (`npx supabase start`) and **skip themselves silently without it** - 86 of the 217
+  (`npx supabase start`) and **skip themselves silently without it** - 100 of the 231
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -190,7 +190,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 
 | | |
 |---|---|
-| **Real accounts** | Join codes only. `docs/AUTH.md` has the migration path; the schema is ready for it. |
+| **Real accounts** | Built (Phase 3b/3c) - magic-link sign-in runs *beside* join codes, and codes still work. Not yet switched off; that happens at a season boundary. Needs SMTP configured on the hosted project - see `docs/AUTH.md`. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
 | **Routing** | Navigation is component state. No deep links, no back button. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |

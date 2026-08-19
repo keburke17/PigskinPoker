@@ -463,6 +463,18 @@ export function createMemoryStore(initialDb, opts = {}) {
       return { ok: true };
     },
 
+    /* ----------------------------- accounts ------------------------------ */
+
+    /* Accounts need a real auth provider, and this adapter deliberately has no backend
+     * at all - that is what makes it boot with no configuration. Rather than pretend,
+     * these say plainly that the feature is not available here, and the UI hides the
+     * email door when `signInWithEmail` is missing. Faking a magic link would be worse
+     * than not offering one: it would make the demo diverge from production in exactly
+     * the area where being sure matters most. */
+    async getAccount() {
+      return null;
+    },
+
     /* No sessions exist in the in-memory adapter - login is a local comparison and
      * there is nothing persisted to revoke - so this is honestly a no-op rather than a
      * missing method. It exists so the commissioner UI does not have to ask which

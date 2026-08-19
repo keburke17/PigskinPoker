@@ -25,6 +25,8 @@ const ROUTES = {
   loginCommissioner: (db, p) => ops.loginCommissioner(db, p),
   loginManager: (db, p) => ops.loginManager(db, p),
   logout: (db, p) => ops.logout(db, p),
+  linkAccount: (db, p) => ops.linkAccount(db, p),
+  whoami: (db, p) => ops.whoami(db, p),
 
   setStatLine: (db, p) => ops.setStatLine(db, p),
   swapLineupSlot: (db, p) => ops.swapLineupSlot(db, p),
