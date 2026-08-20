@@ -24,60 +24,33 @@
 --      login", and so the team picker could show which teams were joinable. No screen
 --      asks either question now.
 --
---  THIS IS DESTRUCTIVE AND FORWARD-ONLY. It drops the credentials people currently sign
---  in with, so applying it signs everybody out; they get back in through an invitation.
---  That is acceptable here only because every deployed league is test data due to be
---  wiped - see docs/AUTH.md. Onboarding a real league from codes would need an
---  invitation sent to each member BEFORE this runs.
--- ============================================================================
-
--- ---------------------------------------------------------------------------
---  FIRST: remove leagues that this change would strand.
+--  THIS IS FORWARD-ONLY, and applying it SIGNS EVERYBODY OUT: the credentials people
+--  hold today stop existing, and they get back in through an invitation.
 --
---  Authorization is a `league_members` row from here on. A league with no member
---  holding the `commissioner` role cannot deal a week, enter a stat, add a team,
---  issue an invite, or promote anybody - every one of those paths is
---  commissioner-only, and the only way to mint that first membership was
---  `linkAccount`, which is deleted in this same change. Such a league is not
---  "temporarily locked": it is permanently unadministrable, and no screen in the
---  app can repair it.
+--  It deliberately does NOT touch league, team or game data. A migration should do what
+--  its name says, and "retire join codes" is not a licence to delete somebody's league.
 --
---  Leaving it would also leave it PUBLICLY READABLE, because the Phase 3d
---  migration set every league that existed then to `visibility = 'public'`. So the
---  choice is not between deleting data and keeping it safe - it is between deleting
---  it and leaving a public, frozen copy that nothing in the app can take down.
+--  BE AWARE OF THE CONSEQUENCE, though: authorization is a `league_members` row from
+--  here on, and the mechanism that minted the first one from a join code is deleted
+--  right here. A league with no member holding the `commissioner` role therefore cannot
+--  deal a week, add a team, issue an invite or promote anybody - every one of those is
+--  commissioner-only - and no screen in the app can repair it.
 --
---  TO KEEP ONE, give it a commissioner BEFORE running this. The account has to
---  exist already, so sign in on the site once first:
+--  So before running this against a database that matters, make sure every league you
+--  intend to keep has a commissioner:
+--
+--    select l.name from leagues l
+--     where not exists (select 1 from league_members m
+--                        where m.league_id = l.id and m.role = 'commissioner');
+--
+--  and for each one that comes back, either give it a commissioner or delete it:
 --
 --    insert into league_members (league_id, user_id, role)
 --    select '<league-uuid>', id, 'commissioner'
---      from auth.users where email = '<your-address>';
+--      from auth.users where email = '<address>';   -- the account must exist already
 --
---  Everything hanging off a deleted league cascades with it: seasons, teams,
---  players, periods, rosters, stats, results, events, invites and memberships.
--- ---------------------------------------------------------------------------
-do $prune$
-declare
-  stranded int;
-begin
-  with doomed as (
-    delete from leagues l
-     where not exists (
-       select 1 from league_members m
-        where m.league_id = l.id and m.role = 'commissioner'
-     )
-    returning 1
-  )
-  select count(*) into stranded from doomed;
-
-  if stranded > 0 then
-    raise notice
-      'Removed % league(s) that had no commissioner. Nobody could have administered '
-      'them after this migration, and they were publicly readable.', stranded;
-  end if;
-end
-$prune$;
+--  docs/DEPLOYMENT.md carries this as a numbered step.
+-- ============================================================================
 
 -- Order matters only for readability; each is independent.
 drop table if exists auth_throttle;

@@ -209,8 +209,8 @@ limits its own sign-in.
 
 ## About the test suite
 
-There are 242 tests. Three of the fifteen files need the local database and **skip
-themselves silently when it is not running** - 111 of them, getting on for half. They are
+There are 239 tests. Three of the fifteen files need the local database and **skip
+themselves silently when it is not running** - 108 of them, getting on for half. They are
 not incidental:
 
 - every Row Level Security assertion (what a visitor's browser can read, and that it can
