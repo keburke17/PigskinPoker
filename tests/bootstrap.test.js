@@ -21,6 +21,9 @@
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
@@ -202,5 +205,107 @@ gate()("REGRESSION: a state write must never re-create the league", () => {
     expect(second.seasons[0].id).toBe(first.seasons[0].id);
     expect(second.periods.map((p) => p.id).sort()).toEqual(first.periods.map((p) => p.id).sort());
     expect(second.players.length).toBe(first.players.length);
+  });
+});
+
+/* ============================================================================
+ *  THE PRUNE STEP IN THE RETIRE-JOIN-CODES MIGRATION.
+ *
+ *  That migration DELETES leagues, which is the most destructive thing in this repo,
+ *  and it runs unattended on `db push`. So the predicate deciding what goes is tested
+ *  against real rows rather than reasoned about.
+ *
+ *  The SQL is read out of the migration FILE rather than copied here. A copy would be
+ *  a second source of truth for a delete, which is precisely the thing worth not having.
+ * ==========================================================================*/
+gate()("the retire-join-codes migration prunes only unadministrable leagues", () => {
+  const MIGRATION = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..", "supabase", "migrations", "20260820000000_retire_join_codes.sql"
+  );
+  const KEEP = "Prune Keeper League";
+  const STRANDED = "Prune Stranded League";
+  const MANAGERS_ONLY = "Prune Managers Only";
+  const FIXTURES = [KEEP, STRANDED, MANAGERS_ONLY];
+
+  const runPrune = () => {
+    const sql = readFileSync(MIGRATION, "utf8");
+    const block = sql.match(/do \$prune\$[\s\S]*?\$prune\$;/);
+    if (!block) throw new Error("could not find the prune block in " + MIGRATION);
+    const container = execSync("docker ps --filter name=supabase_db_ --format '{{.Names}}'")
+      .toString().trim().split("\n")[0];
+    execSync("docker exec -i " + container + " psql -U postgres -d postgres -q -v ON_ERROR_STOP=1", {
+      input: block[0],
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+  };
+
+  const namesPresent = async () => {
+    const { data } = await db.from("leagues").select("name").in("name", FIXTURES);
+    return data.map((l) => l.name).sort();
+  };
+
+  let userId;
+  beforeEach(async () => {
+    for (const n of FIXTURES) await db.from("leagues").delete().eq("name", n);
+    ({ userId } = await makeAccount("prune-" + Date.now() + "@example.test"));
+    await db.from("profiles").upsert({ user_id: userId }, { onConflict: "user_id" });
+
+    /* GUARD. The demo league is rebuilt by seed.sql with no memberships at all, so a
+     * prune running now would take it with the fixtures and every later test would fail
+     * on a missing league. Giving it a commissioner is also what `npm run dev` does. */
+    const { data: demo } = await db
+      .from("leagues").select("id").eq("name", "Pigskin Poker (Demo League)").maybeSingle();
+    if (demo) {
+      await db.from("league_members").upsert(
+        { league_id: demo.id, user_id: userId, role: "commissioner", team_id: null },
+        { onConflict: "league_id,user_id" }
+      );
+    }
+  });
+
+  afterAll(async () => {
+    for (const n of FIXTURES) await db.from("leagues").delete().eq("name", n);
+  });
+
+  it("deletes a league with no commissioner, and everything hanging off it", async () => {
+    const { data: doomed } = await db
+      .from("leagues").insert({ name: STRANDED, visibility: "public" }).select().single();
+    const { data: team } = await db.from("teams")
+      .insert({ league_id: doomed.id, name: "Doomed FC", legacy_id: "t1" }).select().single();
+
+    runPrune();
+
+    expect(await namesPresent()).not.toContain(STRANDED);
+    const { data: orphanTeams } = await db.from("teams").select("id").eq("id", team.id);
+    expect(orphanTeams).toHaveLength(0); // cascaded, not left dangling
+  });
+
+  it("SPARES a league that has a commissioner", async () => {
+    const { data: keep } = await db
+      .from("leagues").insert({ name: KEEP, visibility: "public" }).select().single();
+    await db.from("league_members")
+      .insert({ league_id: keep.id, user_id: userId, role: "commissioner", team_id: null });
+
+    runPrune();
+
+    expect(await namesPresent()).toContain(KEEP);
+  });
+
+  it("deletes a league that has MANAGERS but no commissioner", async () => {
+    /* Managers alone cannot deal a week, add a team, issue an invite or promote
+     * anybody - every one of those is commissioner-only. "Has members" is therefore
+     * the wrong test; "has a commissioner" is the right one. */
+    const { data: rudderless } = await db
+      .from("leagues").insert({ name: MANAGERS_ONLY, visibility: "public" }).select().single();
+    const { data: team } = await db.from("teams")
+      .insert({ league_id: rudderless.id, name: "Rudderless FC", legacy_id: "t1" }).select().single();
+    await db.from("league_members").insert({
+      league_id: rudderless.id, user_id: userId, role: "manager", team_id: team.id,
+    });
+
+    runPrune();
+
+    expect(await namesPresent()).not.toContain(MANAGERS_ONLY);
   });
 });

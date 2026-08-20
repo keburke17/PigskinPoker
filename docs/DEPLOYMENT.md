@@ -99,6 +99,29 @@ someone is locked out.
 
 Verify it afterwards with `npm run verify:email -- you@your-address.com`.
 
+### 2b. What happens to leagues that are already there
+
+The retire-join-codes migration **deletes any league with no commissioner** before it
+drops anything. That is not tidying: after this change a role is a `league_members` row,
+and a league without a commissioner cannot deal a week, add a team, issue an invite or
+promote anybody - every one of those paths is commissioner-only, and the mechanism that
+used to mint that first membership from a join code is deleted in the same migration.
+Such a league is permanently unadministrable, and it would stay publicly readable, since
+Phase 3d set every league that existed then to `visibility = 'public'`.
+
+**To keep one, give it a commissioner first.** Sign in on the site once so the account
+exists, then:
+
+```sql
+insert into league_members (league_id, user_id, role)
+select '<league-uuid>', id, 'commissioner' from auth.users where email = '<your-address>';
+```
+
+The migration reports how many it removed as a `NOTICE`. Three tests in
+`tests/bootstrap.test.js` run the prune block straight out of the migration file against
+real rows - a league with no commissioner goes and cascades, one with a commissioner
+stays, and one with only managers goes too.
+
 ### 3. Create the league - in the app, not from a script
 
 The database now has tables but no leagues. **There is no bootstrap step any more.**

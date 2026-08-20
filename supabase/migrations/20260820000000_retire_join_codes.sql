@@ -31,6 +31,54 @@
 --  invitation sent to each member BEFORE this runs.
 -- ============================================================================
 
+-- ---------------------------------------------------------------------------
+--  FIRST: remove leagues that this change would strand.
+--
+--  Authorization is a `league_members` row from here on. A league with no member
+--  holding the `commissioner` role cannot deal a week, enter a stat, add a team,
+--  issue an invite, or promote anybody - every one of those paths is
+--  commissioner-only, and the only way to mint that first membership was
+--  `linkAccount`, which is deleted in this same change. Such a league is not
+--  "temporarily locked": it is permanently unadministrable, and no screen in the
+--  app can repair it.
+--
+--  Leaving it would also leave it PUBLICLY READABLE, because the Phase 3d
+--  migration set every league that existed then to `visibility = 'public'`. So the
+--  choice is not between deleting data and keeping it safe - it is between deleting
+--  it and leaving a public, frozen copy that nothing in the app can take down.
+--
+--  TO KEEP ONE, give it a commissioner BEFORE running this. The account has to
+--  exist already, so sign in on the site once first:
+--
+--    insert into league_members (league_id, user_id, role)
+--    select '<league-uuid>', id, 'commissioner'
+--      from auth.users where email = '<your-address>';
+--
+--  Everything hanging off a deleted league cascades with it: seasons, teams,
+--  players, periods, rosters, stats, results, events, invites and memberships.
+-- ---------------------------------------------------------------------------
+do $prune$
+declare
+  stranded int;
+begin
+  with doomed as (
+    delete from leagues l
+     where not exists (
+       select 1 from league_members m
+        where m.league_id = l.id and m.role = 'commissioner'
+     )
+    returning 1
+  )
+  select count(*) into stranded from doomed;
+
+  if stranded > 0 then
+    raise notice
+      'Removed % league(s) that had no commissioner. Nobody could have administered '
+      'them after this migration, and they were publicly readable.', stranded;
+  end if;
+end
+$prune$;
+
 -- Order matters only for readability; each is independent.
 drop table if exists auth_throttle;
 drop table if exists sessions;
