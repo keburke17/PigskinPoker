@@ -8,13 +8,15 @@
 --  Runs automatically on `supabase start` and `supabase db reset`, so
 --  `supabase db reset` is the one-command way back to a clean, populated league.
 --
---  ============================ DEVELOPMENT CREDENTIALS ======================
---  Obviously-fake, local-only. Never use these for a real league.
---      Commissioner:  DEMO-COMMISH
---      Managers:      DEMO-TEAM-1 .. DEMO-TEAM-6
+--  ============================== SIGNING IN =================================
+--  This file seeds the GAME. It seeds no credentials, because there are none to
+--  seed: join codes are gone, and accounts live in Supabase's own auth schema
+--  where SQL has no business creating them.
 --
---  The hashes below are scrypt, produced by the same server/auth.js function the
---  login endpoint verifies against. The CODES are fake; the hashing is real.
+--  `scripts/seed-accounts.mjs` creates the development accounts and their
+--  league_members rows through the admin API, and `npm run dev` runs it for you.
+--      Commissioner:  commish@pigskin.test
+--      Managers:      team1@pigskin.test .. team6@pigskin.test
 --  ===========================================================================
 --
 --  Contents: a six-team league with Week 1 played and finalized (so standings and
@@ -62,19 +64,19 @@ $guard$;
 -- cascades from the league row.
 delete from leagues where id = '8ea81188-8bb6-5aae-bef2-fba50410aa24'::uuid;
 
-insert into leagues (id, name, has_commissioner_code) values
-  ('8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Pigskin Poker (Demo League)', true);
+insert into leagues (id, name) values
+  ('8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Pigskin Poker (Demo League)');
 
 insert into seasons (id, league_id, year, label, status, schema_version, scoring_config, standings_points_override, playoff_bracket_size, playoff_advancement, playoff_started, playoff_completed, playoff_round_index, champion_team_id) values
   ('4727208d-93cc-5aef-bde8-c1cc766d085d', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 2026, '2026 Season', 'active', 2, '{"yardsPerPoint":10,"pointsPerTD":5,"coachWin":2,"coachTie":1,"coachLoss":0}'::jsonb, NULL, 4, '{4,2,1}', false, false, 0, NULL);
 
-insert into teams (id, league_id, name, legacy_id, active, has_join_code) values
-  ('58ec49a4-1d6a-561a-bbcc-a941cdbd11d0', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Gridiron Gamblers', 'demo_team_1', true, true),
-  ('5bec4e5d-1c6a-5487-887b-95a4696f7645', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Full House Flyers', 'demo_team_2', true, true),
-  ('5aec4cca-1b6a-52f4-9e2e-ba270c979e4a', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Royal Flush Runners', 'demo_team_3', true, true),
-  ('55ec44eb-1a6a-5161-92de-4a421f0d8b27', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Pocket Aces', 'demo_team_4', true, true),
-  ('54ec4358-196a-5fce-b767-db2db2221244', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Dead Man''s Hand', 'demo_team_5', true, true),
-  ('57ec4811-186a-5e3b-a416-9530add50dd9', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'All-In Antlers', 'demo_team_6', true, true);
+insert into teams (id, league_id, name, legacy_id, active) values
+  ('58ec49a4-1d6a-561a-bbcc-a941cdbd11d0', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Gridiron Gamblers', 'demo_team_1', true),
+  ('5bec4e5d-1c6a-5487-887b-95a4696f7645', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Full House Flyers', 'demo_team_2', true),
+  ('5aec4cca-1b6a-52f4-9e2e-ba270c979e4a', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Royal Flush Runners', 'demo_team_3', true),
+  ('55ec44eb-1a6a-5161-92de-4a421f0d8b27', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Pocket Aces', 'demo_team_4', true),
+  ('54ec4358-196a-5fce-b767-db2db2221244', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Dead Man''s Hand', 'demo_team_5', true),
+  ('57ec4811-186a-5e3b-a416-9530add50dd9', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'All-In Antlers', 'demo_team_6', true);
 
 insert into players (id, league_id, name, position, nfl_team, status, external_ids, legacy_id, active) values
   ('f4cf6d00-f221-56d2-8f88-79c57f566158', '8ea81188-8bb6-5aae-bef2-fba50410aa24', 'Mike LaFleur', 'Coach', 'Arizona Cardinals', 'Active', '{}'::jsonb, 'p1', true),
@@ -422,25 +424,14 @@ insert into period_results (id, period_id, team_id, rank, raw_score, standings_p
   ('3566e03b-5771-5a5d-92b8-093201e6eaa3', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', '57ec4811-186a-5e3b-a416-9530add50dd9', 6, 60, 1, 'Tie', 5, 365, '{"name":"Tua Tagovailoa","position":"QB","points":26}'::jsonb);
 
 insert into events (id, season_id, period_id, type, text, payload, created_at) values
-  ('5e1ccbb6-a399-50a0-938e-b1d31fc52426', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'block', 'Gridiron Gamblers blocked Jalen Hurts (QB) from being stolen this week.', '{}'::jsonb, '2026-08-18T13:11:46.471Z'),
-  ('6918912c-31f8-574a-a000-e96118890ad0', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'steal', 'Dead Man''s Hand stole TE Dalton Schultz from All-In Antlers (dropped Brock Bowers). All-In Antlers received Colby Parkinson (free agent) in return.', '{}'::jsonb, '2026-08-18T13:11:46.472Z'),
-  ('507a6051-2563-5b0b-abf6-2680a1ef1149', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'steal', 'Full House Flyers stole QB Brock Purdy from All-In Antlers (dropped Drake Maye). All-In Antlers received Tua Tagovailoa (free agent) in return.', '{}'::jsonb, '2026-08-18T13:11:46.472Z'),
-  ('349f5fc7-4b3d-5c89-845a-34865ea13d7f', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'redraw', 'Royal Flush Runners redrew Ja''Marr Chase (WR) for Rashid Shaheed (free agent).', '{}'::jsonb, '2026-08-18T13:11:46.472Z'),
-  ('2200aa58-dcae-560e-9d75-b75dae840f04', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'result', 'Week 1 final - #1 Dead Man''s Hand (106 pts), #2 Full House Flyers (87 pts), #3 Royal Flush Runners (76 pts), #4 Pocket Aces (70 pts), #5 Gridiron Gamblers (62 pts), #6 All-In Antlers (60 pts). Winner: Dead Man''s Hand!', '{}'::jsonb, '2026-08-18T13:11:46.472Z'),
-  ('f6009480-6f46-572a-9985-d175dcc3ef80', '4727208d-93cc-5aef-bde8-c1cc766d085d', '29309b3c-8cbf-5e4e-b6f6-83a97b1a8834', 'block', 'Royal Flush Runners blocked Darius Slayton (WR) from being stolen this week.', '{}'::jsonb, '2026-08-18T13:11:46.473Z'),
-  ('a6798843-c232-530d-b237-bc9a6b1e35a3', '4727208d-93cc-5aef-bde8-c1cc766d085d', '29309b3c-8cbf-5e4e-b6f6-83a97b1a8834', 'redraw', 'Gridiron Gamblers redrew Woody Marks (RB) for Chris Rodriguez (free agent).', '{}'::jsonb, '2026-08-18T13:11:46.473Z'),
-  ('68a4c9eb-4f67-5d29-a31f-fa5ac015c63f', '4727208d-93cc-5aef-bde8-c1cc766d085d', '29309b3c-8cbf-5e4e-b6f6-83a97b1a8834', 'steal', 'All-In Antlers stole QB Matthew Stafford from Royal Flush Runners (dropped Lamar Jackson). Royal Flush Runners received Jordan Love (free agent) in return.', '{}'::jsonb, '2026-08-18T13:11:46.473Z');
-
-insert into league_secrets (league_id, commissioner_code_hash) values
-  ('8ea81188-8bb6-5aae-bef2-fba50410aa24', 'scrypt$16384$8$1$c9c6937c8294a7e0a0c476b77e631483$140dccea7bc150fa160617727ef2edd0a614b658c1e22a762a444a34153ac45f');
-
-insert into team_secrets (team_id, join_code_hash) values
-  ('58ec49a4-1d6a-561a-bbcc-a941cdbd11d0', 'scrypt$16384$8$1$7b14cdf5939b298c090536b38dc44a8c$752551149a1c4a6a2d623969c0a4189de785c1280b6125353aa0ebc67b39757b'),
-  ('5bec4e5d-1c6a-5487-887b-95a4696f7645', 'scrypt$16384$8$1$987544e435a309a4ed2a83c865b01edc$9a44458b1d4feb7286aaa8e419bf6525afe8537e6caa9b6a0a5bcb4dcefdfa82'),
-  ('5aec4cca-1b6a-52f4-9e2e-ba270c979e4a', 'scrypt$16384$8$1$5944e9a168f558f5732d14a3c1ef84d4$e00412a0f62c299db0df2e6f48d5b2acbca4ef51d26faffc0a0bb313ffc7b183'),
-  ('55ec44eb-1a6a-5161-92de-4a421f0d8b27', 'scrypt$16384$8$1$c5bd9a1e282b7b636f886fbb8f83caaf$43fad4cb5022bc60f62302112b98f785f514c5dfecfbfb303f6ff58f459386ea'),
-  ('54ec4358-196a-5fce-b767-db2db2221244', 'scrypt$16384$8$1$d9a586967f8f89571c4d263f062fbf63$c59cad45d24379d721e3e34358f6d6c27ac06a5d5b4d20f71decac196ab6921d'),
-  ('57ec4811-186a-5e3b-a416-9530add50dd9', 'scrypt$16384$8$1$354fa5d3381b345a4b4ff68a2a6d2f50$f127b6709a78be9b63052c0a29b9cc16d2c9698de2438ac99f939e9d88d5eafb');
+  ('a5700104-6cd8-533e-89e0-ba1181a9a004', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'block', 'Gridiron Gamblers blocked Jalen Hurts (QB) from being stolen this week.', '{}'::jsonb, '2026-08-20T04:08:28.726Z'),
+  ('4c17f44a-c8cc-5850-8e82-c5c71136b686', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'steal', 'Dead Man''s Hand stole TE Dalton Schultz from All-In Antlers (dropped Brock Bowers). All-In Antlers received Colby Parkinson (free agent) in return.', '{}'::jsonb, '2026-08-20T04:08:28.727Z'),
+  ('5fc43de7-8925-5e49-b56f-11b624eeef5f', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'steal', 'Full House Flyers stole QB Brock Purdy from All-In Antlers (dropped Drake Maye). All-In Antlers received Tua Tagovailoa (free agent) in return.', '{}'::jsonb, '2026-08-20T04:08:28.727Z'),
+  ('0796de7d-ef7b-582f-bd63-cc7c50e6538d', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'redraw', 'Royal Flush Runners redrew Ja''Marr Chase (WR) for Rashid Shaheed (free agent).', '{}'::jsonb, '2026-08-20T04:08:28.727Z'),
+  ('d602d861-e5ef-5ebf-a085-7b983b3fe5ad', '4727208d-93cc-5aef-bde8-c1cc766d085d', '2c309ff5-8bbf-5cbb-83a5-700cf62ee989', 'result', 'Week 1 final - #1 Dead Man''s Hand (106 pts), #2 Full House Flyers (87 pts), #3 Royal Flush Runners (76 pts), #4 Pocket Aces (70 pts), #5 Gridiron Gamblers (62 pts), #6 All-In Antlers (60 pts). Winner: Dead Man''s Hand!', '{}'::jsonb, '2026-08-20T04:08:28.728Z'),
+  ('aca8f80e-2885-5098-84c0-a2ab3324ba7e', '4727208d-93cc-5aef-bde8-c1cc766d085d', '29309b3c-8cbf-5e4e-b6f6-83a97b1a8834', 'block', 'Royal Flush Runners blocked Darius Slayton (WR) from being stolen this week.', '{}'::jsonb, '2026-08-20T04:08:28.728Z'),
+  ('272e3969-2faf-5673-ba65-5d30aa672931', '4727208d-93cc-5aef-bde8-c1cc766d085d', '29309b3c-8cbf-5e4e-b6f6-83a97b1a8834', 'redraw', 'Gridiron Gamblers redrew Woody Marks (RB) for Chris Rodriguez (free agent).', '{}'::jsonb, '2026-08-20T04:08:28.728Z'),
+  ('1ba6f661-5b4f-5137-89a3-3cf0c43a7975', '4727208d-93cc-5aef-bde8-c1cc766d085d', '29309b3c-8cbf-5e4e-b6f6-83a97b1a8834', 'steal', 'All-In Antlers stole QB Matthew Stafford from Royal Flush Runners (dropped Lamar Jackson). Royal Flush Runners received Jordan Love (free agent) in return.', '{}'::jsonb, '2026-08-20T04:08:28.728Z');
 
 -- ---------------------------------------------------------------------------
 --  Sanity check: fail loudly if the seed did not land as expected, rather than

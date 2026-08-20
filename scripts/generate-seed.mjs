@@ -15,7 +15,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDemoLeague } from "../src/storage/demoLeague.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
-import { hashCode } from "../server/auth.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "supabase", "seed.sql");
@@ -59,13 +58,12 @@ const state = createDemoLeague();
 const rows = decomposeLeague(state, {
   leagueKey: DEMO_LEAGUE_KEY,
   year: DEMO_YEAR,
-  hashCode,
 });
 
 const ORDER = [
   "leagues", "seasons", "teams", "players", "periods",
   "team_totals", "roster_slots", "stat_lines", "schemes",
-  "period_results", "events", "league_secrets", "team_secrets",
+  "period_results", "events",
 ];
 
 const header = `-- ============================================================================
@@ -78,13 +76,15 @@ const header = `-- =============================================================
 --  Runs automatically on \`supabase start\` and \`supabase db reset\`, so
 --  \`supabase db reset\` is the one-command way back to a clean, populated league.
 --
---  ============================ DEVELOPMENT CREDENTIALS ======================
---  Obviously-fake, local-only. Never use these for a real league.
---      Commissioner:  DEMO-COMMISH
---      Managers:      DEMO-TEAM-1 .. DEMO-TEAM-6
+--  ============================== SIGNING IN =================================
+--  This file seeds the GAME. It seeds no credentials, because there are none to
+--  seed: join codes are gone, and accounts live in Supabase's own auth schema
+--  where SQL has no business creating them.
 --
---  The hashes below are scrypt, produced by the same server/auth.js function the
---  login endpoint verifies against. The CODES are fake; the hashing is real.
+--  \`scripts/seed-accounts.mjs\` creates the development accounts and their
+--  league_members rows through the admin API, and \`npm run dev\` runs it for you.
+--      Commissioner:  commish@pigskin.test
+--      Managers:      team1@pigskin.test .. team6@pigskin.test
 --  ===========================================================================
 --
 --  Contents: a six-team league with Week 1 played and finalized (so standings and

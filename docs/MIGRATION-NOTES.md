@@ -423,3 +423,92 @@ Every one produced a **false all-clear** rather than an error. A checker that fi
 nothing is making a claim about itself as much as about the data, and the habit that
 caught these was refusing to report "clean" without first confirming the checker could
 see anything at all.
+
+---
+
+## 2026-08-20: local development becomes the real stack, and codes are retired
+
+Five changes, in the order they were made. The first two were the point; the last three
+were what the first two unblocked.
+
+### 1. `npm run dev` starts everything
+
+It checks Docker, starts the Supabase stack, applies any migration the repo has and the
+database does not, seeds the demo league and the development accounts, writes `.env.local`
+from the running stack, and starts Vite. The old instructions were five manual steps
+ending in copying four values into a file by hand - and none of them failed loudly when
+skipped. You got a dev server pointed at nothing, or a green `npm test` that had silently
+skipped the RLS and authorization suites.
+
+### 2. The development accounts are real accounts
+
+`scripts/seed-accounts.mjs` creates genuine Supabase Auth users with genuine
+`league_members` rows, through the same admin API the tests use. Magic links are captured
+by the local mail catcher and **printed to the dev console as they are sent**
+(`npm run link` fetches the newest on demand), so signing in locally is one click without
+going to look for the mail.
+
+There is deliberately no dev-only sign-in bypass in the client. A bypass is how a login
+path ends up unenforced in production.
+
+**A bug this uncovered:** `tests/server.test.js` resets the demo league between tests by
+piping `supabase/seed.sql` into psql, which deletes and rebuilds the league row -
+cascading every `league_members` row away while the `auth.users` rows survive. The symptom
+is an account that signs in perfectly and then lands on "You are not in a league yet".
+`npm test` now restores the accounts when it finishes, rather than teaching the seed file
+about accounts, which would make fixtures materialize in the middle of the security suite.
+
+### 3. The in-memory adapter was deleted
+
+It had no backend, so it could not authenticate anybody - meaning the fastest development
+loop was the one that could not exercise accounts, memberships, invitations or league
+scoping, i.e. everything added from Phase 3b onwards. It was also a second full
+implementation of every operation, free to drift from the one that ships.
+
+`tests/operations.test.js` went with it: it tested that second implementation. Before
+deleting, its assertions were compared one by one against `tests/server.test.js`, which
+exercises the real one. All but one were already covered there. The exception - that the
+period version is qualified with the period's identity, so a client holding Week 2's `v1`
+cannot match Week 3's fresh `v1` - was carried across with a comment saying where it came
+from.
+
+### 4. Join codes, `sessions` and the login throttle were dropped
+
+`supabase/migrations/20260820000000_retire_join_codes.sql`. `verifySession` now accepts
+exactly one credential: a Supabase access token, resolved against `league_members`.
+`server/auth.js` no longer hashes, stores or compares a secret of our own; the scrypt
+primitives moved to `server/hash.js`, whose only consumer is invite secrets.
+
+`docs/AUTH.md` had described the hand-rolled `sessions` table as the piece most likely to
+become a permanent security problem. The only thing keeping it alive was the in-memory
+adapter needing something it could check without a backend - so step 3 is what made step 4
+free.
+
+Deleted with it: `scripts/bootstrap-league.mjs` and `scripts/set-commissioner-code.mjs`.
+Bootstrap existed to close a land-grab - the Artifact let the first person to type a code
+become commissioner - and with creation tied to an account there is no window to close.
+
+**A vacuous test, found while doing this.** The RLS fixture for `invites` was written with
+the wrong column names (`reference`/`secret_hash` rather than `code_ref`/`code_hash`). The
+insert failed silently, so "anon cannot read invites" was passing with no invite in the
+table. The fixture now throws if it fails to insert - the same lesson as the pattern named
+above, in a new place.
+
+### 5. The player pool became a table
+
+`player_pool` is a global template, seeded by migration from `src/data/teamRows.js`
+(`npm run pool:sql` generates the rows, so there is one source and no second copy to
+drift). Creating a league copies it in a single `INSERT ... SELECT` through a
+`SECURITY DEFINER` function, instead of shipping 223 rows of JSON per league from three
+different code paths.
+
+Per-league `players` rows stay, deliberately: a commissioner marking someone OUT is a
+statement about *their* league, and sharing one row would leak it into everybody else's.
+There is a test asserting exactly that.
+
+### What this costs
+
+Docker is now required to run the app at all. That was a deliberate trade - it is what
+both people working on this have - and it buys a single mode where "it works locally"
+means it works against the same Postgres, the same RLS, the same auth and the same
+privileged-write function that deploys.

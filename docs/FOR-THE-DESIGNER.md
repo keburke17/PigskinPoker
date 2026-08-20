@@ -18,8 +18,8 @@ checks they produce identical results, including whole simulated seasons. If any
 changes the game by accident, that test fails.
 
 What actually changed: it saves to a real database instead of Claude's storage, two
-people editing at once can no longer overwrite each other, and the join codes are no
-longer sent to everyone's browser.
+people editing at once can no longer overwrite each other, and signing in is now an email
+address and a link rather than a shared code. New members join by invitation.
 
 ---
 
@@ -53,25 +53,52 @@ cd PigskinPoker && npm install
 
 ## 3. Run it
 
+You need **Docker Desktop** (<https://docker.com>) installed and running first - it is a
+big download, and it uses a fair amount of memory while it is open. Start it, wait for the
+whale in the menu bar to settle, then:
+
 ```bash
 npm run dev
 ```
 
 Open <http://localhost:5173>.
 
-It starts with a **demo league already populated** - six teams, a finished Week 1, and a
-Week 2 in progress with some stats entered. Log in with:
+That one command does everything: it starts a real database on your machine, sets up the
+tables, fills it with a **demo league already populated** - six teams, a finished Week 1,
+and a Week 2 in progress with some stats entered - creates the sign-in accounts, and
+starts the app. It prints a list of what it made, including every address you can sign in
+as.
 
-| Role | Code |
+### Signing in
+
+There are no codes any more. You sign in with an email address and a link, the same as the
+real site - except that no mail actually leaves your machine. It is caught by a fake
+inbox, and the command window prints the link the moment it is sent, so you can just click
+that.
+
+| Sign in as | Who they are |
 |---|---|
-| Commissioner | `DEMO-COMMISH` |
-| Team manager | `DEMO-TEAM-1` through `DEMO-TEAM-6` |
+| `commish@pigskin.test` | The commissioner |
+| `team1@pigskin.test` .. `team5@pigskin.test` | Managers of teams 1-5 |
 
-Refresh the page to reset it. There is no database here - it all lives in memory, so you
-can deal, finalize weeks, reset the league, and try anything at all without consequences.
+Team 6 is deliberately left with nobody running it, so you can try what a **new member**
+goes through: sign in as any address you like - `scott@pigskin.test`, anything - then
+choose **I Have An Invite Code** and paste `PGSKN2-DEMTEAM234`. That puts you in charge of
+the All-In Antlers.
 
-**This is the safest way to test rule changes.** It is completely disconnected from the
-live site.
+### Starting over
+
+```bash
+npm run db:reset
+```
+
+That wipes your local database and rebuilds the demo league exactly as it was. Deal
+weeks, finalize them, reset the league, break whatever you like - this is a copy on your
+own machine and **it cannot reach the live site**. The credentials that would let it are
+not in the repo.
+
+Ordinary `npm run dev` does *not* wipe anything, so work you leave half-finished is still
+there tomorrow.
 
 ---
 
@@ -169,23 +196,22 @@ to build alongside real user accounts than to retrofit afterwards.
 
 The live site is real but not hardened. Before you run a league you care about on it:
 
-- **There is no limit on login attempts**, so a determined guesser gets unlimited tries
-  at the commissioner code.
-- **Anyone with the URL can read the league.** That matches the Artifact, but the URL is
-  now guessable rather than a private link.
+- **Anyone with the URL can read a league that is set to public.** That matches the
+  Artifact, but the URL is now guessable rather than a private link. New leagues default
+  to members-only; the existing one was set public so nothing changed for it.
+- **Email is the only way in.** If the mail provider breaks, nobody can sign in at all -
+  including you. It is worth knowing that is the single point of failure.
 
-Both are on the list for the next phase.
+Login guessing is no longer on this list: there is no code to guess, and Supabase rate
+limits its own sign-in.
 
 ---
 
-## Running a real database locally
+## About the test suite
 
-**If you are taking over ongoing development, do this.** It is optional only if you are
-purely trying things out.
-
-The reason is the test suite. Three of the fifteen test files need a real database and
-**skip themselves silently when there isn't one** - 59 of 190 tests, about a third. They
-are not incidental:
+There are 239 tests. Three of the fifteen files need the local database and **skip
+themselves silently when it is not running** - 108 of them, getting on for half. They are
+not incidental:
 
 - every Row Level Security assertion (what a visitor's browser can read, and that it can
   write nothing, anywhere);
@@ -194,40 +220,17 @@ are not incidental:
 - the regression guard for a bug that would have silently destroyed the league the first
   time anyone added a team.
 
-Without a local database `npm test` prints a cheerful green pass having run **none** of
-those. That is a bad way to find out you broke the security model, so if you are
-maintaining this rather than poking at it, run the real thing.
+Without the database, `npm test` prints a cheerful green pass having run **none** of
+those. That is a bad way to find out you broke the security model.
 
-### Setting it up
+Since `npm run dev` starts the database for you, the ordinary case is that they all run.
+The thing to watch is the skip count: if the output mentions skipped files, Docker is not
+running, and you have not tested what you think you have.
 
-Install **Docker Desktop** (<https://docker.com>) - a large download, and it uses a fair
-amount of memory while running. Then, once:
-
-```bash
-npx supabase start
-```
-
-```bash
-npx supabase db reset
-```
-
-Create a `.env.local` file from the values `npx supabase status` prints - `README.md` has
-the exact list. After that `npm test` runs all 190, and `npm run dev` exercises the real
-login and save paths instead of the in-memory stand-in.
-
-`npx supabase db reset` at any time gets you back to a clean, populated demo league.
-
-### When you can skip it
-
-The no-database mode is still the faster loop for anything about how the game *plays* -
-scoring tweaks, tiebreak rules, UI work. It starts instantly, resets on refresh, and the
-engine tests (the ones covering dealing, schemes, scoring and playoffs) run fine without
-Docker. Use it for iteration; run the full suite before you push.
-
-### It cannot touch the live site
-
-Your local database and the live one are entirely separate. Nothing local can reach the
-real league, and the credentials that would allow it are not in the repo.
+There used to be a second mode here - a no-database version that started instantly and
+kept everything in memory. It was removed, because it could not sign anybody in, so the
+fastest way to work was also the one that could not exercise accounts, invitations or
+permissions at all. One mode, and it is the real one.
 
 ---
 

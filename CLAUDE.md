@@ -48,6 +48,12 @@ in a league that is actually being played is worse than a bug everyone has adapt
   real data. See `src/hooks/useLeague.js`.
 - **The commissioner-driven weekly flow**: `pre-deal -> dealt -> schemes-processed ->
   stats -> finalized`. Do not automate away the commissioner's control.
+- **`commissionerCode` and each team's `joinCode` still exist in the engine's state
+  shape** (`src/engine/state.js`, `src/storage/demoLeague.js`) even though nothing
+  persists or checks them any more. That shape is the artifact's, and
+  `tests/parity.test.js` compares against it field by field - removing them would break
+  parity. `decompose.js` drops them on the floor instead, which
+  `tests/roundtrip.test.js` asserts.
 - **Blocks resolve before steals and redraws**, and steals resolve in a single shuffled
   pass so freed players can flow between actions (`src/engine/schemes.js`). The ordering
   is load-bearing.
@@ -64,7 +70,7 @@ src/
   hooks/        useLeague.js - the read/write lifecycle
   components/   the UI, extracted from the original single file
   styles/       global.css
-  data/         teamRows.js - player pool source data
+  data/         teamRows.js - player pool source data (see the note below)
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
@@ -87,10 +93,14 @@ store a seed so a week can be replayed.
 ### The storage boundary
 
 Nothing outside `src/storage/` knows how data is persisted. There is no `window.storage`
-anywhere in `src/`. Two adapters implement one interface:
+anywhere in `src/`. One adapter implements the interface:
 
-- **in-memory** - the default with no configuration, seeded with a demo league
 - **Supabase** - reads directly via PostgREST, writes through the Netlify function
+
+There was a second, in-memory adapter - the default with no configuration, seeded with a
+demo league. It was deleted once local development moved to the real stack, because it
+was a second full implementation of every operation that could not authenticate anybody.
+`src/storage/index.js` carries the reasoning.
 
 `hydrate.js` turns database rows back into the exact shape the original UI expects, which
 is why ~90 components survived the port unchanged. `decompose.js` is the inverse.
@@ -104,29 +114,44 @@ if anything from `server/` - or any secret - reaches the browser bundle.
 
 ## Running it
 
+Docker Desktop must be running. Then:
+
 ```bash
 npm install && npm run dev
 ```
 
-No database, no keys, no configuration. Boots against an in-memory demo league:
-commissioner `DEMO-COMMISH`, managers `DEMO-TEAM-1` .. `DEMO-TEAM-6`. Refresh resets it.
+One command: it starts the local Supabase stack, applies migrations, seeds the demo
+league, creates the development accounts, writes `.env.local` from the running stack, and
+starts Vite. It does not reset the database unless you pass `--reset`.
 
-**This is the right mode for trying rule changes.** It cannot touch the live league.
+**Local development is the real stack, deliberately.** Same Postgres, same RLS, same
+Supabase Auth, same privileged-write function that deploys. The alternative - a
+zero-config in-memory mode - could only ever exercise the join-code half of
+`verifySession()`, which meant everything from Phase 3b onwards (accounts, memberships,
+invites, multi-league) existed only in production and in tests. Local and hosted never
+talk to each other; only migrations cross, and only when someone runs `db push`.
+
+Sign in with an account - the only credential there is:
+
+- **an account** - `commish@pigskin.test`, or `team1@pigskin.test` .. `team5@pigskin.test`.
+  Magic links are captured at <http://127.0.0.1:54324> rather than sent, and `npm run dev`
+  prints each one to its console as it arrives (`npm run link` fetches the newest on
+  demand). Seeded by `scripts/seed-accounts.mjs` as genuine Supabase Auth users with
+  genuine `league_members` rows. The link plumbing reads the mailbox a human would
+  otherwise read - there is no dev-only sign-in bypass in the client, and adding one
+  would defeat the point of developing against the real thing.
+Team 6 is left unclaimed on purpose, with a standing invitation (`PGSKN2-DEMTEAM234`), so
+the new-member path - unknown address signs in, redeems, lands on a team - can be tried
+without issuing a code first. `scripts/seed-accounts.mjs` reissues it every run.
+
+`npm run db:reset` is the way back to a clean, populated league. `npm run dev` also
+applies any migration that is in the repo but not in your local database, so a pull that
+adds one does not leave you running against a stale schema.
 
 **If `tests/server.test.js` skips itself complaining about extra leagues**, you made one
 through the UI (Phase 3d added that button). The demo seed refuses to run where other
-leagues exist, on purpose. `npx supabase db reset` clears it.
+leagues exist, on purpose. `npm run db:reset` clears it.
 
-For the real stack (Docker required):
-
-```bash
-npx supabase start && npx supabase db reset
-```
-
-then create `.env.local` from `npx supabase status` - see `README.md`. Local and hosted
-never talk to each other; only migrations cross, and only when someone runs `db push`.
-
----
 
 ## Tests
 
@@ -134,7 +159,7 @@ never talk to each other; only migrations cross, and only when someone runs `db 
 npm test
 ```
 
-293 tests. Three groups worth knowing about:
+239 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -143,7 +168,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (`npx supabase start`) and **skip themselves silently without it** - 149 of the 293
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 108 of the 239
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -165,6 +190,23 @@ matters.
 4. Update `tests/parity.test.js` to record the intended difference, with a comment saying
    what changed and why. Do not delete the test.
 5. Update `docs/RULES.md` if it exists by then, and `docs/MIGRATION-NOTES.md`.
+
+### The player pool lives in two places on purpose
+
+`src/data/teamRows.js` is the source; `player_pool` is the table. The table is seeded by
+`supabase/migrations/20260820010000_player_pool_template.sql`, whose rows are **generated**
+from that file (`npm run pool:sql`), so there is one source and no second copy to drift.
+
+- **`teamRows.js` cannot move.** `tests/parity.test.js` lifts `TEAM_ROWS` straight out of
+  the original artifact and replays dealing against it.
+- **`player_pool` is a TEMPLATE, not shared data.** Creating a league copies it into that
+  league's own `players` rows (`copy_player_pool_into`). A commissioner marking someone
+  OUT is a statement about their league, and sharing one row would leak it into
+  everybody else's. `tests/server.test.js` asserts exactly that.
+- **To correct the pool for future leagues**, change the table (forward-only migration).
+  To change what the engine deals in tests and parity, change `teamRows.js`. Doing one
+  without the other is legitimate; doing neither and editing a league's `players` rows
+  directly only affects that league, which is often what you actually want.
 
 ## If you are changing the database
 
@@ -195,7 +237,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 
 | | |
 |---|---|
-| **Real accounts** | Built and **deployed** (Phase 3b/3c/3d). Magic-link sign-in works in production - SMTP is configured and verified. It runs *beside* join codes, and codes still work. **Join codes are invitations only now** - all existing leagues are test data due to be wiped, so there is no code-to-account migration and no season boundary to wait for. Whether to delete code-as-login outright is open: it is also what makes `npm run dev` work with no configuration. See `docs/AUTH.md`. |
+| **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
 | **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |

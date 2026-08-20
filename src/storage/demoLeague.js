@@ -1,19 +1,23 @@
 /* A populated demo league, built deterministically from the engine.
  *
  * Purpose: `npm run dev` gives anyone a working, populated app in one step, with
- * standings, results, an activity feed and a week in progress - no Supabase, no
- * production data, no setup. Reproducible bug reports matter more than variety here,
- * so every deal is seeded and identical on every run.
+ * standings, results, an activity feed and a week in progress. Reproducible bug reports
+ * matter more than variety here, so every deal is seeded and identical on every run.
+ *
+ * THIS FILE NO LONGER RUNS IN THE APP. It is now purely a source of truth for the
+ * generators: `scripts/generate-seed.mjs` turns it into supabase/seed.sql, and
+ * `scripts/seed-accounts.mjs` reads the same definition to learn the league and team
+ * ids. It used to seed an in-memory adapter as well; that adapter is gone, and this
+ * survived because generating the local database from one definition is why the demo
+ * league and the seed file cannot drift.
  *
  * ============================ DEVELOPMENT CREDENTIALS ============================
- * These are OBVIOUSLY-FAKE local-only credentials. They are seeded into the in-memory
- * store, which never touches a network. They must never appear in a real league.
+ * These are OBVIOUSLY-FAKE local-only credentials, seeded into the local Postgres
+ * stack by supabase/seed.sql - which refuses to run against a database holding real
+ * data. They must never appear in a real league.
  *
  *   Commissioner: DEMO-COMMISH
  *   Managers:     DEMO-TEAM-1 .. DEMO-TEAM-6
- *
- * Phase 2 adds supabase/seed.sql for the local Postgres stack, built from this same
- * definition so the two cannot drift, and refusing to run against a non-local database.
  * ================================================================================
  */
 

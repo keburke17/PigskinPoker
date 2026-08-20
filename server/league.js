@@ -89,7 +89,7 @@ export async function persistBlob(db, previous, blob, opts) {
   // Never touch secrets from a blob write - they are not derivable from app state.
   const WRITABLE = TABLES;
 
-  /* Deleting a league cascades to EVERYTHING, including league_secrets and sessions -
+  /* Deleting a league cascades to EVERYTHING, including its league_members rows -
    * i.e. it locks the commissioner out permanently. No ordinary state write should ever
    * remove one, so the delete pass simply refuses to consider these tables. Belt and
    * braces alongside the identity fix in decompose.js. */

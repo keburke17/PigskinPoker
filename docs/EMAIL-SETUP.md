@@ -235,11 +235,17 @@ bounce, confirm DNS is verified, and check spam.
 
 ## Afterwards
 
-Magic links work in production. Nothing else changes:
+Magic links work in production - which, since 2026-08-20, is the ONLY way anybody signs
+in. Join codes, the `sessions` table and our own login rate limiter are gone.
 
-- join codes keep working, for everyone, exactly as before;
-- people connect an email when they happen to, from the prompt inside the app;
-- code-as-login is switched off only once everyone has an account, **at a season
-  boundary, never mid-season**.
+That raises the stakes on this page: **if email is broken, nobody can get in at all**,
+including you. It is not a feature that degrades gracefully any more, so run
+`npm run verify:email` after any change to the sender, the domain or the redirect
+allow-list.
 
-`docs/AUTH.md` covers how the two credentials coexist.
+- new members join with an invitation (Commissioner -> Invite), not a code;
+- signing in proves who someone is, and nothing else - an account nobody invited is
+  correctly nobody in your league.
+
+`docs/AUTH.md` covers how this replaced codes, and what onboarding a real code-holding
+league would have needed instead.

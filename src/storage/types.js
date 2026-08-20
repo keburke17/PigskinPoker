@@ -16,9 +16,9 @@
  * That is what actually fixes P1 (silent clobbering) and P3 (write amplification); a
  * whole-state save() on Postgres would just recreate the artifact's problem.
  *
- * The `version` plumbing below is already here, unused by the in-memory adapter beyond
- * its own bookkeeping, so that Phase 2's optimistic-concurrency path has a place to land
- * and can be tested before Supabase is involved.
+ * The `version` plumbing below carries that optimistic-concurrency path: every
+ * fine-grained write sends the version it was based on, and a write whose version has
+ * moved is rejected rather than merged or forced.
  *
  * ---------------------------------------------------------------------------
  * @typedef {Object} LeagueStore

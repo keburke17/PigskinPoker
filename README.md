@@ -13,70 +13,83 @@ lives untouched in [`LegacyProject/`](LegacyProject/) as the reference version.
 
 ## Quick start
 
-```bash
-npm install
-```
+Requires [Docker Desktop](https://docs.docker.com/desktop/). Start it first.
 
 ```bash
-npm run dev
+npm install && npm run dev
 ```
 
-Open <http://localhost:5173>. **No database or configuration is needed** - the app boots
-against an in-memory store seeded with a populated demo league (six teams, one finalized
-week, a second week in progress with stats part-entered).
+Open <http://localhost:5173>.
 
-### Demo logins
+That one command starts the local Supabase stack, applies every migration, seeds a
+populated demo league, creates the development accounts, writes `.env.local` from the
+running stack, and starts Vite. Re-running it is safe. It does **not** reset your
+database unless you ask:
 
-These are obviously-fake, local-only development credentials. They exist solely in the
-in-memory store, are never sent anywhere, and must never be used for a real league.
+```bash
+npm run dev -- --reset
+```
 
-| Role | Code |
+**Local development runs the real stack, on purpose.** Same Postgres, same Row Level
+Security, same Supabase Auth, same privileged-write function that deploys. Three test
+files covering every RLS assertion and all server-side authorization skip themselves
+silently without it - so "it works locally" against anything less means much less than
+it sounds.
+
+### Signing in locally
+
+**With an account** - the only way in. Enter one of these on the Sign In screen.
+Nothing is sent anywhere; the local stack captures every message it would have sent.
+
+**You do not have to go looking for the email.** `npm run dev` watches the mailbox and
+prints each sign-in link to its console the moment it is sent. On demand:
+
+```bash
+npm run link
+```
+
+That prints the newest link; `npm run link -- team1@pigskin.test` picks one address, and
+`npm run link -- --open` opens it straight away. The mail catcher itself is at
+<http://127.0.0.1:54324> if you would rather click the button in the message.
+
+| Account | Role |
 |---|---|
-| Commissioner | `DEMO-COMMISH` |
-| Team manager | `DEMO-TEAM-1` through `DEMO-TEAM-6` |
+| `commish@pigskin.test` | Commissioner |
+| `team1@pigskin.test` .. `team5@pigskin.test` | Manager of demo teams 1-5 |
 
-Pick "I'm the Commissioner" or "I'm a Team Manager" on the login screen. A full page
-refresh resets the demo league to its seeded state - refresh is the reset button.
-
-## Running against a real database
-
-The demo above needs nothing, and is the fastest loop for game-logic and UI work. But
-**three test files need a real database and skip themselves silently without one** - 59
-of 190 tests, covering every RLS assertion, all server-side authorization, and the
-regression guard for a bug that would destroy a league. A green `npm test` with no local
-stack has verified none of that, so run the real thing before pushing anything that
-touches storage, auth or the schema.
-
-Requires Docker Desktop.
-
-```bash
-npx supabase start && npx supabase db reset
-```
-
-Then create `.env.local` (git-ignored) from the values `npx supabase status` prints:
+**Team 6 is deliberately unclaimed**, so the path every real member takes is testable
+without setting it up first. Sign in as *any* address you like - `nobody@pigskin.test`,
+anything - then choose **I Have An Invite Code** and paste:
 
 ```
-VITE_SUPABASE_URL=http://127.0.0.1:54321
-VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_SECRET_KEY=sb_secret_...
-VITE_LEAGUE_NAME=Pigskin Poker (Demo League)
+PGSKN2-DEMTEAM234
 ```
 
-`npm run dev` now reads from Postgres, verifies logins server-side, and pushes live
-updates over Realtime. The same demo codes work.
+That joins you as manager of the All-In Antlers. The invite is reissued on every
+`npm run dev`, so it works again after you redeem it. (The code uses the real alphabet -
+no `O`, `I`, `L`, `U`, `0` or `1`, because those get misread aloud - and the real scrypt
+hashing. Only its unpredictability is given up, on a database that refuses to hold real
+data.)
 
-**`SUPABASE_SECRET_KEY` has no `VITE_` prefix on purpose.** Vite inlines any `VITE_`
-variable into the browser bundle; the secret key bypasses RLS entirely, so it must never
-be one. `tests/bundle.test.js` asserts it never reaches the client.
+These are genuine Supabase Auth users with genuine `league_members` rows, created by
+`npm run seed:accounts`. There is deliberately no dev-only sign-in bypass in the client -
+a bypass is how a login path ends up unenforced in production. The password
+`pigskin-local-dev` is set for scripts and `curl`; the app itself only ever uses magic
+links. `.test` is reserved by RFC 2606, so these addresses can never receive real mail
+even by accident.
 
-`npx supabase db reset` is the one-command way back to a clean, populated league.
+### What the demo league contains
+
+Six teams; Week 1 played and finalized so standings and results have data; Week 2 dealt,
+schemes resolved, stats part-entered - the state the app is actually in on a Sunday
+afternoon. `npm run db:reset` is the one-command way back to it.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Dev server with the seeded demo league |
+| `npm run dev` | Everything: local Supabase, migrations, seed, dev accounts, Vite |
+| `npm run dev -- --reset` | The same, but rebuild the database from scratch first |
 | `npm test` | Run the engine test suite once |
 | `npm run test:watch` | Tests in watch mode |
 | `npm run build` | Production build to `dist/` |
@@ -84,14 +97,15 @@ be one. `tests/bundle.test.js` asserts it never reaches the client.
 | `npm run lint` | ESLint |
 | `npm run format` | Prettier |
 | `npm run seed:generate` | Regenerate `supabase/seed.sql` from the demo league |
-| `npm run db:reset` | Rebuild the local database and reseed it |
+| `npm run pool:sql` | Print the `player_pool` rows from `teamRows.js`, for a migration |
+| `npm run db:reset` | Rebuild the local database, reseed it, recreate the dev accounts |
+| `npm run seed:accounts` | Recreate the local development accounts (idempotent) |
+| `npm run link` | Print the newest sign-in link from the local mail catcher |
 
 Deployment commands, all documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md):
 
 | Command | What it does |
 |---|---|
-| `npm run bootstrap` | Create a blank league in a database (needed once per deployment) |
-| `npm run set-code` | Set or rotate a league's commissioner code |
 | `npm run db:push` | Apply migrations to the linked remote **and verify grants** - use this, not `supabase db push` |
 | `npm run verify:grants` | Check the live security posture of the linked remote database |
 | `npm run verify:email -- you@example.com` | Send one real sign-in email and report what happened |
@@ -104,7 +118,7 @@ src/
   storage/      ALL persistence, behind one interface
   components/   the UI, extracted from the original single file
   styles/       global.css (was an injected <style> template literal)
-  data/         teamRows.js - the player pool source data
+  data/         teamRows.js - the player pool source data (seeds `player_pool`)
 tests/          Vitest suites, including parity against the original artifact
 docs/           data model, open questions, and design decisions
 LegacyProject/  the original Artifact version, untouched, for reference
@@ -116,7 +130,10 @@ period finalization and playoff advancement are all pure functions: state in, st
 behaviour intact and verified against it (see below).
 
 **Nothing outside `src/storage/` knows how data is persisted.** There is no
-`window.storage` anywhere in `src/`.
+`window.storage` anywhere in `src/`. One adapter implements the interface - Supabase,
+reading directly through PostgREST and writing through the Netlify function. There was
+a second, in-memory one that let the app boot with no configuration; it is gone, and
+`src/storage/index.js` says why.
 
 ## Tests
 
@@ -124,7 +141,7 @@ behaviour intact and verified against it (see below).
 npm test
 ```
 
-190 tests. Several kinds:
+239 tests. Several kinds:
 
 - **Behaviour tests** for dealing, schemes, scoring, the tiebreak chain, finalization
   and playoff advancement - including the awkward paths: an exhausted player pool at
@@ -137,11 +154,23 @@ npm test
   **If that file fails, the game has changed.** That is either a bug, or a rule change
   that needs the original designer's sign-off.
 
-- **Security tests** (`tests/rls.test.js`, `tests/server.test.js`) run against the real
-  local Postgres. They assert that a browser holding the publishable key can read what
-  the league should see and **write nothing, anywhere**, that secrets are unreachable,
-  and that a manager cannot enter stats, finalize a week, or touch another team's
-  lineup. They skip themselves if the local stack isn't running.
+- **Security tests** (`tests/rls.test.js`, `tests/server.test.js`,
+  `tests/bootstrap.test.js`) run against the real local Postgres. They assert that a
+  browser holding the publishable key can read what the league should see and **write
+  nothing, anywhere**, that secrets are unreachable, and that a manager cannot enter
+  stats, finalize a week, or touch another team's lineup.
+
+  **They skip themselves silently when the local stack is not running - 108 of the 239.**
+  Since `npm run dev` now starts that stack for you, the ordinary case is that they run.
+  Check the skip count before believing a pass on anything touching storage, auth or the
+  schema.
+
+  `server.test.js` resets the demo league between tests by piping `supabase/seed.sql`
+  into psql, which deletes and rebuilds the league row - and `league_members` cascades
+  with it, so a test run leaves the development accounts signed in but belonging to
+  nothing. `npm test` therefore restores them when it finishes
+  ([`scripts/test.mjs`](scripts/test.mjs)); the alternative, putting the memberships in
+  the seed file, would make fixtures appear in the middle of the security suite.
 - **`tests/bundle.test.js`** asserts the secret key never reaches the browser bundle.
 
 Engine tests are deterministic: randomness is injected (`src/engine/rng.js`) and the
@@ -152,10 +181,11 @@ clock is frozen where it matters.
 **Live at <https://pigskinpoker.netlify.app>**, running on Supabase and Netlify.
 
 Working and verified against real infrastructure: the whole game; real persistence;
-server-enforced authorization; live updates over Realtime. Codes are hashed and verified
-server-side, every privileged write is checked against a session, two people editing at
-once cannot silently overwrite each other, and a browser holding the public key can read
-what the league should see and write nothing, anywhere.
+server-enforced authorization; live updates over Realtime. Sign-in is a Supabase account
+and a magic link; a role is a `league_members` row, checked server-side on every
+privileged write; two people editing at once cannot silently overwrite each other; and a
+browser holding the public key can read what the league should see and write nothing,
+anywhere.
 
 Not done yet:
 

@@ -86,13 +86,19 @@ describe("decompose -> hydrate", () => {
     expect(back.activityLog.map((e) => e.ts)).toEqual(original.activityLog.map((e) => e.ts));
   });
 
-  it("routes secrets to the secrets tables and nowhere else", () => {
-    expect(db.league_secrets).toHaveLength(1);
-    expect(db.team_secrets).toHaveLength(6);
-    // the plaintext codes must not appear anywhere in the non-secret rows
-    const nonSecret = JSON.stringify({ ...db, league_secrets: [], team_secrets: [] });
-    expect(nonSecret).not.toMatch(/DEMO-COMMISH/);
-    expect(nonSecret).not.toMatch(/DEMO-TEAM-/);
+  /* This used to assert that codes were routed INTO league_secrets and team_secrets and
+   * appeared nowhere else. Those tables are gone, so the assertion inverts: the demo
+   * blob still carries the legacy `commissionerCode` and `joinCode` fields - the engine
+   * state shape is the artifact's and parity depends on it - and decompose must now
+   * drop them on the floor rather than persist them anywhere. */
+  it("persists no codes at all, from a blob that still carries them", () => {
+    expect(original.commissionerCode).toBe("DEMO-COMMISH"); // still in the blob
+    expect(db.league_secrets).toBeUndefined();
+    expect(db.team_secrets).toBeUndefined();
+
+    const everything = JSON.stringify(db);
+    expect(everything).not.toMatch(/DEMO-COMMISH/);
+    expect(everything).not.toMatch(/DEMO-TEAM-/);
   });
 
   it("converts stat strings to real integers, with blank meaning null not zero", () => {

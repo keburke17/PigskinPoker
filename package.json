@@ -5,20 +5,21 @@
   "type": "module",
   "description": "Pigskin Poker - a custom fantasy-football league game.",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "link": "node scripts/magic-link.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node scripts/test.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
     "seed:generate": "node scripts/generate-seed.mjs",
-    "db:reset": "supabase db reset",
+    "pool:sql": "node scripts/generate-pool-migration.mjs",
+    "seed:accounts": "node scripts/seed-accounts.mjs",
+    "db:reset": "supabase db reset && node scripts/seed-accounts.mjs",
     "db:push": "supabase db push && node scripts/verify-grants.mjs",
-    "bootstrap": "node scripts/bootstrap-league.mjs",
     "verify:grants": "node scripts/verify-grants.mjs",
-    "verify:email": "node scripts/verify-email.mjs",
-    "set-code": "node scripts/set-commissioner-code.mjs"
+    "verify:email": "node scripts/verify-email.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
