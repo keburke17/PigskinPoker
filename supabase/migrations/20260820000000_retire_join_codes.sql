@@ -24,32 +24,12 @@
 --      login", and so the team picker could show which teams were joinable. No screen
 --      asks either question now.
 --
---  THIS IS FORWARD-ONLY, and applying it SIGNS EVERYBODY OUT: the credentials people
---  hold today stop existing, and they get back in through an invitation.
+--  APPLYING THIS SIGNS EVERYBODY OUT. The credentials people hold stop existing, and
+--  they get back in by invitation. On the one database that had codes-era data, that
+--  data was deleted by hand first - see docs/MIGRATION-NOTES.md. Every database from
+--  here on applies this while empty, so there is nothing for it to strand.
 --
---  It deliberately does NOT touch league, team or game data. A migration should do what
---  its name says, and "retire join codes" is not a licence to delete somebody's league.
---
---  BE AWARE OF THE CONSEQUENCE, though: authorization is a `league_members` row from
---  here on, and the mechanism that minted the first one from a join code is deleted
---  right here. A league with no member holding the `commissioner` role therefore cannot
---  deal a week, add a team, issue an invite or promote anybody - every one of those is
---  commissioner-only - and no screen in the app can repair it.
---
---  So before running this against a database that matters, make sure every league you
---  intend to keep has a commissioner:
---
---    select l.name from leagues l
---     where not exists (select 1 from league_members m
---                        where m.league_id = l.id and m.role = 'commissioner');
---
---  and for each one that comes back, either give it a commissioner or delete it:
---
---    insert into league_members (league_id, user_id, role)
---    select '<league-uuid>', id, 'commissioner'
---      from auth.users where email = '<address>';   -- the account must exist already
---
---  docs/DEPLOYMENT.md carries this as a numbered step.
+--  It touches no league, team or game data. A migration should do what its name says.
 -- ============================================================================
 
 -- Order matters only for readability; each is independent.

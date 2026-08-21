@@ -506,6 +506,34 @@ Per-league `players` rows stay, deliberately: a commissioner marking someone OUT
 statement about *their* league, and sharing one row would leak it into everybody else's.
 There is a test asserting exactly that.
 
+### The hosted database was wiped, once, by hand
+
+Applying the retire migration signs everybody out, and authorization becomes a
+`league_members` row - which the deployed data had almost none of, because everyone was
+still getting in by code. Two leagues, four accounts, one finalized week: all of it test
+data, and the plan had always been to start the real league clean.
+
+So it was deleted deliberately, in the SQL editor, before the push:
+
+```sql
+delete from public.leagues;   -- everything under a league cascades
+delete from auth.users;       -- profiles and memberships cascade
+```
+
+**This is recorded here rather than in the migration or the runbook, on purpose.** It
+was tried both of those ways first and both were wrong:
+
+- *In the migration* - a first attempt had it delete leagues with no commissioner. A
+  schema change that quietly empties a table is a landmine for whoever reads the
+  migration list in a year and reasonably expects "retire join codes" to retire join
+  codes.
+- *In `DEPLOYMENT.md`* - as a numbered step it implied every deployment faces this
+  choice. None will. Migrations run once per database, so every database after this one
+  applies the retire migration while empty, and the code that could produce a
+  code-only member no longer exists. The hazard is not just handled; it is unreachable.
+
+A one-time act on one database is history, not procedure.
+
 ### What this costs
 
 Docker is now required to run the app at all. That was a deliberate trade - it is what

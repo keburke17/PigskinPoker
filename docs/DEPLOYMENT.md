@@ -93,57 +93,16 @@ it refuses to run against a database holding real data.
 Magic-link sign-in needs SMTP configured on the hosted project, and it is a dashboard
 job rather than a migration. **`docs/EMAIL-SETUP.md` has the steps.**
 
-This is not optional any more, and it is not a feature that degrades gracefully: without
-working email **nobody can get in at all**, including you. The built-in sender throttles
-silently rather than erroring, which fails in the way nobody notices until someone is
-locked out.
+This is not optional, and it is not a feature that degrades gracefully: without working
+email **nobody can get in at all**, including you. The built-in sender throttles silently
+rather than erroring, which fails in the way nobody notices until someone is locked out.
 
-**Verify it BEFORE step 2, not after.** Step 2 signs everybody out, and a magic link is
-the only way back:
+Do it before step 3 - you cannot create a league without signing in first. Then prove it
+rather than assuming:
 
 ```bash
 npm run verify:email -- you@your-address.com
 ```
-
-### 2c. Existing data: start clean, or give every league a commissioner
-
-Authorization is a `league_members` row from step 2 onwards, and the mechanism that used
-to mint the first one from a join code is deleted by the same migration. So a league
-whose members do not include a commissioner becomes permanently unadministrable - it
-cannot deal a week, add a team, issue an invite or promote anybody, and no screen in the
-app can repair it. Find them:
-
-```sql
-select l.name from leagues l
- where not exists (select 1 from league_members m
-                    where m.league_id = l.id and m.role = 'commissioner');
-```
-
-**If you are starting clean** - which is what happened for the first deployment of this
-change, every league on it being test data - wipe first, then push:
-
-```sql
-delete from public.leagues;   -- seasons, teams, players, periods, stats, invites all cascade
-delete from auth.users;       -- profiles and memberships cascade
-```
-
-Run that in the Supabase dashboard's SQL editor. It is a deliberate, one-time act, which
-is why it lives here rather than inside the migration: a migration should do what its
-name says, and a schema change that quietly deletes leagues is a landmine for whoever
-reads the migration list in a year.
-
-**If you are keeping a league**, give it a commissioner before step 2. The account has to
-exist, so have that person sign in on the site once first:
-
-```sql
-insert into league_members (league_id, user_id, role)
-select '<league-uuid>', id, 'commissioner'
-  from auth.users where email = '<their-address>';
-```
-
-Either way, **members of a kept league lose their join codes** and are not automatically
-members of anything. Issue them invites from **Commissioner -> Invite** in the same
-sitting as the deploy, or the league is unreachable for everyone but its commissioner.
 
 ### 3. Create the league - in the app, not from a script
 
