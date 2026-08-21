@@ -36,11 +36,14 @@ worth knowing before touching DNS:
   `pigskinpoker.netlify.app`, and it must stay **DNS only (grey cloud)**: proxied,
   Cloudflare terminates TLS itself, Netlify's certificate challenge never completes, and
   a "Flexible" SSL mode adds a redirect loop that reads as an application bug.
-- **`pigskinpoker.netlify.app` still serves the app** - 200, not a redirect. Both origins
-  are live and both are in the auth allow-list, so nothing is broken, but sessions live
-  in `localStorage` and are per-origin: somebody arriving by an old bookmark is signed in
-  there, separately, and is never told the address changed. `docs/EMAIL-SETUP.md` section
-  3 has the host-scoped redirect that would close it.
+- **`pigskinpoker.netlify.app` 301s here**, but only because `netlify.toml` says so.
+  Setting a primary domain did not do it: Netlify's project stays "always accessible at a
+  netlify.app subdomain" and answered 200. Two live origins would have meant two session
+  stores, since `localStorage` is per-origin - somebody arriving by an old bookmark signed
+  in there separately, never told the address had changed. The rule is first in the file,
+  above the SPA fallback, and the comment there explains why. **The netlify.app entry
+  stays in the Supabase allow-list regardless**: the auth server decides whether to honour
+  a sign-in link before any browser redirect happens.
 
 ---
 

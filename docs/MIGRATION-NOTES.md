@@ -608,7 +608,104 @@ redirect is *rejected*,
 so a healthy allow-list hides it completely, and the failure it produces is a member
 being dropped on a dead address on somebody else's laptop.
 
-`npm run verify:redirects -- https://your-site` now answers this without sending
-anything, by asking the auth server to verify a token that was never valid and reading
-where it sends the rejection. That is the same decision it makes for a real link.
-Running it against production is what turned up the localhost fallback.
+`verify:redirects` now answers this without sending anything, by asking the auth server
+to verify a token that was never valid and reading where it sends the rejection. That is
+the same decision it makes for a real link. Running it against production is what turned
+up the localhost fallback.
+
+```bash
+VITE_SUPABASE_URL=https://<ref>.supabase.co npm run verify:redirects -- https://your-site
+```
+
+The prefix is not optional, and the reason is the next section. **Site URL was fixed on
+2026-08-21**, along with the domain move below.
+
+---
+
+## 2026-08-21: the domain move, and a third bug in the same family
+
+The site moved from `pigskinpoker.netlify.app` to `pigskin.ballsohard.org` - a subdomain,
+chosen so the root and `www` stay free for whatever else the domain is for. It is a
+Netlify domain alias over a Cloudflare CNAME, DNS-only. The sending domain was already
+`mail.ballsohard.org`, so the move made the URL and the from-address agree rather than
+pulling them apart, which was luck rather than planning.
+
+**Site URL was set first, deliberately, to the address that already worked.** Every
+mistake available during a domain move produces exactly one symptom - the person lands on
+the Site URL - so the first move is to make that a working front door. Pointing it at the
+new domain before DNS resolved would have aimed the fallback at nothing, which is the
+problem rather than the fix. It moved to the new domain last, after the certificate
+existed and the allow-list had been proved.
+
+Both domains stay in the redirect allow-list for a season. A magic link already sitting in
+an inbox carries the old address inside it, and that address is checked at the auth server
+before any browser redirect happens - so tidying the list early is the one action that
+breaks somebody mid-flight.
+
+The one thing no dashboard warns about: **everybody is signed out, once.** The session
+lives in `localStorage`, which is per-origin. Unannounced, "the site moved and now it wants
+your email again" is indistinguishable from a phishing message.
+
+### The check was answering about the wrong stack
+
+`verify:redirects` reads `.env.local`, which `npm run dev` writes from the LOCAL stack. Run
+exactly as this repo's own docs gave it, with a production site, it probed `127.0.0.1` and
+printed a report that read precisely like a production report: the local stack's `site_url`
+reported as WRONG, a correct hosted allow-list reported as missing. Every line true, about
+the wrong project.
+
+This is worse than having no check. An unwritten check is merely absent; a confident one
+about the wrong system is believed - and this one exists specifically to be believed about
+a setting nothing else in the repo can see. It now refuses the combination rather than
+answering it.
+
+### Netlify does not redirect its own subdomain
+
+Setting a primary domain does not retire the old address. A project stays "always
+accessible at a netlify.app subdomain", and it answered 200, cache-busted. Two origins
+serving the same app is not broken - but with per-origin sessions it turns a clean one-time
+cutover into people being intermittently logged out depending on which URL they arrived by,
+which is far harder to explain than the cutover would have been. One host-scoped rule in
+`netlify.toml` closes it, and it must sit above the SPA fallback, whose `from = "/*"`
+carries no hostname and matches every host.
+
+### The sign-in screen flashed on the way into a league
+
+Selecting a league showed the "give us your email" screen for a moment first.
+
+Changing the league in the URL starts two independent round trips - the league read, and
+re-asking `whoami` - and the read wins. That leaves a window with the league loaded and the
+role still unknown, which the render gate read as a signed-out visitor.
+
+The part worth keeping: **a flag existed for exactly this and could not do the job, because
+it was only ever set true.** `accountChecked` meant "the answer is not known yet", and on
+the second run of the effect - which is what changing league IS - it was already true
+before the effect began. A guard that can only fire once is not a guard; it is a
+description of the first page load.
+
+A single-league stack resolves too fast to lose the race, so it was reproduced by inserting
+a temporary delay before `whoami` and sampling which screen was rendered every 50ms. Before:
+`LANDING -> LOGIN-SCREEN` at 471ms. After: `LANDING -> LOADING` at 94ms. Inducing a race you
+cannot otherwise observe is cheaper than arguing about whether it exists.
+
+The same change made two definite answers CLEAR a cached role - no account, and a server
+answer placing you in a league with no role - because identity is one `localStorage` key
+rather than one per league, so a commissioner of one league walked into another still
+holding the panel. Never a hole, since the role has never come from the client and the
+writes were already refused; the screen was lying about it. An error is not a definite
+answer and leaves the cached value alone, so a blip does not sign anybody out.
+
+### The pattern, again
+
+Three bugs across two days, one shape: **not knowing looked exactly like being refused.**
+
+- A magic link that failed had no representation on screen, so you got the sign-in box -
+  which reads as "we do not know you."
+- A redirect that was rejected was silently sent to the Site URL, so a link that worked
+  looked like a link that was broken.
+- An identity still being resolved was rendered as an identity that was absent.
+
+In an authentication flow the absence of an answer and a negative answer are different
+facts that produce the same screen unless somebody deliberately keeps them apart. All three
+were found from the outside, by someone using the thing, because from the inside each one
+looks like the state machine working.

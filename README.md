@@ -191,9 +191,12 @@ Not done yet:
 
 | | |
 |---|---|
-| **Phase 3** | Real accounts, and rate limiting on login |
 | **Phase 4** | Live NFL stats feed (the seam exists, no provider is wired) |
 | **Phase 6** | `docs/RULES.md` - the game rules written down outside the code |
+
+Phase 3 is done. Accounts and magic links are the only way in; join codes, the hand-rolled
+`sessions` table and our own login rate limiter were dropped rather than finished, because
+Supabase Auth does all three. See `docs/AUTH.md`.
 
 ### Documentation
 

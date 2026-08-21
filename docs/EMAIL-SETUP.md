@@ -268,13 +268,15 @@ order matters more than the values do.
    zone over to Netlify.
 5. **Wait for the certificate.** Netlify shows it. Going further first sends people to a
    TLS warning.
-6. **Make it the primary domain** - then check what the old address actually does.
-   Setting a primary domain did NOT redirect `pigskinpoker.netlify.app` here; it still
-   answers 200, so two origins serve the same app against the same project. Nothing
-   breaks - both are allow-listed - but `localStorage` is per-origin, so anyone arriving
-   by an old bookmark holds a separate session and is never told the address moved. If
-   Netlify will not do it, one host-scoped rule in `netlify.toml` will, placed **above**
-   the SPA catch-all (`from = "/*"` matches every host and would win otherwise):
+6. **Make it the primary domain** - then check what the old address actually does, and do
+   not assume. Setting a primary domain did NOT redirect `pigskinpoker.netlify.app`; it
+   went on answering 200, because a Netlify project is "always accessible at a netlify.app
+   subdomain" and there is no dashboard control for it. Two origins serving the same app
+   is not broken - both are allow-listed - but `localStorage` is per-origin, so anyone
+   arriving by an old bookmark holds a separate session and is never told the address
+   moved, which turns a one-time cutover into an intermittent logged-out state. One
+   host-scoped rule in `netlify.toml` does it, placed **above** the SPA catch-all
+   (`from = "/*"` matches every host and would win otherwise). It is in the repo:
 
    ```toml
    [[redirects]]
