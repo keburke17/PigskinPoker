@@ -154,40 +154,157 @@ default is tuned for the built-in sender and is far lower than Resend needs.
 
 ## 3. Supabase dashboard - URL configuration
 
-Authentication -> URL Configuration.
+Authentication -> URL Configuration. Two settings. They fail differently, and only one
+of them announces itself.
 
-- **Site URL**: `https://pigskinpoker.netlify.app`
-- **Redirect URLs**: `https://pigskinpoker.netlify.app/**` - **with the wildcard**, plus
-  any Netlify deploy-preview domains you want to be able to sign in on.
+### Site URL
 
-**The wildcard is not optional.** A sign-in link returns people to the page they left,
-and the one that matters is `/join/<code>`: without path matching, someone part-way
-through redeeming an invite is dropped at the front door and has to go and find the text
-message again. Registering only the bare origin makes every such link fail.
+The single canonical address people actually use. For this deployment, as of 2026-08-20:
 
-An address that is not on this list is **rejected outright**, and the failure looks like a
-broken link rather than a misconfiguration - so it is worth being generous here.
+- **Site URL**: `https://pigskin.ballsohard.org` - `https`, no trailing slash.
+
+Three things consult it. Nothing else does:
+
+1. **Where a REJECTED redirect lands.** An address that is not on the allow-list below is
+   refused and the person is sent here instead. Note what that means for a real link: the
+   token is still spent and they are still signed in - they just arrive somewhere they
+   did not ask to be. It is not a link that fails, it is a link that succeeds somewhere
+   useless, which is far harder to report and far harder to diagnose.
+2. **The default for a link carrying no `redirect_to` at all.** The app never sends one -
+   `signInWithEmail` always passes `location.href` - but `npm run verify:email` does,
+   unless you set `VERIFY_EMAIL_REDIRECT`.
+3. **It is implicitly an allowed redirect target**, with paths, without appearing in the
+   list. So it must always be an address you control.
+
+It does **not** affect the branded email. Supabase's stock templates use `{{ .SiteURL }}`;
+ours uses only `{{ .ConfirmationURL }}`, and `tests/config.test.js` asserts it stays that
+way.
+
+**This is the setting that gets forgotten.** Supabase ships it as `http://localhost:3000`,
+and because it is consulted only when a redirect is rejected, a project with a correct
+allow-list looks entirely healthy while carrying a fallback pointing at a dead port on
+somebody else's laptop. That was true here from the day auth went live (2026-08-19) until
+2026-08-20, and nothing anywhere said so. It was caught only because a different sign-in
+bug sent someone looking; on a longer-lived project it would sit there indefinitely.
+
+### Redirect URLs
+
+The allow-list. An address that is not on it is rejected outright, and the failure looks
+like a broken link rather than a misconfiguration - so be generous.
+
+- `https://pigskin.ballsohard.org/**`
+- `https://pigskinpoker.netlify.app/**` - kept on purpose; see the domain move below
+
+**The wildcard is not optional.** A sign-in link returns people to the page they left, and
+the one that matters is `/join/<code>`: without path matching, someone part-way through
+redeeming an invite is dropped at the front door and has to go and find the text message
+again. Registering only the bare origin makes every such link fail.
+
+Two things worth knowing before trying to tighten this:
+
+- **`https://your-site` with no trailing slash does not match `https://your-site/**`.**
+  Browsers normalise `location.href`, so the app never hits it and a hand-made link can.
+  Adding the bare origin as a second entry costs nothing.
+- **`http://localhost` and `http://127.0.0.1` are allowed on ANY port, always.** That is
+  built into GoTrue, it is not your allow-list, and no dashboard setting turns it off.
+  (`https://localhost` and `http://anything.localhost` are correctly refused.) Do not
+  spend an evening trying to close it.
+
+**Netlify deploy previews are deliberately NOT on this list**, and the question is not
+really about the allow-list. Preview builds inherit production environment variables, so
+a preview already points at the live Supabase project; today it can only read, because
+the origin can hold no session. Allow-listing `deploy-preview-*--<site>.netlify.app`
+would let any preview build act as a signed-in member of the real league, with whatever
+code is on that branch. There is nothing it would buy: local development *is* the real
+stack, magic links included (captured at <http://127.0.0.1:54324>), so every auth flow a
+preview could exercise is already testable. Previews are for looking at the UI, and
+looking at the UI does not need a session. A second Supabase project for previews would
+isolate this properly and doubles every dashboard-only setting on this page - the exact
+class of failure the rest of it is about. Decided 2026-08-20; revisit only for a
+contributor who cannot run the stack locally.
 
 `supabase/config.toml` configures only the LOCAL stack. It does not reach the hosted
 project.
 
-**Check both settings without sending anything:**
+### Check both, without sending anything
 
 ```bash
-npm run verify:redirects -- https://pigskinpoker.netlify.app
+npm run verify:redirects -- https://pigskin.ballsohard.org
 ```
 
-It asks the auth server to verify a token that was never valid and reads where it is
-sent, which is the same decision it makes for a real link - so the answer is real, and
-no email is spent finding it out.
+It asks the auth server to verify a token that was never valid and reads where the
+rejection is sent, which is the same decision it makes for a real link - so the answer is
+real, and no email is spent finding it out.
 
-**The Site URL is the one that gets forgotten.** Supabase ships it as
-`http://localhost:3000`, and it is only ever consulted when a redirect is rejected - so
-a project with a correct allow-list looks entirely healthy while carrying a fallback
-that points at a dead address on somebody else's laptop. That was true of this project
-from the day auth went live (2026-08-19) until 2026-08-20, and nothing anywhere said
-so. It was caught within a day only because a different sign-in bug sent someone
-looking; on a longer-lived project it would sit there indefinitely.
+**It checks whichever project `.env.local` names - which is the LOCAL stack whenever you
+have run `npm run dev`.** Pointed at a hosted site it would otherwise probe 127.0.0.1 and
+print a report that reads exactly like a production report: the local stack's own
+`site_url` reported as WRONG, a correct hosted allow-list reported as missing, every line
+of it true about the wrong project. The script now refuses that combination instead of
+answering it. To aim it at the hosted project:
+
+```bash
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co npm run verify:redirects -- https://pigskin.ballsohard.org
+```
+
+### Moving to a new domain
+
+Done on 2026-08-20, from `pigskinpoker.netlify.app` to `pigskin.ballsohard.org`. The
+order matters more than the values do.
+
+1. **Set Site URL to the address that works TODAY**, before anything else. For the rest of
+   the move, every mistake below produces exactly one symptom - the person lands on the
+   Site URL - so it needs to be a working front door first. Pointing it at the new domain
+   at this stage would aim the fallback at a hostname that does not resolve yet, which is
+   the problem being fixed rather than the fix.
+2. **Add the new domain's `/**` to Redirect URLs, before touching DNS.** An entry for a
+   hostname that does not resolve is an inert string. There is no risk in it being early,
+   and it removes any window where the domain is live but sign-in is not.
+3. **Add the DNS record.** For a subdomain, a CNAME to `<site>.netlify.app`. If DNS is at
+   Cloudflare it must be **DNS only (grey cloud)**: proxied, Cloudflare terminates TLS
+   itself, Netlify's certificate challenge never completes, and a "Flexible" SSL mode adds
+   a redirect loop that reads as an application bug.
+4. **Add it in Netlify as a domain alias.** External DNS plus an alias - do not hand the
+   zone over to Netlify.
+5. **Wait for the certificate.** Netlify shows it. Going further first sends people to a
+   TLS warning.
+6. **Make it the primary domain** - then check what the old address actually does.
+   Setting a primary domain did NOT redirect `pigskinpoker.netlify.app` here; it still
+   answers 200, so two origins serve the same app against the same project. Nothing
+   breaks - both are allow-listed - but `localStorage` is per-origin, so anyone arriving
+   by an old bookmark holds a separate session and is never told the address moved. If
+   Netlify will not do it, one host-scoped rule in `netlify.toml` will, placed **above**
+   the SPA catch-all (`from = "/*"` matches every host and would win otherwise):
+
+   ```toml
+   [[redirects]]
+     from = "https://pigskinpoker.netlify.app/*"
+     to = "https://pigskin.ballsohard.org/:splat"
+     status = 301
+     force = true
+   ```
+
+   In-flight magic links survive it: the token is in the URL fragment, which never
+   reaches Netlify at all - the browser reattaches it to the redirect target.
+7. **Verify** with the hosted form of the command above, against the new domain. Site URL
+   will still report WRONG - that is step 8, not a mistake.
+8. **Now move Site URL to the new domain.** Verify again; expect four OKs.
+
+**Keep the old domain in the allow-list for a season.** A magic link already sitting in
+someone's inbox carries the old address inside it, and that address is checked at the auth
+server before any browser redirect happens. Adding is not replacing. Tidying up early is
+the one way to break somebody mid-flight.
+
+**Tell the league first: everyone gets signed out, once.** The Supabase session lives in
+`localStorage`, which is per-origin, so a manager signed in at the old address is simply
+not signed in at the new one. No dashboard mentions this and no test can catch it - and
+unannounced, "the site moved and now it wants your email again" is precisely what a
+phishing message looks like.
+
+Finally, check the sending domain still agrees with the site. Here it already did: mail
+comes from `mail.ballsohard.org` (section 1), so the move made the URL and the
+from-address match rather than pulling them apart. If yours would not, that is a separate
+change with its own DNS wait - do not do both in one sitting.
 
 ---
 

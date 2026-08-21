@@ -178,7 +178,7 @@ clock is frozen where it matters.
 
 ## Where things stand
 
-**Live at <https://pigskinpoker.netlify.app>**, running on Supabase and Netlify.
+**Live at <https://pigskin.ballsohard.org>**, running on Supabase and Netlify.
 
 Working and verified against real infrastructure: the whole game; real persistence;
 server-enforced authorization; live updates over Realtime. Sign-in is a Supabase account
