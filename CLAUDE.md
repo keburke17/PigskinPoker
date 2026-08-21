@@ -159,7 +159,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-239 tests. Three groups worth knowing about:
+245 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -168,7 +168,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 108 of the 239
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 108 of the 245
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

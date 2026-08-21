@@ -23,6 +23,7 @@ export function LandingScreen({
   leagues,
   leaguesLoading,
   initialCode = "",
+  initialMode = null,
   onSignInWithEmail,
   onRedeemInvite,
   onCreateLeague,
@@ -33,7 +34,7 @@ export function LandingScreen({
 }) {
   // An invite link (/join/<code>) lands here with the code already in hand, so the
   // redeem door opens itself rather than making someone find it.
-  const [mode, setMode] = useState(initialCode ? "code" : null);
+  const [mode, setMode] = useState(initialCode ? "code" : initialMode);
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState(initialCode);
@@ -125,7 +126,8 @@ export function LandingScreen({
             {sent ? (
               <p className="pp-sub">
                 Check your email - we sent a sign-in link to <strong>{email}</strong>. Open it on
-                this device. The link works once.
+                this device. The link works once, and this is now the ONLY one that will - any
+                earlier email has just been cancelled.
               </p>
             ) : (
               <>

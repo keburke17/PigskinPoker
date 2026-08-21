@@ -306,6 +306,45 @@ had just created and be shown a login screen for it.
 
 ---
 
+### When a link does NOT work
+
+This was the worst bug the project has had, and every piece of it worked.
+
+A magic link that succeeds comes back with tokens in the URL fragment, and the Supabase
+client picks them up. A link that FAILS comes back with an explanation in that same
+fragment:
+
+```
+#error=access_denied&error_code=otp_expired&error_description=Email+link+is+...
+```
+
+The client has nothing to do with that, so it drops it. The app dropped it too. What
+that looked like from a chair: tap the link in your email, land back on the sign-in
+screen, and be asked for your email again. Nothing said, nothing wrong on screen. So
+you ask for another link - **which cancels the one still sitting in your inbox** - and
+round you go, indefinitely.
+
+Links fail for four boring reasons, none of them visible and all of them recoverable:
+
+- it was already used - they work exactly once;
+- a newer link was requested, superseding it. This is the trap, because asking again is
+  precisely what people do when one seems not to work;
+- it aged out (`otp_expiry`, an hour by default);
+- a mail scanner opened it first. Some corporate filters and webmail previewers follow
+  links to check them, spending the token before the human ever clicks.
+
+`src/storage/authCallback.js` reads that fragment before the client consumes it, turns
+it into one sentence, and takes it out of the address bar so a reload does not resurrect
+a complaint with no link left to blame. `tests/authCallback.test.js` pins it.
+
+It is read at IMPORT time rather than when the store is built, and that is deliberate:
+capturing it in `createSupabaseStore` meant capturing it during a React render, and the
+reading has a side effect. StrictMode renders twice, so the first store read the error
+and cleaned the URL and the second - built moments later from the cleaned URL - found
+nothing. The banner then appeared for nobody, in development only.
+
+---
+
 ### The operational dependency - READ THIS BEFORE DEPLOYING
 
 Magic links are only as good as the email behind them, and this is the part that is not
@@ -325,6 +364,18 @@ npm run verify:email -- you@your-address.com
 That sends one real sign-in email and names the two failures worth naming - a 429 from
 the built-in sender's throttle, and a rejected redirect URL. Both are otherwise silent,
 which is why the check exists as a command rather than a paragraph.
+
+And for where those links LAND, which is a different question and costs no email:
+
+```bash
+npm run verify:redirects -- https://pigskinpoker.netlify.app
+```
+
+Site URL and the redirect allow-list are separate settings and fail differently. The
+allow-list rejects an address outright; the Site URL is where the rejected are sent, is
+consulted at no other time, and ships as `http://localhost:3000`. A project with a
+correct allow-list therefore looks entirely healthy while carrying a fallback pointing
+at a dead address on somebody else's machine.
 
 All of it is one-time, and the same SMTP setup is exactly what OQ-6 notifications would
 need - so doing it here turns "rosters are dealt, submit your scheme" into a feature

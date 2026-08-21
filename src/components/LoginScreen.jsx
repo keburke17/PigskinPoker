@@ -34,7 +34,8 @@ export function LoginScreen({ onSignInWithEmail, loginError, setLoginError }) {
             <>
               <p className="pp-sub">
                 Check your email - we sent a sign-in link to <strong>{email}</strong>. Open it on
-                this device and you will be signed straight in. The link works once.
+                this device and you will be signed straight in. The link works once, and this is
+                now the ONLY one that will - any earlier email has just been cancelled.
               </p>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="pp-btn pp-btn-ghost" onClick={() => setSent(false)}>Back</button>

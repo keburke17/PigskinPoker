@@ -81,7 +81,10 @@ export default function App() {
     ops,
   } = league;
 
-  const [loginError, setLoginError] = useState(null);
+  /* Why the last magic link failed, if it did - captured on the first render so that
+   * dismissing the banner does not bring it straight back. */
+  const [linkError] = useState(() => store.getAuthLinkError?.() ?? null);
+  const [loginError, setLoginError] = useState(linkError);
   const [restoreError, setRestoreError] = useState(null);
   /* The tab lives in the URL now, so it is shareable and the back button works - which
    * is the whole of what P6 was about. Local state would immediately disagree with the
@@ -222,7 +225,15 @@ export default function App() {
       /* logging out locally matters more than the round trip succeeding */
     }
     setIdentity({ role: null, teamId: null });
-    setTab("home");
+    /* CLEAR THE ACCOUNT, and leave for the front door.
+     *
+     * Both halves were wrong. `account` outliving the session left the landing page
+     * offering "Your Leagues" and a sign-out button to somebody who had just signed
+     * out. And this used to call setTab("home"), which is a LEAGUE route - so signing
+     * out of the landing page navigated INTO the league just left, to be told it was
+     * private. The front door is the only sane place to land. */
+    setAccount(null);
+    go({ name: "landing" });
   };
 
   /* ---- manager actions: one row each, not the whole league ---- */
@@ -396,6 +407,10 @@ export default function App() {
           leagues={myLeagues}
           leaguesLoading={leaguesLoading}
           initialCode={route.name === "join" ? route.code : ""}
+          /* Arriving from a link that did not work means the answer is "send me
+             another", so open that door rather than showing the error above three
+             buttons and leaving them to guess which one. */
+          initialMode={linkError ? "signin" : null}
           onSignInWithEmail={onSignInWithEmail}
           onRedeemInvite={onRedeemInvite}
           onCreateLeague={onCreateLeague}
@@ -478,6 +493,10 @@ export default function App() {
                 </>
               ) : (
                 <>
+                  {/* A magic link can land here too - an old email pointing at a league
+                      someone is no longer signed in to. Without this the failure is
+                      silent again, just on a different screen. */}
+                  {linkError ? <ErrorBanner message={linkError} /> : null}
                   <p className="pp-sub" style={{ marginBottom: 10 }}>
                     This league is private, or it does not exist. Sign in - if you are a
                     member, it will be waiting.
