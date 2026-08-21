@@ -38,10 +38,9 @@ const periodKey = (p) => p.type + "-" + p.number;
  * @param {object} opts
  * @param {string} opts.leagueKey   stable key for the league (e.g. 'demo')
  * @param {number} opts.year        season year
- * @param {(code: string) => string} [opts.hashCode]  required if codes are present
  */
 export function decomposeLeague(state, opts) {
-  const { leagueKey, year, hashCode, existing } = opts;
+  const { leagueKey, year, existing } = opts;
   const ns = (kind) => leagueKey + ":" + kind;
   const uid = (kind, key) => stableUuid(ns(kind), key);
 
@@ -51,7 +50,7 @@ export function decomposeLeague(state, opts) {
    * Derived ids are a function of `leagueKey`, so two callers passing different
    * leagueKeys for the SAME league produce different ids for every row. When that
    * happened, persisting an edit inserted a whole new league and deleted the old one -
-   * cascading away league_secrets and sessions, i.e. permanently locking the
+   * cascading away its memberships, i.e. permanently locking the
    * commissioner out of their own league on the first "Add Team".
    *
    * The demo league never hit it because "demo" was hardcoded on both sides, which is
@@ -110,12 +109,6 @@ export function decomposeLeague(state, opts) {
       {
         id: leagueId,
         name: state.leagueName || "Pigskin Poker",
-        /* Accept EITHER shape. A raw blob (bootstrap, or a restored backup) carries
-         * the plaintext code; a hydrated view carries only the boolean, because the
-         * code never reaches the browser. Reading just the former silently cleared the
-         * flag on every state write, which made the login screen offer to "create" a
-         * commissioner for a league that already had one. */
-        has_commissioner_code: !!(state.commissionerCode || state.commissionerCodeSet),
       },
     ],
     seasons: [
@@ -147,8 +140,6 @@ export function decomposeLeague(state, opts) {
     schemes: [],
     period_results: [],
     events: [],
-    league_secrets: [],
-    team_secrets: [],
   };
 
   /* ---- teams and their season totals ---- */
@@ -159,9 +150,6 @@ export function decomposeLeague(state, opts) {
       name: t.name,
       legacy_id: t.id,
       active: true,
-      // Public fact, never the code itself. Drives the team picker's "joinable" state.
-      // Same either-shape rule as has_commissioner_code above.
-      has_join_code: !!(t.joinCode || t.hasJoinCode),
     });
     const totals = (cum, scope) => ({
       id: known.totals.get(t.id + ":" + scope) ?? uid("totals", t.id + ":" + scope),
@@ -177,20 +165,7 @@ export function decomposeLeague(state, opts) {
     });
     out.team_totals.push(totals(t.cumulative, "regular"));
     out.team_totals.push(totals(t.playoffCumulative, "playoff"));
-
-    if (t.joinCode) {
-      if (!hashCode) throw new Error("decomposeLeague: hashCode is required when join codes are present");
-      out.team_secrets.push({ team_id: teamId(t.id), join_code_hash: hashCode(t.joinCode) });
-    }
   });
-
-  if (state.commissionerCode) {
-    if (!hashCode) throw new Error("decomposeLeague: hashCode is required when a commissioner code is present");
-    out.league_secrets.push({
-      league_id: leagueId,
-      commissioner_code_hash: hashCode(state.commissionerCode),
-    });
-  }
 
   /* ---- players ---- */
   state.playerPool.forEach((p) => {

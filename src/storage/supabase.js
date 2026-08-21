@@ -1,4 +1,5 @@
-/* Supabase adapter. Implements the same interface as the in-memory store.
+/* Supabase adapter - the store. (It had a sibling: an in-memory adapter, deleted
+ * once local development moved to the real stack. See src/storage/index.js.)
  *
  * SPLIT ON PURPOSE:
  *   READS  go straight to PostgREST with the PUBLISHABLE key. That key is public and
@@ -15,27 +16,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { hydrateLeague } from "./hydrate.js";
 
-const SESSION_KEY = "pigskin_session_v1";
-
 /* schemes must be selected by explicit columns: the column-level grant withholds
  * submitted_at, and `*` would fail outright with 42501 rather than omitting it. */
 const SCHEME_COLS = "id,period_id,team_id,type,position,player_id,resolved_at,outcome";
-
-export function loadSessionToken() {
-  try {
-    return globalThis.localStorage?.getItem(SESSION_KEY) || null;
-  } catch {
-    return null;
-  }
-}
-export function saveSessionToken(token) {
-  try {
-    if (token) globalThis.localStorage?.setItem(SESSION_KEY, token);
-    else globalThis.localStorage?.removeItem(SESSION_KEY);
-  } catch {
-    /* private mode - the person just logs in again next visit */
-  }
-}
 
 export function createSupabaseStore(config) {
   const { url, publishableKey, apiPath = "/api", leagueName = null } = config;
@@ -96,12 +79,9 @@ export function createSupabaseStore(config) {
   }
 
   async function call(action, params) {
-    /* An account, if there is one, otherwise the join code session.
-     *
-     * Both are accepted by the server and resolve to the same permissions, so the order
-     * here is a preference rather than a requirement: the account is the credential the
-     * project is moving TO, and it refreshes itself rather than expiring after 30 days. */
-    const token = accountToken || loadSessionToken();
+    /* The account's access token, and there is no other kind. Supabase refreshes it;
+     * nothing of ours is stored in localStorage for the server to trust. */
+    const token = accountToken;
     let res;
     try {
       res = await fetch(apiPath, {
@@ -282,28 +262,17 @@ export function createSupabaseStore(config) {
     },
 
     /* ------------------------------- auth -------------------------------- */
-    async loginCommissioner(code) {
-      const r = await call("loginCommissioner", { code });
-      if (r.ok && r.token) saveSessionToken(r.token);
-      return r;
-    },
-    async loginManager(teamLegacyId, code) {
-      const r = await call("loginManager", { teamLegacyId, code });
-      if (r.ok && r.token) saveSessionToken(r.token);
-      return r;
-    },
     async logout() {
-      const r = await call("logout", {});
-      saveSessionToken(null);
-      // Sign out of BOTH, or "log out" leaves an account session behind and the next
-      // visit silently signs itself back in - which looks exactly like a broken logout.
+      /* Nothing server-side to destroy any more - Supabase owns the session, and
+       * signOut revokes it there. The local variable is cleared first so an in-flight
+       * request cannot use a token that is on its way out. */
       accountToken = null;
       try {
         await sb.auth.signOut();
       } catch {
         /* already signed out, or offline: the local token is gone either way */
       }
-      return r;
+      return { ok: true };
     },
 
     /* ----------------------------- accounts ------------------------------ */
@@ -326,9 +295,15 @@ export function createSupabaseStore(config) {
            * `https://your-site/**`, not just the bare origin - or these are rejected
            * outright and look like broken links. docs/EMAIL-SETUP.md says so. */
           emailRedirectTo: redirectTo || globalThis.location?.href || globalThis.location?.origin,
-          // Nobody is created by typing an address here. An account only becomes a
-          // MEMBER by linking against a join-code session, so a stray sign-up is inert
-          // - but not creating one at all keeps the user table honest.
+          /* Typing an address creates an ACCOUNT and nothing else. An account only
+           * becomes a member of a league by redeeming an invitation, so a stray
+           * sign-up is inert - it can see nothing and act on nothing.
+           *
+           * NOTE FOR ANYONE DEBUGGING EMAIL: this is what decides which template
+           * Supabase sends. A brand new address gets "Confirm signup"; one that
+           * already exists gets "Magic Link". Both must be branded in the hosted
+           * dashboard or first-time members get the unbranded default - see
+           * tests/config.test.js and docs/EMAIL-SETUP.md. */
           shouldCreateUser: true,
         },
       });
@@ -343,31 +318,6 @@ export function createSupabaseStore(config) {
       return { email: data.user.email, userId: data.user.id };
     },
 
-    /**
-     * Attach the signed-in account to the membership this device already holds.
-     * Sends the join-code session EXPLICITLY, because `call` would otherwise prefer the
-     * account token - and the server needs the code session to know what role to grant.
-     */
-    async linkAccount(displayName = null) {
-      const codeToken = loadSessionToken();
-      if (!codeToken) {
-        return { ok: false, reason: "invalid", message: "Log in with your join code first." };
-      }
-      if (!accountToken) {
-        return { ok: false, reason: "invalid", message: "Sign in with your email first." };
-      }
-      const res = await fetch(apiPath, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: "Bearer " + codeToken },
-        body: JSON.stringify({
-          action: "linkAccount",
-          params: { leagueId, accountToken, displayName },
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (res.ok && body.ok) return { ...body, ok: true };
-      return { ok: false, reason: "invalid", message: body.error || "Could not connect that account." };
-    },
 
     /** What the server says this credential is - the only authority on an account's role. */
     whoami: () => call("whoami", {}),
@@ -410,8 +360,6 @@ export function createSupabaseStore(config) {
     processSchemes: (expect) => call("processSchemes", { expect }),
     finalizePeriod: (expect) => call("finalizePeriod", { expect }),
     startPlayoffs: (bracketSize, advancement) => call("startPlayoffs", { bracketSize, advancement }),
-    setTeamJoinCode: (teamId, code) => call("setTeamJoinCode", { teamId, code }),
-    signOutTeam: (teamId) => call("signOutTeam", { teamId }),
 
     async mutateLeague(fn) {
       const view = await readView();

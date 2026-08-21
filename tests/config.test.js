@@ -12,16 +12,21 @@ import path from "node:path";
 import { createStore } from "../src/storage/index.js";
 
 describe("createStore configuration", () => {
-  it("falls back to the in-memory demo in development", async () => {
-    const store = createStore({ PROD: false });
-    const view = await store.loadLeague();
-    expect(view.teams).toHaveLength(6); // the demo league, deliberately
+  /* This used to assert the opposite: with no configuration, development fell back to
+     an in-memory demo league. That adapter is gone (see src/storage/index.js), so there
+     is nothing left to fall back TO - and that is the point of deleting it. Working all
+     afternoon against a store that cannot sign anyone in, and discovering what the real
+     one does at deploy time, was the failure this now prevents. */
+  it("REFUSES to start unconfigured in development, and says how to fix it", () => {
+    expect(() => createStore({ PROD: false })).toThrow(/not configured/i);
+    expect(() => createStore({ PROD: false })).toThrow(/npm run dev/);
   });
 
-  it("REFUSES to fall back to the demo in a production build", () => {
-    // Silently serving the demo would deploy a site that looks entirely healthy but is
+  it("REFUSES to start unconfigured in a production build, and says how to fix it", () => {
+    // Silently serving a demo would deploy a site that looks entirely healthy but is
     // a throwaway per-tab copy that saves nothing.
     expect(() => createStore({ PROD: true })).toThrow(/not configured/i);
+    expect(() => createStore({ PROD: true })).toThrow(/environment variables/);
   });
 
   it("names the specific variable that is missing", () => {
@@ -38,8 +43,8 @@ describe("createStore configuration", () => {
       VITE_SUPABASE_URL: "https://x.supabase.co",
       VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_x",
     });
-    // The Supabase adapter exposes login; the memory one has no realtime channel setup.
-    expect(typeof store.loginCommissioner).toBe("function");
+    // Reads through PostgREST, writes through the function, live updates over Realtime.
+    expect(typeof store.signInWithEmail).toBe("function");
     expect(typeof store.subscribe).toBe("function");
   });
 });

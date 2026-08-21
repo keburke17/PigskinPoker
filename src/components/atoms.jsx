@@ -142,87 +142,18 @@ export function statLineText(state, player, line) {
 }
 
 
-/* The "make this stick" prompt, Phase 3c.
+/* Who you are signed in as, and nothing else.
  *
- * This is the entire migration-by-invitation flow as the league experiences it. It is
- * an OFFER: it appears once you are already in, it can be ignored forever, and dismissing
- * or declining it costs nothing. Your join code keeps working either way.
+ * This used to be the whole migration-by-invitation flow: an offer to connect an email
+ * to a join-code session, dismissible forever, so nobody was forced off a code they
+ * were happily using. There are no code sessions left to migrate - signing in IS an
+ * account now - so all that remains is saying whose account it is, which matters on a
+ * shared laptop.
  *
- * It renders nothing at all in three cases - accounts unavailable (the in-memory demo),
- * the account check still in flight (so it cannot flicker into view and out again), and
- * the job already done. The last one matters: a prompt that keeps asking after you have
- * complied is how people learn to ignore an interface.
+ * It renders nothing until the account check has settled, so it cannot flicker into
+ * view and back out on every load.
  */
-export function AccountBar({ account, accountChecked, available, notice, onLink, onSignInWithEmail, onDismissNotice }) {
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-
-  if (!available || !accountChecked) return null;
-
-  if (notice) {
-    return (
-      <div className={"pp-account-bar " + (notice.bad ? "pp-account-bar-bad" : "pp-account-bar-good")}>
-        <span>{notice.text}</span>
-        <button className="pp-btn pp-btn-ghost pp-btn-sm" onClick={onDismissNotice}>OK</button>
-      </div>
-    );
-  }
-
-  // Signed in with an account already: say so quietly and get out of the way.
-  if (account) {
-    return <div className="pp-account-bar"><span>Signed in as {account.email}</span></div>;
-  }
-
-  if (dismissed) return null;
-
-  if (!open) {
-    return (
-      <div className="pp-account-bar">
-        <span>Connect your email so you do not need the join code on every device.</span>
-        <span style={{ display: "inline-flex", gap: 6 }}>
-          <button className="pp-btn pp-btn-sm pp-btn-gold" onClick={() => setOpen(true)}>Connect</button>
-          <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => setDismissed(true)}>Not now</button>
-        </span>
-      </div>
-    );
-  }
-
-  if (sent) {
-    return (
-      <div className="pp-account-bar">
-        <span>
-          Check {email} for a sign-in link. Open it on this device and your account will be
-          connected to this team.
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pp-account-bar">
-      <input
-        className="pp-input"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="you@example.com"
-        style={{ maxWidth: 260 }}
-      />
-      <span style={{ display: "inline-flex", gap: 6 }}>
-        <button
-          className="pp-btn pp-btn-sm pp-btn-gold"
-          disabled={!email.trim()}
-          onClick={async () => {
-            const r = await onSignInWithEmail(email);
-            if (r?.ok) setSent(true);
-          }}
-        >
-          Send Link
-        </button>
-        <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
-      </span>
-    </div>
-  );
+export function AccountBar({ account, accountChecked }) {
+  if (!accountChecked || !account) return null;
+  return <div className="pp-account-bar"><span>Signed in as {account.email}</span></div>;
 }

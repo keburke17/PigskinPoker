@@ -68,8 +68,8 @@ So the mapping is:
 |---|---|
 | `schemaVersion` (404) | `seasons.schema_version` + an app-state migration chain for backups |
 | `leagueName` (405) | `leagues.name` |
-| `commissionerCode` (406) | `league_secrets.commissioner_code_hash` - **unreadable by the browser** |
-| `teams[]` (407) | `teams` + `team_totals` (+ `team_secrets` for `joinCode`) |
+| `commissionerCode` (406) | **nothing.** Codes were retired 2026-08-20; the blob still carries the field for parity, and `decompose` drops it |
+| `teams[]` (407) | `teams` + `team_totals`. `joinCode` goes nowhere, same as above |
 | `teams[].roster` | `roster_slots`, keyed by **period** - now survives finalize |
 | `teams[].cumulative` / `.playoffCumulative` | `team_totals` rows, `scope = 'regular' \| 'playoff'` |
 | `playerPool[]` (408) | `players` |
@@ -369,59 +369,20 @@ create table events (
 create index on events (season_id, created_at desc);
 
 -- ==========================================================================
---  SECRETS.  RLS enabled, ZERO policies -> unreachable with the publishable
---  key by construction. Only the secret key (which bypasses RLS, inside a
---  Netlify Function) can read these. Never add a policy to these tables.
+--  RETIRED, 2026-08-20 - kept here as a note because the shape explains the
+--  rest of the schema. See supabase/migrations/20260820000000_retire_join_codes.sql.
+--
+--    league_secrets (commissioner_code_hash)
+--    team_secrets   (join_code_hash)
+--    sessions       (hashed token, role, expiry, idle window)
+--    auth_throttle  (our login rate limiter's counter)
+--    leagues.has_commissioner_code / teams.has_join_code
+--
+--  All four tables and both columns are DROPPED. Accounts authenticate and
+--  `league_members` authorizes, so there is no code to hash, no session of our
+--  own to store, and no login endpoint of ours to rate limit. The one secret
+--  left in the schema is `invites.code_hash`, below.
 -- ==========================================================================
-create table league_secrets (
-  league_id               uuid primary key references leagues(id) on delete cascade,
-  commissioner_code_hash  text not null,
-  updated_at              timestamptz not null default now()
-);
-
-create table team_secrets (
-  team_id        uuid primary key references teams(id) on delete cascade,
-  join_code_hash text not null,
-  updated_at     timestamptz not null default now()
-);
-
--- Phase 2 session store. Phase 3 replaces/augments this with auth.users +
--- profiles + league_members; see AUTH.md. Also zero policies.
-create table sessions (
-  id         uuid primary key default gen_random_uuid(),
-  token_hash text not null unique,
-  league_id  uuid not null references leagues(id) on delete cascade,
-  role       text not null check (role in ('commissioner','manager')),
-  team_id    uuid references teams(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null,
-  -- Phase 3a. `expires_at` is the absolute cap; this is what idle expiry (14 days)
-  -- measures against, refreshed on use so an active manager is never signed out.
-  last_used_at timestamptz not null default now(),
-  check (role = 'commissioner' or team_id is not null)
-);
-create index on sessions (expires_at);
-create index on sessions (last_used_at);
-
--- Phase 3a. The login rate limiter's counter. Also zero policies, zero grants: a
--- browser that could write here would clear its own lockout, or set one on someone
--- else and lock the commissioner out of his league.
---
--- It lives in Postgres because Netlify Functions are stateless and horizontally
--- scaled - there is no process to hold an in-memory counter, and two concurrent
--- invocations would each hold their own. The database is the only thing they share.
---
--- bucket_key is either `ip:<sha256(ip + pepper)>` - hashed, so this is a counter and
--- not a visitor log - or `league:<id>` / `team:<leagueId>:<legacyId>`. The two kinds
--- are deliberately different controls; see server/throttle.js and AUTH.md.
-create table auth_throttle (
-  bucket_key   text primary key,
-  attempts     int not null default 0,
-  window_start timestamptz not null default now(),
-  locked_until timestamptz,
-  updated_at   timestamptz not null default now()
-);
-create index on auth_throttle (updated_at);   -- pruning scans by age
 
 -- Phase 3b. Accounts. auth.users is NOT shadowed - Supabase owns that table, and
 -- adding columns to it is the standard way to get hurt on an upgrade.
@@ -484,7 +445,8 @@ PostgREST directly, ignoring the UI. Therefore:
   authenticates the caller against `sessions` and enforces the commissioner/manager rule
   in code. RLS is the backstop that makes routing around that function useless.
 - **No secret is in any table the publishable key can reach.** Codes live only in
-  `league_secrets` / `team_secrets`, hashed, on tables with zero policies.
+  `invites.code_hash`, scrypt-hashed, on a table with zero policies. (Until 2026-08-20
+  this said `league_secrets` / `team_secrets`; both are dropped.)
 
 ```sql
 -- Enable RLS everywhere (explicit, not relying on the auto-RLS trigger).
@@ -499,10 +461,7 @@ alter table stat_lines     enable row level security;
 alter table schemes        enable row level security;
 alter table period_results enable row level security;
 alter table events         enable row level security;
-alter table league_secrets enable row level security;   -- and NO policy, ever
-alter table team_secrets   enable row level security;   -- and NO policy, ever
-alter table sessions       enable row level security;   -- and NO policy, ever
-alter table auth_throttle  enable row level security;   -- and NO policy, ever
+alter table invites        enable row level security;   -- and NO policy, ever
 alter table profiles       enable row level security;   -- own row only
 alter table league_members enable row level security;   -- own row only
 
@@ -726,14 +685,15 @@ toggleSlotLock(periodId, teamId, slotRef, expect)
 toggleRosterLock(periodId, expect)
 finalizePeriod(periodId, expect)
 startPlayoffs(seasonId, bracketSize, advancement, expect)
-addTeam(name) / setJoinCode(teamId, code) / removeTeam(teamId, expect)
+addTeam(name) / removeTeam(teamId, expect)
 addPlayer(p) / setPlayerStatus(playerId, status, expect) / deletePlayer(playerId, expect)
 saveScoring(seasonId, cfg, expect)
 saveStandingsConfig(seasonId, arr, expect)
 archiveSeasonAndStartNew(seasonId)          // was onResetLeague
 
-// Identity  (localStorage, not the backend - per the prompt)
-loginCommissioner(code) / loginManager(teamId, code) / logout()
+// Identity. As sketched, this was a localStorage code check - per the prompt at the
+// time. What shipped, and what remains after codes were retired on 2026-08-20:
+signInWithEmail(email) / getAccount() / whoami() / logout()
 
 // Backup
 exportBackup(seasonId) / importBackup(json)
@@ -753,12 +713,18 @@ Every operation resolves to a discriminated result rather than throwing:
 it by hand - it comes from the `VersionMap` returned by the last read, so "every write
 carries the version it was based on" is structural rather than a thing to remember.
 
-### The in-memory implementation
+### The in-memory implementation - REMOVED, 2026-08-20
 
-Same interface, same result shapes, same version semantics, holding the normalized tables
-in plain objects. It is simultaneously: the test double, the offline `npm run dev` mode,
-and the thing that proves nothing outside `src/storage/` knows about Supabase. Version
-conflicts are reproducible in tests by driving two clients against one memory store.
+It held the normalized tables in plain objects behind the same interface, and was
+simultaneously the test double, the offline `npm run dev` mode, and the proof that
+nothing outside `src/storage/` knew about Supabase.
+
+It was deleted because it had no backend and therefore could not authenticate anybody -
+so the fastest development loop was the one that could not exercise accounts,
+memberships, invitations or league scoping, i.e. everything added from Phase 3b onwards.
+It was also a second full implementation of every operation, free to drift from the one
+that ships. `npm run dev` now starts the real stack. `src/storage/index.js` carries the
+reasoning.
 
 ### Where the engine sits
 
@@ -815,12 +781,14 @@ The stack is a good fit and I would not change it. Five things I would handle de
    asserts an anonymous client can read a seeded league and **cannot** write to it - which
    catches both the missing-policy and the accidental-write-policy directions.
 
-5. **The `sessions` table is hand-rolled auth, and I want to be explicit about that.**
-   It is small (a hashed token, a role, an expiry) and it is confined to Phase 2 because
-   join codes are not emails and Supabase Auth has no primitive for "I know a shared
-   code." Phase 3's job is to replace it with real Supabase sessions so RLS can do the
-   scoping instead. Flagging it because hand-rolled auth that quietly becomes permanent is
-   a normal way for a project like this to end up with a security problem.
+5. **The `sessions` table was hand-rolled auth - RESOLVED, 2026-08-20.** It was small (a
+   hashed token, a role, an expiry) and it existed because join codes are not emails and
+   Supabase Auth has no primitive for "I know a shared code." It was flagged here because
+   hand-rolled auth that quietly becomes permanent is a normal way for a project like this
+   to end up with a security problem.
+
+   It did not become permanent. Codes and the table are both gone; `verifySession` takes a
+   Supabase access token and resolves it against `league_members`.
 
 One thing I want to state plainly rather than bury: **Postgres is comfortably oversized for
 this data** - a full season is well under 10 MB and there are 14 users. Postgres is not

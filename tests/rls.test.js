@@ -63,14 +63,17 @@ async function setup() {
     season: season.id, team: team.id, period: period.id, period2: period2.id,
   });
 
-  await secret.from("league_secrets")
-    .insert({ league_id: league.id, commissioner_code_hash: "hash-must-never-leak" });
-  await secret.from("team_secrets")
-    .insert({ team_id: team.id, join_code_hash: "join-hash-must-never-leak" });
-  await secret.from("sessions").insert({
-    token_hash: "session-token-must-never-leak-" + league.id, league_id: league.id,
-    role: "commissioner", expires_at: new Date(Date.now() + 3.6e6).toISOString(),
+  /* The secret-bearing fixture is an INVITE now. league_secrets, team_secrets, sessions
+   * and auth_throttle were dropped with join codes - see
+   * supabase/migrations/20260820000000_retire_join_codes.sql. */
+  const inviteFixture = await secret.from("invites").insert({
+    league_id: league.id, team_id: team.id, role: "manager",
+    code_ref: "RLSREF", code_hash: "invite-hash-must-never-leak",
   });
+  /* THROW rather than ignore. "anon cannot read invites" passes just as happily when
+   * there is no invite to read, so a fixture that silently failed to insert - a renamed
+   * column, say - would turn a security assertion into a vacuous one. */
+  if (inviteFixture.error) throw new Error("invite fixture failed: " + inviteFixture.error.message);
   // One unresolved scheme and one resolved, to exercise the resolved_at gate.
   await secret.from("schemes")
     .insert({ period_id: period.id, team_id: team.id, type: "noaction" });
@@ -104,6 +107,9 @@ gate()("RLS: what a browser holding the publishable key can READ", () => {
   const readable = [
     "leagues", "seasons", "teams", "team_totals", "players",
     "periods", "roster_slots", "stat_lines", "period_results", "events",
+    // Not league-scoped and deliberately public: it is NFL names, and every league
+    // already exposes the same ones through `players`.
+    "player_pool",
   ];
   for (const table of readable) {
     it("can select from " + table, async () => {
@@ -121,7 +127,7 @@ gate()("RLS: what a browser holding the publishable key can READ", () => {
 });
 
 gate()("RLS: what it can NOT read", () => {
-  for (const table of ["league_secrets", "team_secrets", "sessions", "auth_throttle"]) {
+  for (const table of ["invites"]) {
     it("cannot read " + table + " - no policy exists, and none ever should", async () => {
       const { data, error } = await anon.from(table).select("*");
       // RLS with no policy returns zero rows rather than an error. Either way, the
@@ -176,13 +182,12 @@ gate()("RLS: what it can NOT write - the whole write-security model", () => {
     ["period_results", () => ({ period_id: ids.period, team_id: ids.team, rank: 1, raw_score: 999, standings_points: 99 })],
     ["events", () => ({ season_id: ids.season, type: "hack", text: "hacked" })],
     ["team_totals", () => ({ season_id: ids.season, team_id: ids.team, scope: "regular" })],
-    ["league_secrets", () => ({ league_id: ids.league, commissioner_code_hash: "x" })],
-    ["team_secrets", () => ({ team_id: ids.team, join_code_hash: "x" })],
-    ["sessions", () => ({ token_hash: "x", league_id: ids.league, role: "commissioner", expires_at: new Date().toISOString() })],
-    /* auth_throttle joins the unreachable set in Phase 3a. Writable from a browser it
-     * would be worse than useless: an attacker could clear his own lockout, or set one
-     * on someone else and lock the commissioner out of his league. */
-    ["auth_throttle", () => ({ bucket_key: "ip:hacked", attempts: 0 })],
+    /* Writable from a browser, an invite would let anyone mint themselves a membership
+     * in any league - which is the whole authorization model in one row. */
+    ["invites", () => ({ league_id: ids.league, role: "manager", code_ref: "HACKED", code_hash: "x" })],
+    /* The pool is public to READ - it is NFL names, and every league already exposes
+     * them - but writing it would poison every league created afterwards. */
+    ["player_pool", () => ({ legacy_id: "hacked", name: "Hacker", position: "QB", nfl_team: "Nowhere" })],
   ];
 
   for (const [table, row] of cases) {

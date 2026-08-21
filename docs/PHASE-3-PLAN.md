@@ -1,5 +1,19 @@
 # Phase 3 - plan
 
+> **READ THIS FIRST - the plan below is history, not current behaviour.**
+>
+> This document describes the world as it was being planned on 2026-08-19, in which join
+> codes and accounts coexisted and code-as-login would be retired gradually, at a season
+> boundary. **That coexistence is over.** On 2026-08-20 join codes, the `sessions` table,
+> the login rate limiter (`auth_throttle`) and the two `has_*_code` flags were all
+> deleted - see `supabase/migrations/20260820000000_retire_join_codes.sql` and
+> `docs/AUTH.md`. Accounts authenticate; invitations authorize; nothing else does.
+>
+> The plan is kept because it explains why the schema is shaped the way it is, and
+> because the reasoning about migrating a real code-holding league is the right shape if
+> one is ever onboarded. Every "the join code keeps working" below is describing a design
+> that was correct then and does not apply now.
+
 Status: **3a, 3b+3c and 3d are BUILT, green, and DEPLOYED** as of 2026-08-19 - all six
 migrations applied to the hosted project (`verify:grants` clean, 36 checks), Resend
 verified on the sending subdomain, and account creation exercised against the live site.

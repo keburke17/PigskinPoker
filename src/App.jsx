@@ -20,7 +20,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
 import { useRoute } from "./routing/useRoute.js";
 import { LandingScreen } from "./components/LandingScreen.jsx";
-import { saveSessionToken } from "./storage/supabase.js";
 import { useLeague } from "./hooks/useLeague.js";
 import { validateBackup } from "./storage/backup.js";
 import {
@@ -51,29 +50,6 @@ function errText(e) {
   }
 }
 
-
-/* A rejected login now has THREE shapes, not one, and they want different words.
- *
- *   throttled     - too many attempts. The code may well be right; saying "incorrect
- *                   code" here would send someone hunting for a typo that is not there.
- *                   Says how long to wait when the server told us.
- *   unauthorized  - genuinely the wrong code.
- *   network       - the request never got an answer. Also not a wrong code.
- */
-function loginFailureText(result, fallback) {
-  if (result?.reason === "throttled") {
-    const secs = result.retryAfter;
-    if (!secs) return result.message || "Too many sign-in attempts. Wait a moment and try again.";
-    const wait = secs < 60
-      ? secs + " second" + (secs === 1 ? "" : "s")
-      : Math.ceil(secs / 60) + " minute" + (Math.ceil(secs / 60) === 1 ? "" : "s");
-    return "Too many sign-in attempts. Try again in about " + wait + ".";
-  }
-  if (result?.reason === "network") {
-    return "Could not reach the server - check your connection and try again.";
-  }
-  return result?.message || fallback;
-}
 
 export default function App() {
   /* THE URL DECIDES WHICH LEAGUE, from Phase 3d.
@@ -117,7 +93,6 @@ export default function App() {
    * own; this is "who is the person", which only an account can. */
   const [account, setAccount] = useState(null);
   const [accountChecked, setAccountChecked] = useState(false);
-  const [linkNotice, setLinkNotice] = useState(null);
 
   /* Pick up an account session on load - either restored from a previous visit, or
    * just arrived from a magic link, which the Supabase client strips out of the URL.
@@ -130,7 +105,6 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!store.getAccount) { setAccountChecked(true); return; }
       try {
         const acct = await store.getAccount();
         if (cancelled) return;
@@ -139,51 +113,21 @@ export default function App() {
           let me = await store.whoami();
           if (cancelled) return;
 
-          /* Signed in with an account that is not a member of this league yet. The
-           * ordinary way to arrive here is having JUST come back from a magic link that
-           * was requested by pressing "Connect" - so finish the job that was already
-           * asked for, rather than showing the same prompt again to someone who has
-           * done everything right.
-           *
-           * linkAccount needs a join-code session on this device and refuses without
-           * one, so a stranger who signs in with an address nobody invited still gets
-           * nothing. Failure here is not an error worth showing: it just means there is
-           * no membership to connect, and the login screen already explains that. */
-          if ((!me?.ok || !me.role) && store.linkAccount) {
-            const linked = await store.linkAccount();
-            if (cancelled) return;
-            if (linked?.ok) me = await store.whoami();
-            if (cancelled) return;
-          }
+          /* An account with no membership in this league is correctly nobody here, and
+           * gets the sign-in screen rather than a role. A call minting a membership
+           * from a join-code session held on the same device used to sit at this point;
+           * codes are gone, and an invitation is the only way in. */
           if (me?.ok && me.role) setIdentity({ role: me.role, teamId: me.teamId ?? null });
         }
       } catch {
-        /* Offline, or auth unreachable. The join-code path still works, so this must
-         * never block the app - it just means no account was detected. */
+        /* Offline, or auth unreachable. This must never block the app from rendering -
+         * it just means no account was detected, and the sign-in screen is shown. */
       } finally {
         if (!cancelled) setAccountChecked(true);
       }
     })();
     return () => { cancelled = true; };
   }, [store, setIdentity, routeLeagueId]);
-
-  /* Signed in by code, with an account attached, but not yet joined up. This is the
-   * "migration by invitation" moment: it is offered, never forced, and declining it
-   * costs nothing. */
-  const onLinkAccount = async () => {
-    setLinkNotice(null);
-    const r = await store.linkAccount?.();
-    if (!r || r.ok === false) {
-      setLinkNotice({ bad: true, text: r?.message || "Could not connect that account." });
-      return;
-    }
-    setLinkNotice({
-      bad: false,
-      text: r.alreadyMember
-        ? "That email is already connected to this league."
-        : "Connected. Next time you can just sign in with your email - the join code still works too.",
-    });
-  };
 
   /* Following the URL to another league. Reuses the store rather than rebuilding it, so
    * the realtime channel and write queue survive the move. */
@@ -197,7 +141,7 @@ export default function App() {
   const [myLeagues, setMyLeagues] = useState([]);
   const [leaguesLoading, setLeaguesLoading] = useState(false);
   useEffect(() => {
-    if (route.name === "league" || !account || !store.myLeagues) return;
+    if (route.name === "league" || !account) return;
     let cancelled = false;
     setLeaguesLoading(true);
     store.myLeagues()
@@ -256,10 +200,6 @@ export default function App() {
 
   const onSignInWithEmail = async (email) => {
     setLoginError(null);
-    if (!store.signInWithEmail) {
-      setLoginError("Email sign-in needs the hosted database - it is not available in the demo.");
-      return { ok: false };
-    }
     const r = await store.signInWithEmail(email);
     if (!r.ok) setLoginError(r.message || "Could not send that sign-in link.");
     return r;
@@ -275,47 +215,12 @@ export default function App() {
   const dealError = opError && opError.headline ? opError.headline : null;
   const finalizeError = dealError;
 
-  /* ---- login ----
-   * The EXPERIENCE is unchanged: the league still just types a code. What changed is
-   * that the code is no longer in the browser to compare against. Verification happens
-   * server-side against a hash, and a successful login returns a session token that
-   * every privileged write re-checks (fixes P2).
-   *
-   * Both adapters expose the same async surface, so this does not branch on which
-   * store it is talking to. */
-  const onCommissionerLogin = async (code) => {
-    setLoginError(null);
-    const r = await store.loginCommissioner(code);
-    if (!r.ok) {
-      setLoginError(loginFailureText(r, "Incorrect commissioner code."));
-      return;
-    }
-    if (r.token) saveSessionToken(r.token);
-    setIdentity({ role: "commissioner", teamId: null });
-  };
-
-  const onManagerLogin = async (teamId, joinCode) => {
-    setLoginError(null);
-    if (!teamId) {
-      setLoginError("Select a team first.");
-      return;
-    }
-    const r = await store.loginManager(teamId, joinCode);
-    if (!r.ok) {
-      setLoginError(loginFailureText(r, "Incorrect join code."));
-      return;
-    }
-    if (r.token) saveSessionToken(r.token);
-    setIdentity({ role: "manager", teamId });
-  };
-
   const onLogout = async () => {
     try {
       await store.logout?.();
     } catch {
       /* logging out locally matters more than the round trip succeeding */
     }
-    saveSessionToken(null);
     setIdentity({ role: null, teamId: null });
     setTab("home");
   };
@@ -359,13 +264,6 @@ export default function App() {
       });
     });
   const onRenameTeam = (id, name) => onRenameMyTeam(id, name);
-  /* Returns the result rather than swallowing it. It used to route failures into
-   * `loginError`, whose banner only renders on the login screen - so a commissioner who
-   * was, by definition, already signed in never saw them. CommTeamRow shows the outcome
-   * next to the field instead. */
-  const onSetJoinCode = async (id, code) => store.setTeamJoinCode(id, code);
-  const onSignOutTeam = async (id) =>
-    (store.signOutTeam ? store.signOutTeam(id) : { ok: true, signedOut: 0 });
   const onRemoveTeam = (id) =>
     ops.mutate("removeTeam:" + id, (s) => {
       s.teams = s.teams.filter((t) => t.id !== id);
@@ -486,11 +384,11 @@ export default function App() {
    * here yet" rather than the front door. The multi-league store correctly reports
    * nothing when it has not been pointed at one.
    *
-   * `accountsAvailable` is false for the in-memory demo, which has no auth provider and
-   * exactly one league. There, `/` falls through to the ordinary join-code login, which
-   * is what `npm run dev` should still do. */
-  const accountsAvailable = !!store.signInWithEmail;
-  if (route.name !== "league" && accountsAvailable) {
+   * Every route other than a league now lands on the front door. There used to be a
+   * second case here: the in-memory demo had no auth provider, so `/` fell through to
+   * the join-code login instead. That adapter is gone (see src/storage/index.js), and
+   * with it the branch. */
+  if (route.name !== "league") {
     return (
       <div className="pp-root">
         <LandingScreen
@@ -538,9 +436,18 @@ export default function App() {
     );
   }
 
-  /* The database is reachable and correct, but nothing has been bootstrapped into it.
-   * Without this the app renders the loading spinner indefinitely, which on a fresh
-   * deployment looks like a hang rather than a step that has not been run. */
+  /* Nothing to show at this URL. There are two ways to arrive here, and they want
+   * different words:
+   *
+   *   - SIGNED OUT, at a league that is members-only. The reads are RLS-scoped, so an
+   *     anonymous visitor genuinely cannot see it and "no league" is all the client can
+   *     tell. Sending them to the front door is the right move; it used to be a join
+   *     code box, which at least explained itself, and losing that made this screen the
+   *     one people would actually hit.
+   *
+   *   - SIGNED IN, at a fresh deployment with no leagues in it at all. There is no
+   *     bootstrap script to run any more - a league is created in the app, by whoever
+   *     will own it. */
   if (noLeague) {
     return (
       <div className="pp-root">
@@ -548,25 +455,42 @@ export default function App() {
           <div className="pp-login-card">
             <div style={{ textAlign: "center", marginBottom: 14 }}>
               <div className="pp-eyebrow">Pigskin Poker</div>
-              <h1 className="pp-h1" style={{ fontSize: 26 }}>No league here yet</h1>
+              <h1 className="pp-h1" style={{ fontSize: 26 }}>
+                {account ? "No league here yet" : "Nothing to see here"}
+              </h1>
             </div>
             <div className="pp-card">
-              <p className="pp-sub" style={{ marginBottom: 10 }}>
-                The database is connected and working - it just doesn&apos;t contain a
-                league. This is the one setup step that has to be run once, by hand,
-                after deploying.
-              </p>
-              <p className="pp-sub">
-                From a checkout of the repo, with this deployment&apos;s Supabase URL and
-                secret key in the environment:
-              </p>
-              <div className="pp-input" style={{ margin: "10px 0", whiteSpace: "pre-wrap" }}>
-                PIGSKIN_COMMISSIONER_CODE=&quot;choose-a-code&quot; npm run bootstrap -- --name &quot;Pigskin Poker&quot;
-              </div>
-              <p className="pp-sub">
-                That creates the league, the season and the player pool, and sets the
-                commissioner code. Then reload this page and log in.
-              </p>
+              {account ? (
+                <>
+                  <p className="pp-sub" style={{ marginBottom: 10 }}>
+                    The database is connected and working - there is just no league at this
+                    address, or none you are a member of.
+                  </p>
+                  <p className="pp-sub">
+                    If you are setting this deployment up, create one: whoever makes a league
+                    is its commissioner, and everyone else joins by invitation.
+                  </p>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button className="pp-btn pp-btn-gold" onClick={() => go({ name: "home" })}>
+                      Create A League
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="pp-sub" style={{ marginBottom: 10 }}>
+                    This league is private, or it does not exist. Sign in - if you are a
+                    member, it will be waiting.
+                  </p>
+                  <p className="pp-sub" style={{ marginBottom: 10 }}>
+                    Not a member yet? Ask your commissioner for an invite link. Signing in on
+                    its own does not join you to a league.
+                  </p>
+                  <button className="pp-btn pp-btn-gold" onClick={() => go({ name: "home" })}>
+                    Sign In
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -586,11 +510,7 @@ export default function App() {
     return (
       <div className="pp-root">
         <LoginScreen
-          state={state}
-          onCommissionerLogin={onCommissionerLogin}
-          onManagerLogin={onManagerLogin}
           onSignInWithEmail={onSignInWithEmail}
-          accountsAvailable={!!store.signInWithEmail}
           loginError={loginError}
           setLoginError={setLoginError}
         />
@@ -626,11 +546,6 @@ export default function App() {
           <AccountBar
             account={account}
             accountChecked={accountChecked}
-            available={!!store.signInWithEmail}
-            notice={linkNotice}
-            onLink={onLinkAccount}
-            onSignInWithEmail={onSignInWithEmail}
-            onDismissNotice={() => setLinkNotice(null)}
           />
           {conflict ? (
             <ErrorBanner
@@ -668,9 +583,8 @@ export default function App() {
           {tab === "comm" && isCommissioner && (
             <CommissionerTab
               state={state}
-              onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onSetJoinCode={onSetJoinCode} onSignOutTeam={onSignOutTeam} onRemoveTeam={onRemoveTeam}
+              onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
-              invitesAvailable={!!store.createInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               onSwap={onSwap} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}

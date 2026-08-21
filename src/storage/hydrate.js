@@ -143,7 +143,6 @@ export function hydrateLeague(db, opts = {}) {
     return {
       id: t.legacy_id,
       name: t.name,
-      hasJoinCode: !!(t.has_join_code ?? t.hasJoinCode), // never the code itself
       roster,
       cumulative: toCumulative(totalsFor(t.id, "regular")),
       playoffCumulative: toCumulative(totalsFor(t.id, "playoff")),
@@ -242,7 +241,6 @@ export function hydrateLeague(db, opts = {}) {
   return {
     schemaVersion: season.schema_version,
     leagueName: league.name,
-    commissionerCodeSet: !!(league.has_commissioner_code ?? league.commissionerCodeSet),
     teams,
     playerPool: playerRows.map((p) => ({
       id: p.legacy_id,

@@ -20,7 +20,7 @@
  */
 
 import crypto from "node:crypto";
-import { hashCode, verifyCode } from "./auth.js";
+import { hashSecret, verifySecret } from "./hash.js";
 
 /* No 0/O, 1/I/L, or U. These codes get read aloud, texted, and retyped from a photo of a
  * whiteboard, and every one of those characters is a support conversation waiting to
@@ -74,8 +74,8 @@ export function parseInviteCode(input) {
   return { ref: cleaned.slice(0, REF_LEN), secret: cleaned.slice(REF_LEN) };
 }
 
-export const hashInviteSecret = (secret) => hashCode(secret);
-export const verifyInviteSecret = (secret, stored) => verifyCode(secret, stored);
+export const hashInviteSecret = (secret) => hashSecret(secret);
+export const verifyInviteSecret = (secret, stored) => verifySecret(secret, stored);
 
 /**
  * Is this invite usable right now, and if not, why not?

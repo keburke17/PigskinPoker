@@ -88,34 +88,36 @@ time only new files run. It creates the tables and **no data**.
 `supabase/seed.sql` is *not* run by `db push`. That file is the local demo league, and
 it refuses to run against a database holding real data.
 
-### 2b. Email, if you want account sign-in
+### 2b. Email - REQUIRED, it is the only way anybody signs in
 
 Magic-link sign-in needs SMTP configured on the hosted project, and it is a dashboard
-job rather than a migration. **`docs/EMAIL-SETUP.md` has the steps.** Skipping it is
-fine to begin with - join codes work without it - but email sign-in will not, and the
-built-in sender throttles silently rather than erroring, so it fails in a way nobody
-notices until someone is locked out.
+job rather than a migration. **`docs/EMAIL-SETUP.md` has the steps.**
 
-Verify it afterwards with `npm run verify:email -- you@your-address.com`.
+This is not optional, and it is not a feature that degrades gracefully: without working
+email **nobody can get in at all**, including you. The built-in sender throttles silently
+rather than erroring, which fails in the way nobody notices until someone is locked out.
 
-### 3. Create the league
-
-The database now has tables but no league, and the app will say *"No league here yet"*.
-Create a blank league, choosing your commissioner code now:
+Do it before step 3 - you cannot create a league without signing in first. Then prove it
+rather than assuming:
 
 ```bash
-PIGSKIN_COMMISSIONER_CODE=choose-a-good-code SUPABASE_URL=https://YOUR_REF.supabase.co SUPABASE_SECRET_KEY=YOUR_SECRET_KEY npm run bootstrap -- --name "Pigskin Poker"
+npm run verify:email -- you@your-address.com
 ```
 
-**Do not put quotes around the values** unless they contain spaces. Shell quoting
-leaking into the code is a real failure that has happened - see troubleshooting.
+### 3. Create the league - in the app, not from a script
 
-That creates one league, one season, the full 223-player pool, week 1 in `pre-deal`, and
-zero teams. You add teams through the app.
+The database now has tables but no leagues. **There is no bootstrap step any more.**
 
-The code is set here rather than claimed in the app on purpose: the original Artifact
-let the first person to type a code become commissioner, which was fine behind a private
-link and is a land-grab on a public URL.
+Open the deployed site, sign in with your email, and press **Create A League**. Whoever
+creates it is its commissioner, and everybody else joins through
+**Commissioner -> Invite**.
+
+There used to be a `npm run bootstrap` script here, which created the league and set a
+commissioner code before anyone could claim it. That existed to close a land-grab: the
+Artifact let the first person to type a code become commissioner, which is fine behind a
+private link and a free-for-all on a public URL. With league creation tied to an account
+there is no window to close - the creator is the owner, and an account nobody invited is
+nobody in anyone else's league.
 
 ### 4. Netlify
 
@@ -162,14 +164,14 @@ In this order, because each failure looks different:
    - Login screen -> working.
    - *"No league here yet"* -> the database is fine, step 3 was not run.
    - *"...is not configured"* -> an environment variable is missing; the message names it.
-3. **Log in** with the commissioner code. This is the real test: it exercises the
-   function, the secret key, and password hashing together.
+3. **Sign in** with your email and open the link. This is the real test: it exercises
+   the mail provider, Supabase Auth, the function and the secret key together.
 4. **Add a team.** This exercises the privileged write path.
 
 An attacker's-eye check, using the public key from your own shipped bundle:
 
 ```bash
-curl -s "https://YOUR_REF.supabase.co/rest/v1/league_secrets?select=*" -H "apikey: YOUR_PUBLISHABLE_KEY"
+curl -s "https://YOUR_REF.supabase.co/rest/v1/invites?select=*" -H "apikey: YOUR_PUBLISHABLE_KEY"
 ```
 
 That must return a `42501` permission error. If it returns data, stop and fix it before
@@ -208,16 +210,13 @@ to `SECRETS` in `scripts/verify-grants.mjs` in the same change. The verifier onl
 the tables it is told about, so a new secret table it does not know about passes
 silently - which is the one case where a green check would be actively misleading.
 
-### Changing the commissioner code
+### Changing who the commissioner is
 
-Codes are stored as one-way hashes and cannot be read back, only replaced:
-
-```bash
-PIGSKIN_COMMISSIONER_CODE=the-new-code SUPABASE_URL=https://YOUR_REF.supabase.co SUPABASE_SECRET_KEY=YOUR_SECRET_KEY npm run set-code
-```
-
-This signs out existing commissioner sessions, and verifies the new code works before
-reporting success.
+There is no commissioner code to change. Commissioner is a `league_members` row:
+**Commissioner -> Members** promotes a second one, and demotes the first. Transfer is
+promote-then-demote, and the server refuses to remove the last commissioner - a league
+without one could not deal a week, add a team, or issue an invite, and no screen in the
+app could repair it.
 
 ### Rolling back
 
@@ -238,39 +237,35 @@ These all actually happened.
 
 ### "No league here yet"
 
-The database is reachable and empty. Run the bootstrap (step 3).
+The database is reachable and empty. Sign in and press **Create A League** (step 3).
 
 ### "Pigskin Poker is not configured: ... is missing"
 
 A Netlify environment variable is missing or misspelled. The message names it. Fix it
 and **redeploy** - environment variables are read at build time for `VITE_` ones.
 
-Production deliberately refuses to start rather than falling back to the demo league.
-That fallback would have deployed a site that looked completely healthy - six teams,
-standings, a week in progress - but was a throwaway copy in each visitor's tab that
-saved nothing.
+The app deliberately refuses to start unconfigured, in every build. There used to be an
+in-memory demo league to fall back on, which would have deployed a site that looked
+completely healthy - six teams, standings, a week in progress - but was a throwaway copy
+in each visitor's tab that saved nothing.
 
-### The login screen says "Create & Log In" instead of "Log In"
+### Nobody can sign in, and no email arrives
 
-The app thinks no commissioner code is set. It cannot read `league_secrets` (correctly),
-so it relies on a public `has_commissioner_code` flag on the league. If bootstrap did not
-finish, that flag is false. Re-run `npm run set-code`, which sets both.
+Email IS the login now, so this is a total outage rather than an inconvenience. Work
+through `docs/EMAIL-SETUP.md`, then prove it:
 
-### The commissioner code will not work
+```bash
+npm run verify:email -- you@your-address.com
+```
 
-Almost always shell quoting. If the code was passed as `'mycode'` with quotes, the quotes
-were hashed as part of it and nothing typed at the login screen can ever match.
+That names the two failures that are otherwise silent - a 429 from the built-in sender's
+throttle, and a rejected redirect URL.
 
-`npm run set-code` now strips a surrounding quote pair, warns about non-ASCII characters
-(smart quotes from copy-paste are invisible in most terminals), and prints the effective
-code between `>>> <<<` markers with a character count. If that count is not what you
-expect, something is still mangling the value.
+### Someone signed in but sees "no leagues"
 
-### Re-running bootstrap "worked" but nothing changed
-
-`bootstrap` refuses to run against a database that already has a league, so it does not
-touch the commissioner code. Use `npm run set-code` for that. The refusal message now
-says so.
+Signing in proves who they are; it does not make them a member of anything. They need an
+invite from **Commissioner -> Invite**. An account nobody invited being nobody is the
+behaviour, not a bug.
 
 ### Hosted defaults differ from local
 
@@ -303,9 +298,8 @@ only check that would notice - which is exactly how it got missed the first time
 
 Read before running a league you care about on a public URL:
 
-- **Login has no rate limiting.** A determined guesser gets unlimited attempts at the
-  commissioner code. Password hashing makes each guess cost ~20ms, which helps but is
-  not a substitute. See `docs/AUTH.md`.
-- **Team join codes have no minimum length.** A commissioner can set a two-character one.
+- **Sign-in rate limiting is Supabase's**, not ours. `[auth.rate_limit]` in
+  `supabase/config.toml` documents the local values; the hosted project's live in the
+  dashboard. Our own login endpoint and its throttle were retired with join codes.
 - **Anyone with the URL can read the league** - by design, matching the original, but the
   URL is now guessable rather than a private link.

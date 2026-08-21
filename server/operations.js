@@ -41,24 +41,10 @@ import {
 import {
   AUTH_ERRORS,
   canActForTeam,
-  createSession,
-  destroySession,
-  destroySessionsForTeam,
-  hashCode,
   isCommissioner,
-  validateCode,
-  verifyCode,
+  verifyAccount,
   verifySession,
 } from "./auth.js";
-import {
-  THROTTLED,
-  checkThrottle,
-  clearBuckets,
-  ipBucket,
-  leagueBucket,
-  recordFailure,
-  teamBucket,
-} from "./throttle.js";
 
 const PHASE_RULES = {
   dealPeriod: ["pre-deal"],
@@ -116,85 +102,14 @@ const teamRow = (rows, legacyId) => rows.teams.find((t) => t.legacy_id === legac
 const playerRow = (rows, legacyId) =>
   legacyId == null ? null : (rows.players.find((p) => p.legacy_id === legacyId) ?? null);
 
-/* --------------------------------- auth ---------------------------------- */
-
-/* `ip` comes from the Netlify edge (x-nf-client-connection-ip), plumbed through
- * netlify/functions/api.mjs. It is optional everywhere: the operations are unit-tested
- * directly, with no HTTP layer to supply one, and a missing address simply means the
- * per-IP bucket is not counted while the per-target bucket still is. */
-export async function loginCommissioner(db, { leagueId, code, ip = null }) {
-  /* CHECKED BEFORE ANY WORK, and before scrypt above all. scrypt is the expensive
-   * part by design, which makes it the thing an attacker is trying to spend on our
-   * behalf as well as the thing slowing him down. */
-  const buckets = [ipBucket(ip), leagueBucket(leagueId)];
-  const throttled = await checkThrottle(db, buckets);
-  if (throttled) return fail(THROTTLED.status, THROTTLED.error, { retryAfter: throttled.retryAfterSeconds });
-
-  const { data } = await db
-    .from("league_secrets")
-    .select("commissioner_code_hash")
-    .eq("league_id", leagueId)
-    .maybeSingle();
-  if (!data || !verifyCode(code, data.commissioner_code_hash)) {
-    await recordFailure(db, buckets);
-    return fail(AUTH_ERRORS.badCode.status, AUTH_ERRORS.badCode.error);
-  }
-  // Getting it right wipes the slate: four mistyped codes then a correct one leaves no
-  // strike behind.
-  await clearBuckets(db, buckets);
-  const { token, expiresAt } = await createSession(db, { leagueId, role: "commissioner" });
-  return good({ token, expiresAt, role: "commissioner", teamId: null });
-}
-
-export async function loginManager(db, { leagueId, teamLegacyId, code, ip = null }) {
-  const buckets = [ipBucket(ip), teamBucket(leagueId, teamLegacyId)];
-  const throttled = await checkThrottle(db, buckets);
-  if (throttled) return fail(THROTTLED.status, THROTTLED.error, { retryAfter: throttled.retryAfterSeconds });
-
-  const rows = await fetchLeagueRows(db, leagueId);
-  if (!rows) return fail(404, "League not found.");
-  const team = teamRow(rows, teamLegacyId);
-  /* A bad team id is NOT counted as a failed attempt. It is a 404 about the shape of
-   * the request, not a wrong guess at a credential, and counting it would let a typo
-   * in a link burn someone's allowance. */
-  if (!team) return fail(404, "That team doesn't exist.");
-
-  const { data } = await db
-    .from("team_secrets")
-    .select("join_code_hash")
-    .eq("team_id", team.id)
-    .maybeSingle();
-  if (!data) {
-    return fail(401, "This team doesn't have a join code set yet - ask your commissioner to set one.");
-  }
-  if (!verifyCode(code, data.join_code_hash)) {
-    await recordFailure(db, buckets);
-    return fail(AUTH_ERRORS.badCode.status, AUTH_ERRORS.badCode.error);
-  }
-  await clearBuckets(db, buckets);
-  const { token, expiresAt } = await createSession(db, {
-    leagueId,
-    role: "manager",
-    teamId: team.id,
-  });
-  return good({ token, expiresAt, role: "manager", teamId: teamLegacyId });
-}
-
-export async function logout(db, { token }) {
-  await destroySession(db, token);
-  return good({});
-}
-
 /* ----------------------------- accounts ---------------------------------- */
 
 /**
- * Who is this token, and what may it do?
+ * Who is this token, and what may it do IN THIS LEAGUE?
  *
- * Needed because an ACCOUNT does not carry its role. A join-code login answers "which
- * team am I" in its own response - the code you typed was for exactly one team - but an
- * account is just a person until league_members is consulted, and the browser cannot
- * consult it (the policy there is scoped to the reader's own rows, and the role must be
- * the server's answer regardless).
+ * Needed because an account does not carry its role: it is just a person until
+ * `league_members` is consulted, and the browser cannot consult it (the policy there is
+ * scoped to the reader's own rows, and the role must be the server's answer regardless).
  *
  * Returns the LEGACY team id, not the row uuid: the whole UI is written against legacy
  * ids, which is why ~90 components survived the port untouched.
@@ -205,111 +120,26 @@ export async function whoami(db, { leagueId, token }) {
   const rows = await fetchLeagueRows(db, leagueId);
   if (!rows) return fail(404, "League not found.");
   const team = session.teamId ? (rows.teams.find((t) => t.id === session.teamId) ?? null) : null;
-  return good({
-    role: session.role,
-    teamId: team?.legacy_id ?? null,
-    hasAccount: !!session.userId,
-  });
-}
-
-/**
- * Attach a real account to the membership the caller already holds.
- *
- * MIGRATION BY INVITATION, NOT BY FORCE - the single most important property here.
- * Nobody is locked out mid-season, nobody has to create an account to keep playing, and
- * the join code keeps working afterwards. Each person moves when they next happen to
- * log in, and the league notices nothing.
- *
- * It needs BOTH credentials at once, which is the whole point:
- *
- *   token         - the join-code session. Proves what you are ALLOWED to be: this
- *                   league, this role, this team. The server never takes the client's
- *                   word for any of it; the membership is minted from the session, not
- *                   from anything in the request body.
- *   accountToken  - the Supabase JWT. Proves WHO you are.
- *
- * Idempotent on purpose. Signing in again, on a second device or a month later, must be
- * a no-op rather than a second membership or an error - and `unique (league_id,
- * user_id)` is what makes that guarantee real rather than a matter of getting the
- * check-then-insert right.
- */
-export async function linkAccount(db, { leagueId, token, accountToken, displayName = null }) {
-  /* Deliberately verified as a CODE SESSION, not through verifySession's either/or.
-   * Someone already signed in with an account has nothing to link, and letting a JWT
-   * authorize its own membership would be circular - the account would be granting
-   * itself the role it is supposed to be receiving. */
-  const session = token && !token.includes(".") ? await verifySession(db, token, { leagueId }) : null;
-  if (!session) {
-    return fail(401, "Log in with your team's join code first, then connect your email.");
-  }
-
-  const { data: userData, error: userError } = await db.auth.getUser(accountToken);
-  const user = userData?.user;
-  if (userError || !user) return fail(401, "That sign-in link is no longer valid - request a new one.");
-
-  // The email lives in auth.users, where Supabase manages it. Storing it again here
-  // would be a second source of truth for something we do not own.
-  const { error: profileError } = await db
-    .from("profiles")
-    .upsert({ user_id: user.id, display_name: displayName }, { onConflict: "user_id" });
-  if (profileError) return fail(500, profileError.message);
-
-  const { data: existing } = await db
-    .from("league_members")
-    .select("id, role, team_id")
-    .eq("league_id", leagueId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (existing) {
-    /* Already a member. Do NOT quietly rewrite the role from the session - a
-     * commissioner who happens to be holding a manager's join code must not be demoted
-     * by signing in. Changing someone's role is an administrative act, not a side
-     * effect of logging in. */
-    return good({ linked: true, alreadyMember: true, role: existing.role });
-  }
-
-  const { error } = await db.from("league_members").insert({
-    league_id: leagueId,
-    user_id: user.id,
-    role: session.role,
-    team_id: session.teamId,
-  });
-  // A race between two devices linking at once loses to the unique constraint, which is
-  // the correct outcome and not an error worth showing anyone.
-  if (error && !String(error.message).includes("duplicate key")) return fail(500, error.message);
-
-  return good({ linked: true, alreadyMember: false, role: session.role });
+  return good({ role: session.role, teamId: team?.legacy_id ?? null });
 }
 
 /* --------------------- leagues, invites, membership ---------------------- */
-
-/** The account behind a request, or null. Used where an ACCOUNT specifically is required
- *  - creating a league and redeeming an invite both mint a membership, and a membership
- *  has to belong to a person rather than to whoever is holding a code. */
-async function accountUser(db, accountToken) {
-  if (!accountToken) return null;
-  const { data, error } = await db.auth.getUser(accountToken);
-  if (error || !data?.user) return null;
-  return data.user;
-}
 
 /**
  * Create a league. The creator becomes its commissioner.
  *
  * THIS RETIRES THE LAND-GRAB. The Artifact let the first person to type a code become
  * the commissioner, which was fine behind a private link and a free-for-all on a public
- * URL; `scripts/bootstrap-league.mjs` exists only to close that window by setting the
- * code before anyone can claim it. With league creation the commissioner is simply
- * whoever made the league, so that script becomes a development convenience rather than
- * a deployment step.
+ * URL. `scripts/bootstrap-league.mjs` existed only to close that window by setting the
+ * code before anyone could claim it; with league creation the commissioner is simply
+ * whoever made the league, so the script was deleted along with codes themselves.
  *
  * Requires an ACCOUNT. There is deliberately no way to create a league with a join code:
  * a league whose owner is "whoever holds this string" is the thing this phase exists to
  * get away from.
  */
 export async function createLeague(db, { accountToken, name, year, visibility = "members" }) {
-  const user = await accountUser(db, accountToken);
+  const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to create a league.");
 
   const trimmed = String(name ?? "").trim();
@@ -319,9 +149,9 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
 
   const seasonYear = Number(year) || new Date().getFullYear();
 
-  /* The same blank league bootstrap-league.mjs builds: one season, week 1 pre-deal, the
-   * full player pool, and ZERO teams. Sharing createDefaultState() rather than
-   * reimplementing it is what keeps a league made here identical to one made there. */
+  /* A blank league: one season, week 1 pre-deal, and ZERO teams. Sharing
+   * createDefaultState() rather than reimplementing it is what keeps a league made here
+   * identical to one made anywhere else. */
   const blank = createDefaultState();
   blank.leagueName = trimmed;
   const rows = decomposeLeague(blank, {
@@ -329,7 +159,12 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
     year: seasonYear,
   });
 
-  for (const table of ["leagues", "seasons", "players", "periods"]) {
+  /* PLAYERS ARE NOT IN THAT LIST any more. They are copied from `player_pool` in one
+   * statement instead of being shipped as 223 rows of JSON per league, which also means
+   * a pool corrected in the database is picked up by the next league without a deploy.
+   * The blob still carries a pool - the engine state shape is the artifact's and parity
+   * depends on it - so this drops it rather than persisting it twice. */
+  for (const table of ["leagues", "seasons", "periods"]) {
     const data = rows[table] ?? [];
     if (!data.length) continue;
     const { error } = await db.from(table).insert(data);
@@ -337,6 +172,16 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   }
 
   const leagueId = rows.leagues[0].id;
+
+  const { data: copied, error: poolError } = await db.rpc("copy_player_pool_into", {
+    target_league: leagueId,
+  });
+  if (poolError || !copied) {
+    /* A league with no players cannot deal a week, and no screen in the app can add
+     * them. Better to leave nothing behind than something unusable. */
+    await db.from("leagues").delete().eq("id", leagueId);
+    return fail(500, "Could not stock the player pool: " + (poolError?.message ?? "the pool is empty"));
+  }
   const { error: visError } = await db.from("leagues").update({ visibility }).eq("id", leagueId);
   if (visError) return fail(500, visError.message);
 
@@ -356,7 +201,7 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
 
 /** Every league this account belongs to. The landing page's "your leagues" door. */
 export async function myLeagues(db, { accountToken }) {
-  const user = await accountUser(db, accountToken);
+  const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to see your leagues.");
 
   const { data: members, error } = await db
@@ -482,7 +327,7 @@ export async function revokeInvite(db, { leagueId, token, inviteId }) {
  * which matters because "did that work?" is the most natural reason to press it again.
  */
 export async function redeemInvite(db, { code, accountToken }) {
-  const user = await accountUser(db, accountToken);
+  const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to redeem an invite.");
 
   const parsed = parseInviteCode(code);
@@ -974,54 +819,4 @@ export async function replaceLeague(db, { leagueId, token, blob }) {
     year: ctx.rows.seasons[0].year,
   });
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
-}
-
-export async function setTeamJoinCode(db, { leagueId, token, teamId, code }) {
-  const ctx = await context(db, leagueId, token);
-  if (ctx.error) return ctx.error;
-  if (!isCommissioner(ctx.session)) {
-    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
-  }
-  const team = teamRow(ctx.rows, teamId);
-  if (!team) return fail(404, "Unknown team.");
-
-  // On SET only. See the note on validateCode: enforcing this on verify would sign out
-  // whoever is holding a short code today, and no query can find them to warn first.
-  const badCode = validateCode(code);
-  if (badCode) return fail(400, badCode, { reason: "code-policy" });
-
-  const { error } = await db
-    .from("team_secrets")
-    .upsert({ team_id: team.id, join_code_hash: hashCode(code), updated_at: new Date().toISOString() });
-  if (error) return fail(500, error.message);
-  // Keep the public flag in step with the hash it describes, or the team picker will
-  // lie about whether the team is joinable.
-  await db.from("teams").update({ has_join_code: true }).eq("id", team.id);
-
-  /* Rotating a code means "someone should no longer have this" - there is no other
-   * reason to do it. Leaving their 30-day session alive made the rotation cosmetic.
-   * The commissioner path already did this (scripts/set-commissioner-code.mjs); this
-   * is the same delete on the team path. */
-  const signedOut = await destroySessionsForTeam(db, team.id);
-  return good({ signedOut, view: hydrate(await fetchLeagueRows(db, leagueId)) });
-}
-
-/**
- * Sign out every device holding a session for one team, without changing its code.
- *
- * The code-rotation path above covers "this person should be locked out". This covers
- * the other case - a phone left somewhere, a shared laptop - where the code is fine and
- * only the live sessions are the problem. Rotating a code to achieve it would force the
- * whole team to be told a new one.
- */
-export async function signOutTeam(db, { leagueId, token, teamId }) {
-  const ctx = await context(db, leagueId, token);
-  if (ctx.error) return ctx.error;
-  if (!isCommissioner(ctx.session)) {
-    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
-  }
-  const team = teamRow(ctx.rows, teamId);
-  if (!team) return fail(404, "Unknown team.");
-  const signedOut = await destroySessionsForTeam(db, team.id);
-  return good({ signedOut, view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }

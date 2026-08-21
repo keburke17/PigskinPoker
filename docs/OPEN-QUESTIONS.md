@@ -98,6 +98,13 @@ Nothing moves for the existing league until each person chooses: both credential
 accepted, and code-as-login is switched off only at a season boundary. Full model in
 `docs/PHASE-3-PLAN.md`.
 
+> **Update, 2026-08-20 - the gradual half did not happen, and did not need to.** Every
+> deployed league is test data due to be wiped, so there was no population of
+> code-holders to migrate and no season boundary to wait for. Join codes are **deleted**,
+> along with the `sessions` table and the login rate limiter. The answer above stands
+> exactly as written - accounts authenticate, a code invites - it just arrived directly
+> rather than through a cutover. See `docs/AUTH.md`.
+
 ### OQ-6. Do you want to be able to notify people? *(out of scope this pass)*
 
 There was no email, no push, nothing. So "rosters are dealt - submit your scheme before
@@ -194,6 +201,10 @@ teams, players, seasons and sessions to a league. Ten leagues could exist tomorr
 no migration.
 
 What is single-league is the **application**:
+
+*(The table below describes the state BEFORE Phase 3d. All four gaps are closed:
+`/l/<id>` selects a league, the app creates them, the creator is the commissioner, and
+every read policy is league-scoped. `scripts/bootstrap-league.mjs` no longer exists.)*
 
 | Gap | Where |
 |---|---|

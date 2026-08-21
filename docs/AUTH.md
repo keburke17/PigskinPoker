@@ -1,10 +1,16 @@
 # Authentication and Authorization
 
-How logging in works, why it changed, and the path from join codes to real accounts.
+How logging in works, and why it changed twice.
 
-**Short version:** the login *experience* is exactly what your league already knows -
-type a code. What changed is that the code is no longer in the browser to compare
-against.
+**Short version, as of the Phase 3 follow-up:** you sign in with your email address and a
+link. There is one credential, it is a real Supabase account, and a role is a
+`league_members` row. Join codes, the hand-rolled `sessions` table and our own login
+rate limiter are **gone** -
+`supabase/migrations/20260820000000_retire_join_codes.sql` drops them.
+
+The history below is kept because it explains why the schema is shaped the way it is, and
+because the reasoning about migrating a real league from codes is the right shape if one
+is ever onboarded. Read it as the road here, not as how it works now.
 
 ---
 
@@ -339,13 +345,13 @@ later rather than an infrastructure project.
   code can do for you. *(2026-08-19: moot for the current data, which is all test data
   and will be wiped. It applies to any real league onboarded from codes later.)*
 
-- **Retiring `sessions` is now unblocked but NOT free.** With no migration to perform,
-  nothing depends on code-as-login in production - but `loginCommissioner` and
-  `loginManager` are also what make `npm run dev` work with no database and no keys, via
-  the in-memory demo league. Deleting them costs either the zero-config dev mode or a
-  synthetic signed-in session for demo mode, and keeping code-login in the memory adapter
-  while dropping it from Supabase would breach the rule that the two adapters must not
-  diverge (see the comment at `src/storage/memory.js:457`). Undecided, and not urgent.
+- **`sessions` is retired.** This section described it as the piece most likely to become
+  a permanent security problem, and it is now deleted along with `league_secrets`,
+  `team_secrets`, `auth_throttle` and the two public `has_*_code` flags. `verifySession`
+  accepts exactly one credential: a Supabase access token, resolved against
+  `league_members`. `server/auth.js` no longer hashes, stores or compares a secret of our
+  own; the scrypt primitives moved to `server/hash.js`, whose only consumer is invite
+  secrets.
 
 Neither is worse than the Artifact's position, where the codes were simply public, and
 both are resolved by the accounts layer rather than by patching this one further.
