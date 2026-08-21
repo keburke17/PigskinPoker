@@ -295,9 +295,15 @@ export function createSupabaseStore(config) {
            * `https://your-site/**`, not just the bare origin - or these are rejected
            * outright and look like broken links. docs/EMAIL-SETUP.md says so. */
           emailRedirectTo: redirectTo || globalThis.location?.href || globalThis.location?.origin,
-          // Nobody is created by typing an address here. An account only becomes a
-          // MEMBER by linking against a join-code session, so a stray sign-up is inert
-          // - but not creating one at all keeps the user table honest.
+          /* Typing an address creates an ACCOUNT and nothing else. An account only
+           * becomes a member of a league by redeeming an invitation, so a stray
+           * sign-up is inert - it can see nothing and act on nothing.
+           *
+           * NOTE FOR ANYONE DEBUGGING EMAIL: this is what decides which template
+           * Supabase sends. A brand new address gets "Confirm signup"; one that
+           * already exists gets "Magic Link". Both must be branded in the hosted
+           * dashboard or first-time members get the unbranded default - see
+           * tests/config.test.js and docs/EMAIL-SETUP.md. */
           shouldCreateUser: true,
         },
       });
