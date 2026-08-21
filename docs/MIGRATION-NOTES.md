@@ -520,6 +520,21 @@ delete from public.leagues;   -- everything under a league cascades
 delete from auth.users;       -- profiles and memberships cascade
 ```
 
+Two statements really is all of it, because every public table hangs off `leagues` by a
+chain of `on delete cascade`: seasons -> periods -> roster_slots / stat_lines / schemes /
+period_results, teams -> the same four plus team_totals, and players, invites,
+league_members and events directly. `auth.users` then takes `profiles` with it. The four
+credential tables need no attention at all - the migration drops them.
+
+`auth.users` is in the **auth** schema, which is why it does not appear in the dashboard's
+table list while that is filtered to `public`.
+
+**`player_pool` is the one table never to wipe.** It is the global template every new
+league is stocked from, it has no foreign keys, and nothing cascades into it - so the
+statements above cannot reach it whichever order they run in. `players` is the opposite:
+per-league copies, which is what lets one commissioner mark someone OUT without touching
+anybody else, and they go with their league.
+
 **This is recorded here rather than in the migration or the runbook, on purpose.** It
 was tried both of those ways first and both were wrong:
 
