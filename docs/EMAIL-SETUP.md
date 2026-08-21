@@ -171,6 +171,24 @@ broken link rather than a misconfiguration - so it is worth being generous here.
 `supabase/config.toml` configures only the LOCAL stack. It does not reach the hosted
 project.
 
+**Check both settings without sending anything:**
+
+```bash
+npm run verify:redirects -- https://pigskinpoker.netlify.app
+```
+
+It asks the auth server to verify a token that was never valid and reads where it is
+sent, which is the same decision it makes for a real link - so the answer is real, and
+no email is spent finding it out.
+
+**The Site URL is the one that gets forgotten.** Supabase ships it as
+`http://localhost:3000`, and it is only ever consulted when a redirect is rejected - so
+a project with a correct allow-list looks entirely healthy while carrying a fallback
+that points at a dead address on somebody else's laptop. That was true of this project
+from the day auth went live (2026-08-19) until 2026-08-20, and nothing anywhere said
+so. It was caught within a day only because a different sign-in bug sent someone
+looking; on a longer-lived project it would sit there indefinitely.
+
 ---
 
 ## 4. Supabase dashboard - the email template
@@ -227,6 +245,9 @@ It tells you specifically about the two failures worth naming:
   sender throttling, and real sign-ins are already failing silently.
 - **Redirect rejected** - the address is not in the allow-list from step 3.
 
+For where links LAND rather than whether mail sends, use `npm run verify:redirects`
+from step 3. It costs nothing, so it can be run against production any time.
+
 Then **go and look in the inbox**. The script can only prove the request was accepted, not
 that mail was delivered. If nothing arrives in a minute or two, check Resend's logs for a
 bounce, confirm DNS is verified, and check spam.
@@ -241,7 +262,7 @@ in. Join codes, the `sessions` table and our own login rate limiter are gone.
 That raises the stakes on this page: **if email is broken, nobody can get in at all**,
 including you. It is not a feature that degrades gracefully any more, so run
 `npm run verify:email` after any change to the sender, the domain or the redirect
-allow-list.
+allow-list, and `npm run verify:redirects` after any change to URL Configuration.
 
 - new members join with an invitation (Commissioner -> Invite), not a code;
 - signing in proves who someone is, and nothing else - an account nobody invited is

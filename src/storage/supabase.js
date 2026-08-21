@@ -15,6 +15,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { hydrateLeague } from "./hydrate.js";
+import { authLinkErrorForThisPageLoad } from "./authCallback.js";
 
 /* schemes must be selected by explicit columns: the column-level grant withholds
  * submitted_at, and `*` would fail outright with 42501 rather than omitting it. */
@@ -262,6 +263,20 @@ export function createSupabaseStore(config) {
     },
 
     /* ------------------------------- auth -------------------------------- */
+
+    /**
+     * Why the magic link that brought us here failed, if it did.
+     *
+     * detectSessionInUrl consumes the URL fragment. When the link WORKED that is
+     * exactly right; when it did not, that fragment held the only explanation anyone
+     * was ever going to get, and it went in the bin - which is what turned one
+     * expired link into a sign-in loop nobody could see the cause of. The reading is
+     * taken in authCallback.js before React starts; this just hands it over.
+     */
+    getAuthLinkError() {
+      return authLinkErrorForThisPageLoad();
+    },
+
     async logout() {
       /* Nothing server-side to destroy any more - Supabase owns the session, and
        * signOut revokes it there. The local variable is cleared first so an in-flight

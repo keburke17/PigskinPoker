@@ -19,7 +19,8 @@
     "db:reset": "supabase db reset && node scripts/seed-accounts.mjs",
     "db:push": "supabase db push && node scripts/verify-grants.mjs",
     "verify:grants": "node scripts/verify-grants.mjs",
-    "verify:email": "node scripts/verify-email.mjs"
+    "verify:email": "node scripts/verify-email.mjs",
+    "verify:redirects": "node scripts/verify-redirects.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

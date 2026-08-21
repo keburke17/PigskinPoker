@@ -66,6 +66,16 @@ const redirectTo = env.VERIFY_EMAIL_REDIRECT || (isLocal ? "http://localhost:517
 console.log("\n  Project:   " + url + (isLocal ? "  (LOCAL - mail is captured, not sent)" : "  (HOSTED - this sends real email)"));
 console.log("  Sending to: " + email);
 if (redirectTo) console.log("  Redirect:   " + redirectTo);
+/* No redirect_to means the link in the email falls back to the project's SITE URL -
+ * which ships as http://localhost:3000 and is easy to leave that way, because nothing
+ * else ever consults it. Tapping the link this script sends is then a dead end, and it
+ * reads as "email is broken" when email is fine. Say so rather than let the proof of
+ * delivery look like a failure. */
+if (!redirectTo) {
+  console.log("  Redirect:   none - the link will go wherever Site URL points.");
+  console.log("              Check that with:  npm run verify:redirects -- https://your-site");
+  console.log("              Or set VERIFY_EMAIL_REDIRECT to test a specific page.");
+}
 console.log("");
 
 const started = Date.now();

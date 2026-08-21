@@ -555,3 +555,60 @@ Docker is now required to run the app at all. That was a deliberate trade - it i
 both people working on this have - and it buys a single mode where "it works locally"
 means it works against the same Postgres, the same RLS, the same auth and the same
 privileged-write function that deploys.
+
+---
+
+## 2026-08-20: the sign-in loop
+
+Reported by the league's owner the day after codes were retired: the first sign-in
+worked; after signing out, no link ever worked again. Enter your email, get the email,
+tap it, and land on a page asking for your email.
+
+**Two bugs, in front of one dashboard setting.**
+
+### The loop itself
+
+A failed magic link comes back with its reason in the URL fragment -
+`#error=access_denied&error_code=otp_expired&...` - and nobody read it. The Supabase
+client has no use for it, so it drops it; the app dropped it too, and the failure had no
+representation on screen at all. You are simply back at the sign-in box.
+
+What made that a **loop** rather than an annoyance is that the obvious response makes it
+worse: requesting another link **invalidates the one already in the inbox**. Confirmed
+against a local GoTrue - ask twice, and the first token returns `otp_expired`. So anyone
+who taps a stalled link, gets nothing, and asks again has cancelled the link they were
+about to receive help from, and every subsequent attempt looks identical.
+
+There are four ways to arrive holding a spent link, and no way to tell them apart from
+the outside: already used, superseded, aged out, or opened by a mail scanner before the
+human got there.
+
+`src/storage/authCallback.js` now reads the fragment before the client consumes it and
+says which. It reads at import time, not at store construction: the reading strips the
+fragment from the address bar, and doing that during a React render meant StrictMode's
+second render built a store from an already-cleaned URL and found nothing. The fix
+worked in production and not in development, which is the wrong way round.
+
+### Signing out walked you back in
+
+`onLogout` called `setTab("home")` - and `home` is a TAB, so that builds `/l/<leagueId>`.
+Signing out therefore navigated INTO the league just left, where being signed out means
+the reads return nothing and the screen says the league is private. It also never
+cleared `account`, so the landing page went on offering "Your Leagues" and a sign-out
+button to someone who had just used it.
+
+Both are now what they should be: clear the account, go to the front door.
+
+### The setting behind them
+
+The hosted project's **Site URL was still `http://localhost:3000`**, the Supabase
+default, from the day magic links went live (2026-08-19). The redirect allow-list was
+correct, which is exactly why nobody noticed - Site URL is consulted only when a
+redirect is *rejected*,
+so a healthy allow-list hides it completely, and the failure it produces is a member
+being dropped on a dead address on somebody else's laptop.
+
+`npm run verify:redirects -- https://your-site` now answers this without sending
+anything, by asking the auth server to verify a token that was never valid and reading
+where it sends the rejection. That is the same decision it makes for a real link.
+Running it against production is what turned up the localhost fallback.
