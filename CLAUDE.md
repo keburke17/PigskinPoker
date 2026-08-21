@@ -18,7 +18,7 @@ and built by the league's owner. **The original is preserved untouched in
 `LegacyProject/`.** This repo is that app ported to run as a real website, with the game
 itself unchanged.
 
-Live at <https://pigskinpoker.netlify.app>.
+Live at <https://pigskin.ballsohard.org>.
 
 ---
 

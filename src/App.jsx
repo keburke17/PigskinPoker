@@ -107,12 +107,22 @@ export default function App() {
    * someone sees. */
   useEffect(() => {
     let cancelled = false;
+    /* Not known yet - and this effect re-runs whenever the league in the URL changes, so
+     * the flag has to go back to false each time. Left true from the first resolution, it
+     * cannot say "still asking", which is what let the render below read an unanswered
+     * question as a signed-out visitor and flash the sign-in screen on the way into a
+     * league. */
+    setAccountChecked(false);
     (async () => {
       try {
         const acct = await store.getAccount();
         if (cancelled) return;
         setAccount(acct);
-        if (acct && store.whoami) {
+        if (!acct) {
+          /* A definite answer: no account, so no role. A role left in localStorage by a
+           * previous visit is not evidence of one. */
+          setIdentity({ role: null, teamId: null });
+        } else if (store.whoami) {
           let me = await store.whoami();
           if (cancelled) return;
 
@@ -121,6 +131,12 @@ export default function App() {
            * from a join-code session held on the same device used to sit at this point;
            * codes are gone, and an invitation is the only way in. */
           if (me?.ok && me.role) setIdentity({ role: me.role, teamId: me.teamId ?? null });
+          /* "You are nobody HERE" has to CLEAR a role, because identity is one
+           * localStorage key rather than one per league: a commissioner of another
+           * league would otherwise walk in still holding the panel. Only on a definite
+           * answer - a server error leaves what we had rather than signing someone out
+           * over a blip. */
+          else if (me?.ok) setIdentity({ role: null, teamId: null });
         }
       } catch {
         /* Offline, or auth unreachable. This must never block the app from rendering -
@@ -517,7 +533,12 @@ export default function App() {
     );
   }
 
-  if (loading || !state) {
+  /* `accountChecked` belongs here as much as `loading` does. The league read and the
+   * identity lookup are two independent round trips, and the read usually wins - so
+   * without it there is a window with the league loaded and the role still unknown,
+   * which the test below reads as "signed out". That is the sign-in screen appearing
+   * for a moment on the way into a league someone is perfectly entitled to. */
+  if (loading || !state || !accountChecked) {
     return (
       <div className="pp-root">
         <div className="pp-login-wrap"><p className="pp-sub">Loading Pigskin Poker...</p></div>

@@ -368,8 +368,14 @@ which is why the check exists as a command rather than a paragraph.
 And for where those links LAND, which is a different question and costs no email:
 
 ```bash
-npm run verify:redirects -- https://pigskinpoker.netlify.app
+VITE_SUPABASE_URL=https://<ref>.supabase.co npm run verify:redirects -- https://your-site
 ```
+
+The prefix is not decoration. Both scripts read `.env.local`, which `npm run dev` writes
+from the LOCAL stack - so the bare command asks 127.0.0.1 about your production site and
+answers, in detail, about the wrong project. `verify:email` labels which stack it is
+talking to; `verify:redirects` now refuses the mismatch outright rather than reporting a
+correct hosted allow-list as broken.
 
 Site URL and the redirect allow-list are separate settings and fail differently. The
 allow-list rejects an address outright; the Site URL is where the rejected are sent, is

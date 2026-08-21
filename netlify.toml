@@ -23,6 +23,30 @@
 [functions]
   node_bundler = "esbuild"
 
+# The old address, sent to the new one.
+#
+# This is FIRST on purpose. Rules are evaluated top to bottom, and the SPA fallback
+# below carries no hostname - `from = "/*"` matches every host, including this one, and
+# would win. Above `/api` too, so nothing whatsoever is served on the old address.
+#
+# The full URL in `from` is what makes the rule host-scoped; a path-only `from` cannot
+# match on hostname and would redirect the new domain to itself, forever.
+#
+# Netlify does NOT do this for you. Setting a primary domain leaves the project "always
+# accessible at a netlify.app subdomain" - it answered 200, not a redirect, which is two
+# live origins holding two separate sessions, because localStorage is per-origin.
+#
+# It does not touch deploy previews (deploy-preview-N--pigskinpoker.netlify.app is a
+# different hostname), and it is NOT a reason to drop the netlify.app entry from the
+# Supabase redirect allow-list: the auth server decides whether to honour a sign-in link
+# before any browser redirect happens, so that entry is what keeps links already sitting
+# in inboxes working. See docs/EMAIL-SETUP.md section 3.
+[[redirects]]
+  from = "https://pigskinpoker.netlify.app/*"
+  to = "https://pigskin.ballsohard.org/:splat"
+  status = 301
+  force = true
+
 # Friendlier path than /.netlify/functions/api
 [[redirects]]
   from = "/api"

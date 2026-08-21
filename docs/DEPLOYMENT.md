@@ -23,9 +23,24 @@ deliberate.
 
 Current deployment:
 
-- Site: <https://pigskinpoker.netlify.app>
+- Site: <https://pigskin.ballsohard.org>
 - Supabase project ref: `wzzrxoslcwpyopdvvxmn`
 - Repo: <https://github.com/keburke17/PigskinPoker>
+
+The domain moved from `pigskinpoker.netlify.app` on 2026-08-20. Two things about it are
+worth knowing before touching DNS:
+
+- **`ballsohard.org` is served by Cloudflare** (`sunny`/`gabriel.ns.cloudflare.com`),
+  whatever any registrar panel shows you. `dig +short NS ballsohard.org @8.8.8.8` is the
+  only authority on that. The site is a CNAME on `pigskin` pointing at
+  `pigskinpoker.netlify.app`, and it must stay **DNS only (grey cloud)**: proxied,
+  Cloudflare terminates TLS itself, Netlify's certificate challenge never completes, and
+  a "Flexible" SSL mode adds a redirect loop that reads as an application bug.
+- **`pigskinpoker.netlify.app` still serves the app** - 200, not a redirect. Both origins
+  are live and both are in the auth allow-list, so nothing is broken, but sessions live
+  in `localStorage` and are per-origin: somebody arriving by an old bookmark is signed in
+  there, separately, and is never told the address changed. `docs/EMAIL-SETUP.md` section
+  3 has the host-scoped redirect that would close it.
 
 ---
 
