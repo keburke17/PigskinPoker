@@ -1,7 +1,7 @@
 # Getting set up
 
-For the person who designed and built Pigskin Poker, to run it on your own machine and
-keep working on it with your own Claude.
+For Scott - the person who designed and built Pigskin Poker - to run it on his own
+machine and keep working on it with his own Claude.
 
 You do not need to know how any of the porting worked. This is about 15 minutes, and
 **nothing you do locally can affect the live league.**
@@ -23,7 +23,7 @@ address and a link rather than a shared code. New members join by invitation.
 
 ---
 
-## 1. Install the three things you need
+## 1. Install what you need
 
 **Node.js** - <https://nodejs.org> - take the LTS version. This runs the app.
 
@@ -39,8 +39,18 @@ instantly; it was removed, because it could not sign anybody in.
 npm install -g @anthropic-ai/claude-code
 ```
 
-You do not need any accounts to run it locally. GitHub comes up only if you want to send
-changes back - see the end of this document.
+**The GitHub CLI** - <https://cli.github.com> - the piece that lets Claude save and
+publish your work for you instead of handing you commands. Install it, then once:
+
+```bash
+gh auth login
+```
+
+Pick **GitHub.com**, **HTTPS**, and **log in with a web browser**. It prints a code, you
+paste it into the page it opens, and that is the last time you have to think about it.
+
+You do not need any accounts to run the app locally. GitHub comes up only when you want
+to send changes back - see the end of this document.
 
 ---
 
@@ -127,7 +137,57 @@ directly:
 - *"Why does the FLEX slot never get a TE?"*
 
 Because `CLAUDE.md` lives in the repo, it stays current as the project changes, and
-anyone who clones it gets the same briefing.
+anyone who clones it gets the same briefing. It also says who you are and how you like to
+work, so you should not have to re-explain that either.
+
+### Let Claude do the git bits
+
+You do not need to learn git commands. Claude has the same terminal you do, and
+`CLAUDE.md` tells it to run them for you. Ask in plain English:
+
+| Say | What Claude does |
+|---|---|
+| *"save this"* | Starts a branch if needed, runs the tests, commits with a sensible message |
+| *"what have I changed?"* | Shows you the difference in words, not code |
+| *"undo that last change"* | Puts the file back the way it was |
+| *"put this up for review"* | Pushes the branch and opens a pull request, and gives you the link |
+| *"put it live"* | Merges it, which publishes to the real site |
+
+The one habit worth having: **ask it to save whenever something works.** A commit is a
+point you can always come back to, and they are free. If an afternoon of changes turns out
+to be a mistake, "go back to how it was this morning" is a real instruction and Claude can
+do it - but only if there is a saved point to go back to.
+
+### Saving is not publishing
+
+Three different things, in order:
+
+1. **Saving (commit).** On your machine only. Nobody sees it. Costs nothing, do it often.
+2. **Pushing / a pull request.** Uploads the branch to GitHub so it exists somewhere other
+   than your laptop, and Kyle can look at it. Still not live.
+3. **Merging.** *This publishes.* A minute or two later
+   <https://pigskin.ballsohard.org> is running your change, for everybody.
+
+Claude has been told to tell you which of the three it is about to do, and to say out loud
+when something is going live. If you are ever unsure, ask "is this live?" - it can check.
+
+Nothing on your machine can touch the real site by accident. The keys that would allow it
+are not in the repo; publishing only ever happens through step 3.
+
+**Claude will ask permission before running some commands.** The everyday ones - looking
+at changes, saving, running the tests - are pre-approved in the repo, so it just gets on
+with them. The ones that leave your laptop, or touch a database, ask first. When you see a
+prompt, that is the point to read what it says.
+
+### What Claude will hand back to Kyle
+
+Some of the project is plumbing rather than game: the database schema, the server-side
+function, the hosting, the email, the domain. The idea is that this stays put and you
+build on top of it.
+
+If something you ask for needs one of those changed, Claude will say so and stop rather
+than quietly reaching into the live database. That is not it being awkward - those are
+the changes with no undo. Forward it to Kyle and carry on with something else.
 
 ### One thing to be aware of
 
@@ -248,32 +308,31 @@ permissions at all. One mode, and it is the real one.
 |---|---|---|
 | **Node.js** | Running the app at all | Yes |
 | **Git** | Getting the code, and keeping it up to date | Yes |
-| **Claude Code** | Working on it with Claude | Recommended |
+| **Claude Code** | Working on it with Claude | Yes, in practice |
 | **Docker Desktop** | The database, and the 108 tests that need one | Yes - the app does not start without it |
+| **GitHub CLI** (`gh`) | Letting Claude save and publish for you | Recommended |
 
 ### About Git and GitHub
 
-**Git** is the tool; **GitHub** is where the code is stored. You need Git installed to
-clone the repo.
+**Git** is the tool that tracks changes; **GitHub** is the website the code is stored on;
+**`gh`** is the command that connects the two without a browser. You do not have to use
+any of them directly - Claude does - but three facts are worth carrying:
 
-You do **not** need a GitHub account just to get the code or to run it - the repo is
-public, so `git clone` works with no account and no login.
+- The repo is public, so `git clone` needs no account at all.
+- **Sending changes back needs your account added as a collaborator** on
+  <https://github.com/keburke17/PigskinPoker>. Ask Kyle once; after that `git push`
+  works, and so does everything Claude does on your behalf.
+- Once `gh auth login` has been run, it stays logged in. You should not see it again.
 
-You need an account only to **send changes back**:
-
-- Create one free at <https://github.com>, then ask Kyle to add you as a collaborator on
-  the repository. After that `git push` works.
-- Alternatively, fork it to your own account and send pull requests - useful if you would
-  rather propose changes than publish them directly.
-
-Either way, pulling in later updates is:
+To pick up changes Kyle has made, say *"pull the latest"* - or run it yourself:
 
 ```bash
 git pull
 ```
 
-If you are only trying things out locally and never pushing, you can skip the account
-entirely - your changes just stay on your machine.
+Do that before starting something new. It is the one habit that avoids the tangle of two
+people editing the same file from different starting points - and if it does tangle,
+"sort out this merge" is a thing you can hand straight to Claude.
 
 ---
 

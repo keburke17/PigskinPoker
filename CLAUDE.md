@@ -22,6 +22,79 @@ Live at <https://pigskin.ballsohard.org>.
 
 ---
 
+## Who you are working with
+
+Two people run sessions in this repo, and they want different things from you.
+
+**Scott - the designer.** He invented the game and built the original Artifact. He is a
+football guy, not a developer: he works on rules, screens, wording and feel, and he is
+here to keep making the app more his. Talk about the game, not the codebase - "Week 2's
+standings" rather than "finalizeCurrentPeriod". **Do the mechanical work yourself**
+(see "Doing the git work" below); a list of commands for him to run is a worse answer
+than running them.
+
+**He is the designer this file keeps deferring to.** Every "ask the designer" here, and
+every open question in `docs/OPEN-QUESTIONS.md`, is addressed to him. So when he is the
+one in the session he can simply answer - that is not a rules change made behind
+anyone's back, it is the decision the question was waiting for. When he decides one:
+
+1. Say plainly what it does to the league *before* changing anything - "teams level on
+   the first five tiebreakers currently get ranked by whichever joined first; this makes
+   them a real tie" - then do what he says. Do not talk him into it, and do not let him
+   change a rule without realising he did.
+2. Make the change in `src/engine/`, and follow "If you are changing game rules" below.
+3. Record the answer and the date in `docs/OPEN-QUESTIONS.md` in the same change.
+
+**Kyle - the plumbing.** He did the port and owns everything the game runs on: Supabase,
+Netlify, DNS, the secrets, the migrations, the privileged write function. Technical,
+drives his own git, wants the reasoning rather than the summary. The intent is that the
+services stay put and Scott iterates on the app on top of them - so if a request needs
+the schema, the server or the hosting changed, that is worth saying out loud rather than
+quietly doing.
+
+If you cannot tell which of them you are talking to, ask once, early.
+
+---
+
+## Doing the git work
+
+Kyle pushes and merges himself - offer, do not assume. **For Scott, drive it.** He should
+be able to say "save this" or "put it live" and have it happen.
+
+1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
+   main: `git checkout -b scott/<short-name> --no-track origin/main`.
+2. `npm test` before committing: **245 passed, 1 skipped, 16 files**. If the output says
+   files were *skipped*, Docker is not running, the security tests did not execute, and
+   you have not verified what the green tick suggests. Say so rather than reporting a
+   pass.
+3. Conventional commit, push the branch, open the pull request. Use `gh pr create` if the
+   GitHub CLI is signed in; otherwise push and hand him the link:
+   `https://github.com/keburke17/PigskinPoker/compare/<branch>?expand=1`.
+4. **Merging is publishing.** Netlify rebuilds <https://pigskin.ballsohard.org> from
+   `main` a minute or two after a merge, with no further step. Say that out loud before
+   merging, every time. Nothing else is automatic - migrations never run themselves.
+
+Hand these back to Kyle rather than doing them in Scott's session:
+
+- anything under `server/`, `netlify/` or `supabase/migrations/`
+- `npm run db:push`, or any other command that touches the hosted database
+- environment variables, keys, DNS, Netlify or Supabase settings
+
+Writing a migration on a branch is fine; applying one is not. The live database holds a
+season people are actually playing, and there is no undo.
+
+If something breaks live, the fastest fix is Netlify's own **rollback to the previous
+deploy** (`docs/DEPLOYMENT.md`), not a hurried commit.
+
+`.claude/settings.json` pre-approves the local, reversible half of that list - inspecting,
+committing, branching, pulling, the test and build scripts - so a session is not four
+prompts deep before anything happens. **`git push`, `gh pr create`, `gh pr merge`,
+`npm run dev` and every `db:` script are deliberately left out.** Those are the moments
+something leaves the machine or changes a database, and one prompt there is worth having.
+Do not add them.
+
+---
+
 ## The rule that matters most
 
 **The game rules belong to the original designer. Restructuring is fair game; behaviour
@@ -248,9 +321,10 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 
 | Document | For |
 |---|---|
-| `docs/OPEN-QUESTIONS.md` | **Decisions waiting on the designer.** Start here if you are him. |
+| `docs/OPEN-QUESTIONS.md` | **Decisions waiting on Scott.** Start here if you are him. |
+| `docs/FOR-THE-DESIGNER.md` | Scott's own guide - setup, and what working with you looks like |
 | `docs/DATA-MODEL.md` | Schema, concurrency design, RLS plan |
-| `docs/AUTH.md` | How login works, and how join codes and accounts coexist |
+| `docs/AUTH.md` | How login works, and why join codes were retired |
 | `docs/EMAIL-SETUP.md` | **Making magic links arrive.** Dashboard steps; required before accounts work in production |
 | `docs/DEPLOYMENT.md` | Getting it live, operations, troubleshooting |
 | `docs/MIGRATION-NOTES.md` | What changed from the Artifact, and every bug found on the way |
