@@ -74,7 +74,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          15 suites
+tests/          16 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```

@@ -141,7 +141,7 @@ a second, in-memory one that let the app boot with no configuration; it is gone,
 npm test
 ```
 
-239 tests. Several kinds:
+245 tests. Several kinds:
 
 - **Behaviour tests** for dealing, schemes, scoring, the tiebreak chain, finalization
   and playoff advancement - including the awkward paths: an exhausted player pool at
@@ -160,7 +160,7 @@ npm test
   nothing, anywhere**, that secrets are unreachable, and that a manager cannot enter
   stats, finalize a week, or touch another team's lineup.
 
-  **They skip themselves silently when the local stack is not running - 108 of the 239.**
+  **They skip themselves silently when the local stack is not running - 108 of the 245.**
   Since `npm run dev` now starts that stack for you, the ordinary case is that they run.
   Check the skip count before believing a pass on anything touching storage, auth or the
   schema.
