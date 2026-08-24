@@ -110,7 +110,7 @@ function writeEnvLocal(status) {
 
   /* A .env.local pointing at the hosted project is somebody mid-way through an
    * operational task, not a stale file. Overwriting it would silently redirect their
-   * next `npm run bootstrap` or `npm run set-code` at the wrong database. */
+   * next `npm run verify:email` or `verify:redirects` at the wrong project. */
   for (const key of ["VITE_SUPABASE_URL", "SUPABASE_URL"]) {
     const v = existing[key];
     if (v && !isLocalUrl(v)) {

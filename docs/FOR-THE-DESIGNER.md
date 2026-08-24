@@ -23,9 +23,15 @@ address and a link rather than a shared code. New members join by invitation.
 
 ---
 
-## 1. Install the two things you need
+## 1. Install the three things you need
 
 **Node.js** - <https://nodejs.org> - take the LTS version. This runs the app.
+
+**Docker Desktop** - <https://docker.com> - this runs the database. It is a big download
+and it uses a fair amount of memory while it is open, but the app genuinely does not
+start without it: there is one way to run this project and it is the real one, with a
+real database and real sign-in. There used to be a no-database mode that started
+instantly; it was removed, because it could not sign anybody in.
 
 **Claude Code** - <https://claude.com/claude-code> - or, if you already have Node:
 
@@ -33,9 +39,8 @@ address and a link rather than a shared code. New members join by invitation.
 npm install -g @anthropic-ai/claude-code
 ```
 
-You do not need Docker or any accounts just to *run* the app. If you are taking over
-development you will want Docker too - see "Running a real database locally" below for
-why.
+You do not need any accounts to run it locally. GitHub comes up only if you want to send
+changes back - see the end of this document.
 
 ---
 
@@ -53,9 +58,7 @@ cd PigskinPoker && npm install
 
 ## 3. Run it
 
-You need **Docker Desktop** (<https://docker.com>) installed and running first - it is a
-big download, and it uses a fair amount of memory while it is open. Start it, wait for the
-whale in the menu bar to settle, then:
+Start Docker Desktop first and wait for the whale in the menu bar to settle. Then:
 
 ```bash
 npm run dev
@@ -184,11 +187,16 @@ fiddly one-handed on a Sunday. Making them bigger changes the look of every scre
 is a design call, not a technical one. **Leave it as you designed it, or make them
 bigger?**
 
-### OQ-10 - one league, or several?
+### OQ-10 - one league, or several? *(answered: several - already built)*
 
-The database could hold several leagues; the app assumes one. If you ever want other
-people running their own leagues, that is worth knowing now, because it is much simpler
-to build alongside real user accounts than to retrofit afterwards.
+This one is no longer a question, and is here so you know what was decided in your
+absence. The app creates leagues from a button, whoever creates one is its commissioner,
+and a new league's data is readable only by its own members. It was built alongside the
+accounts work because retrofitting it afterwards would have meant answering "who owns
+this league" twice.
+
+Your league is unaffected: it was set to be readable by anyone with the link, exactly as
+it was before. New leagues default to members-only.
 
 ---
 
@@ -209,7 +217,7 @@ limits its own sign-in.
 
 ## About the test suite
 
-There are 239 tests. Three of the fifteen files need the local database and **skip
+There are 245 tests. Three of the sixteen files need the local database and **skip
 themselves silently when it is not running** - 108 of them, getting on for half. They are
 not incidental:
 
@@ -241,7 +249,7 @@ permissions at all. One mode, and it is the real one.
 | **Node.js** | Running the app at all | Yes |
 | **Git** | Getting the code, and keeping it up to date | Yes |
 | **Claude Code** | Working on it with Claude | Recommended |
-| **Docker Desktop** | A real local database, and the 59 tests that need one | Yes, for ongoing development |
+| **Docker Desktop** | The database, and the 108 tests that need one | Yes - the app does not start without it |
 
 ### About Git and GitHub
 
@@ -272,6 +280,11 @@ entirely - your changes just stay on your machine.
 ## A note on the demo league
 
 The six-team league you see locally - Gridiron Gamblers, Pocket Aces and so on - is
-fabricated test data, generated fresh from a fixed random seed. It exists so the app has
-something to show without a database. It is not connected to any real league, and it
-resets every time you refresh.
+fabricated test data, generated from a fixed random seed. It exists so that the moment
+`npm run dev` finishes there is a populated league to play with rather than an empty
+screen.
+
+It lives in the database on your machine, so **whatever you do to it stays done** - deal
+a week, finalize it, break something, and it is still that way tomorrow.
+`npm run db:reset` puts it back exactly as it started. It is not connected to any real
+league, and nothing on your machine can reach the live site.

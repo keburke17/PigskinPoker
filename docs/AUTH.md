@@ -389,7 +389,10 @@ later rather than an infrastructure project.
 
 ---
 
-### What is still deliberately weak
+### What was deliberately weak in Phase 3a - and how it ended
+
+The first two bullets were written during Phase 3a and describe that phase's position. The
+third is what actually happened to them.
 
 - **`sessions` is hand-rolled.** It is small - a hashed token, a role, an expiry, a last
   use - and it is confined to this phase. Phase 3b/3c replaces it with Supabase Auth
@@ -410,47 +413,67 @@ later rather than an infrastructure project.
   own; the scrypt primitives moved to `server/hash.js`, whose only consumer is invite
   secrets.
 
-Neither is worse than the Artifact's position, where the codes were simply public, and
-both are resolved by the accounts layer rather than by patching this one further.
+Neither weakness was worse than the Artifact's position, where the codes were simply
+public - and as intended, both were resolved by the accounts layer rather than by
+patching that one further.
 
 ---
 
 ## Operational notes
 
-### Codes cannot be read back, only replaced
+These describe the app as it is now. Their join-code equivalents - rotating a
+commissioner code with `npm run set-code`, and the shell-quoting trap that could lock you
+out of your own league - went with the mechanism, and survive as history in
+`docs/MIGRATION-NOTES.md`.
 
-Hashing is one-way, so there is no "show me the code" anywhere, by design. That leaves
-one real workflow gap: a forgotten or mistyped commissioner code would otherwise mean
-hand-editing the database.
+### Invite codes cannot be read back either - but that no longer costs anything
+
+`createInvite` returns the code **once**. What is stored is the public reference half and
+a scrypt hash of the secret half, so there is no "show me that code again" anywhere.
+`listInvites` shows a commissioner the reference and nothing else: enough to tell two
+invites apart in a list, useless for getting in.
+
+Under join codes that was a genuine workflow gap, because the code *was* the login and
+losing it meant hand-editing the database. It is now a non-event - issue a new invite and
+revoke the old one. Revoking deliberately does **not** sign anybody out: an invite
+authorizes one join, it was never what kept you in.
+
+### Changing who the commissioner is
+
+There is no commissioner code to rotate. Commissioner is a `league_members` row, and
+**Commissioner -> Members** promotes and demotes. Transfer is promote-then-demote, and
+the server refuses to remove the last commissioner - such a league could not deal a week,
+add a team, or issue an invite, and no screen in the app could repair it.
+
+### The way to lock everyone out is now email, not shell quoting
+
+Magic links are the only credential, which makes the mail path the single point of
+failure: if it breaks, nobody signs in, including the commissioner. So the checks are
+operational rather than optional.
 
 ```bash
-PIGSKIN_COMMISSIONER_CODE=the-new-code npm run set-code
+npm run verify:email -- you@example.com
 ```
 
-It also **deletes existing commissioner sessions**. A code change usually means "someone
-should no longer have this", and a 30-day token surviving the rotation would defeat the
-point. It verifies the new code against the stored hash before reporting success - "the
-write succeeded" and "this code will log you in" are not the same claim, and only the
-second one is useful.
+`npm run verify:redirects` checks the allow-list alongside it. Both read `.env.local`,
+which `npm run dev` points at your LOCAL stack - so both are careful about which project
+they are describing. `verify:email` names it on every run (`LOCAL - mail is captured, not
+sent` / `HOSTED - this sends real email`), and `verify:redirects` outright refuses to
+report on a local auth server while being asked about a production site, because a
+confident report about the wrong project is worse than no report at all.
+`docs/EMAIL-SETUP.md` has the setup; `docs/MIGRATION-NOTES.md` has why that refusal
+exists.
 
-### Shell quoting is the most common way to lock yourself out
+### What the landing page offers, and why it no longer has to know anything
 
-A code passed as `'mycode'` with the quotes intact hashes the quotes as part of it, and
-then nothing typed at the login screen can ever match. Smart quotes from copy-paste are
-worse because they are invisible in most terminals.
+Nothing about a league's credentials is public any more, because there are none to be
+public about. `LandingScreen` shows the same three doors to every visitor - **Sign In**,
+**I Have An Invite Code**, **Create A League** - and what you can reach afterwards comes
+from your `league_members` rows, resolved server-side by `whoami`.
 
-Both `bootstrap` and `set-code` now strip a matching surrounding quote pair, warn about
-non-ASCII characters, and print the effective code between `>>> <<<` markers with a
-character count. If that count is not what you expect, something is still mangling it.
-
-### How the login screen knows a code exists
-
-The browser cannot read `league_secrets` - that is the whole point of it. But the login
-screen still has to choose between "enter your code" and "create the commissioner
-login", and the team picker has to show which teams are joinable.
-
-Two public boolean columns carry exactly that and nothing more:
-`leagues.has_commissioner_code` and `teams.has_join_code`. Whether a code *exists* is a
-public fact; the code is not. They are maintained server-side alongside the hash they
-describe - if they drift, the login screen offers to create a commissioner for a league
-that already has one.
+The two public booleans that used to drive that choice, `leagues.has_commissioner_code`
+and `teams.has_join_code`, were dropped in
+`supabase/migrations/20260820000000_retire_join_codes.sql`. They existed so the login
+screen could pick between "enter your code" and "create the commissioner login" without
+being able to read a secret. With one credential and no per-league codes, there is no
+longer a question to answer.
