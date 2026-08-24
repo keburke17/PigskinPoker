@@ -203,13 +203,15 @@ Supabase Auth does all three. See `docs/AUTH.md`.
 | Document | What it covers |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | Orientation for a Claude Code session - read automatically |
-| [`docs/FOR-THE-DESIGNER.md`](docs/FOR-THE-DESIGNER.md) | Setup guide for the original author, and the decisions waiting on him |
+| [`docs/FOR-THE-DESIGNER.md`](docs/FOR-THE-DESIGNER.md) | Scott's guide: setup, working with Claude, and the decisions waiting on him |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Getting it live, routine operations, troubleshooting |
 | [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) | The schema, concurrency design, and RLS plan |
 | [`docs/AUTH.md`](docs/AUTH.md) | How login works, and the path to real accounts |
-| [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md) | Decisions still open, for the original designer |
+| [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md) | Decisions still open, for Scott |
 | [`docs/MIGRATION-NOTES.md`](docs/MIGRATION-NOTES.md) | What changed from the Artifact, and every bug found on the way |
 
-**Before running a league you care about on a public URL**, read "What is deliberately still
-weak" in [`docs/AUTH.md`](docs/AUTH.md) - login has no rate limiting yet, and team join
-codes have no minimum length.
+**Before running a league you care about on a public URL**, read "What is not safe yet" in
+[`docs/FOR-THE-DESIGNER.md`](docs/FOR-THE-DESIGNER.md) - a league set to public is readable
+by anyone with the address, and email is the only way in, so the mail provider is a single
+point of failure. Login guessing is not on that list any more: there is no code to guess,
+and Supabase rate limits its own sign-in.
