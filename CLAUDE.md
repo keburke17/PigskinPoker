@@ -311,7 +311,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | | |
 |---|---|
 | **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
-| **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. |
+| **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. **Planned in `docs/LIVE-DATA.md`, deliberately not started** - it blocks on OQ-4c, which is Scott's. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |
 
@@ -323,6 +323,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 |---|---|
 | `docs/OPEN-QUESTIONS.md` | **Decisions waiting on Scott.** Start here if you are him. |
 | `docs/FOR-THE-DESIGNER.md` | Scott's own guide - setup, and what working with you looks like |
+| `docs/LIVE-DATA.md` | **The stats-feed plan.** Provider survey, what it would take, and what it waits on |
 | `docs/DATA-MODEL.md` | Schema, concurrency design, RLS plan |
 | `docs/AUTH.md` | How login works, and why join codes were retired |
 | `docs/EMAIL-SETUP.md` | **Making magic links arrive.** Dashboard steps; required before accounts work in production |

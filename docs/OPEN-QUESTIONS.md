@@ -81,6 +81,45 @@ which players are in the game? "Curated on purpose" and "typed out of necessity"
 different Phase 4s - the first keeps a hand-maintained list that a feed only enriches, the
 second replaces it wholesale.
 
+### OQ-4c. What counts as "yards"? *(new 2026-08-23 - blocks the stats feed)*
+
+Nowhere in the app - not in the rules screen, not in the code, not in the original
+artifact - does anything say *which* yards go in the Yards box. The rules say "1 point per
+10 yards" and stop. The engine takes one number and does not care where it came from.
+
+That has never mattered, because you have been typing the numbers in, so whatever you type
+*is* the rule. It stops working the moment a stats feed types them instead, because the
+feed has to be told exactly what to look up.
+
+Here is why it is not a small detail. One rate applies to every position:
+
+```
+Josh Allen    300 passing yards + 3 TDs  ->  30 + 15 = 45 points
+Puka Nacua     90 receiving yards + 1 TD ->   9 +  5 = 14 points
+```
+
+If a quarterback's passing yards go in at face value, the QB slot decides almost every
+week and the other five slots barely move the score. That might be exactly what you want -
+you built a game where you are dealt a quarterback and it matters. Or you might have been
+entering something smaller for quarterbacks all along. **We cannot tell from the code, and
+guessing would silently change everybody's scores.**
+
+**No recommendation on this one, because there is no right answer to recommend.** The
+question is not "what should the rule be", it is "what have you been putting in the box
+for a quarterback?" Whatever that is, that is the rule, and we write it down.
+
+The same gap repeats a few times, and a feed needs all of it settled:
+
+- Do passing touchdowns count the same as rushing and receiving ones?
+- Does a quarterback's rushing yardage get added on top of his passing yardage?
+- Do a running back's receiving yards count? A receiver's rushing yards?
+- Kick and punt return yards - in or out?
+- A starter who does not play at all: zero, or left blank?
+
+Nothing changes until you answer, and answering changes nothing on its own - the numbers
+already in the league stay exactly as they are. Full context, and everything the feed needs
+besides this, is in `docs/LIVE-DATA.md`.
+
 ### OQ-5. Join codes, or real accounts? **[ANSWERED: both - accounts authenticate, codes invite]**
 
 No auth primitives existed in the sandbox, so join codes were the only option.
@@ -368,6 +407,7 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | **OQ-E** reject stat writes while unlocked | **Done (Phase 3a)** | Enforced in `setStatLine`. Same conversation as OQ-B; it is his rule to confirm. |
 | **OQ-6** notifications | Phase 3c | Now nearly free: magic-link sign-in needs the same SMTP provider notifications would. |
 | **league visibility** (new, from OQ-10) | Phase 3d | Members-only or link-public, per league. Recommended: a setting, defaulting to members-only, with the existing league set public so nothing changes for it. |
+| **OQ-4c** what counts as "yards"? | **Phase 4 - blocks it entirely** | Nothing else about a stats feed can be built or tested until the number is defined. `docs/LIVE-DATA.md`. |
 | **OQ-4b** is `TEAM_ROWS` curated or typed? | Phase 4 | Decides whether a feed enriches the pool or replaces it. |
 | **OQ-3** history depth | Phase 2 | Schema already preserves it; this is about what we surface. |
 | **OQ-C / OQ-D / OQ-E** rules quirks | Anytime | All preserved as-is; each is a small, reversible behaviour question. |
@@ -381,5 +421,10 @@ agenda for that conversation.
 accounts, an `invites` table replacing `team_secrets`, league-scoped read policies, and a
 landing page with three doors (sign in / redeem a code / create a league).
 
-**The standing agenda for the designer is now OQ-A, OQ-B and OQ-E**, plus the season
-archive, which is held for him rather than built.
+**The standing agenda for the designer is now OQ-A, OQ-B, OQ-E and OQ-4c**, plus the
+season archive, which is held for him rather than built.
+
+**OQ-4c is the newest and the only one that blocks work.** Scoping a stats feed on
+2026-08-23 turned up the fact that the app has never defined which yards go in the
+Yards box - manual entry meant it never had to. The plan that waits on the answer is
+`docs/LIVE-DATA.md`; nothing in it is started.
