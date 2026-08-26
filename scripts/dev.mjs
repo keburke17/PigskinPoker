@@ -46,7 +46,10 @@ function sh(cmd, args, { capture = false } = {}) {
   return spawnSync(cmd, args, {
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
     encoding: "utf8",
-    shell: false,
+    /* npx (and any other .cmd-shimmed binary) only resolves on Windows through a shell -
+     * see the same pattern in magic-link.mjs. `docker` is a real .exe either way, so this
+     * is a no-op for that call. */
+    shell: process.platform === "win32",
   });
 }
 

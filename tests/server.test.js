@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -107,13 +107,26 @@ async function resetDemo() {
   if (leagueId) await db.from("leagues").delete().neq("id", leagueId);
 
   if (!dbContainer) {
-    dbContainer = execSync("docker ps --filter name=supabase_db_ --format '{{.Names}}'")
-      .toString().trim().split("\n")[0];
+    /* spawnSync again, for the same reason as below: cmd.exe does not strip single
+     * quotes the way a POSIX shell does, so `--format '{{.Names}}'` through execSync
+     * came back as the container name WITH the literal quote characters attached,
+     * and every docker exec after that failed with "no such container". Passing the
+     * format as its own argv element sidesteps shell quoting entirely. */
+    dbContainer = spawnSync("docker", ["ps", "--filter", "name=supabase_db_", "--format", "{{.Names}}"], {
+      encoding: "utf8",
+    }).stdout.trim().split("\n")[0];
   }
-  execSync("docker exec -i " + dbContainer + " psql -U postgres -d postgres -q -v ON_ERROR_STOP=1", {
-    input: readFileSync(SEED_PATH),
-    stdio: ["pipe", "ignore", "pipe"],
-  });
+  /* spawnSync, not execSync: execSync always shells out (cmd.exe on Windows), and
+   * cmd.exe silently truncates a large piped `input` - the seed file - and this fails
+   * with a bare EOF rather than a SQL error. `docker` is a real executable, so it does
+   * not need a shell to resolve (unlike npx.cmd - see scripts/dev.mjs's sh()), and
+   * spawnSync talks to it directly, sidestepping cmd.exe entirely. */
+  const r = spawnSync(
+    "docker",
+    ["exec", "-i", dbContainer, "psql", "-U", "postgres", "-d", "postgres", "-q", "-v", "ON_ERROR_STOP=1"],
+    { input: readFileSync(SEED_PATH), stdio: ["pipe", "ignore", "pipe"], encoding: "utf8" }
+  );
+  if (r.status !== 0) throw new Error("resetDemo: seeding failed - " + (r.stderr || r.error));
 }
 
 /* A signed-in account WITH a membership, which is the only credential there is now.
