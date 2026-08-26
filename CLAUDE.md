@@ -20,6 +20,9 @@ itself unchanged.
 
 Live at <https://pigskin.ballsohard.org>.
 
+Scott set up the basic local repo (clone and remote) on 2026-08-26, alongside a Claude
+Code session.
+
 ---
 
 ## Who you are working with
