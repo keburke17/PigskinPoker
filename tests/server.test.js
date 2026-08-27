@@ -278,6 +278,27 @@ gate()("the weekly cycle, server-side", () => {
     });
     expect(sub.status).toBe(200);
 
+    /* REGRESSION: the commissioner must be able to see THAT a manager submitted.
+     *
+     * His Weeks panel offers "N of M teams have submitted", but the browser read it
+     * used could never answer: read_resolved_schemes hides an unresolved scheme from
+     * every browser, his included (tests/rls.test.js), so the count sat at 0 until he
+     * happened to write something himself. schemeStatus is the entitled question. */
+    const status = await ops.schemeStatus(db, { leagueId, token });
+    expect(status.status).toBe(200);
+    expect(status.body.submittedTeamIds).toContain(T1);
+
+    /* ...and STRICTLY that, not what was chosen. A scheme's contents stay secret
+     * until they resolve; the commissioner is not an exception to that rule. */
+    const leaked = JSON.stringify(status.body);
+    expect(leaked).not.toMatch(/block/);
+    expect(leaked).not.toMatch(new RegExp(String(qb)));
+
+    // A manager may not ask it at all - no filtered answer, a refusal.
+    const nosy = await ops.schemeStatus(db, { leagueId, token: mgr });
+    expect(nosy.status).toBe(403);
+    expect(nosy.body.submittedTeamIds).toBeUndefined();
+
     const proc = await ops.processSchemes(db, { leagueId, token });
     expect(proc.status).toBe(200);
     expect(proc.body.view.currentPeriod.phase).toBe("schemes-processed");

@@ -65,6 +65,7 @@ export default function App() {
 
   const {
     view: state,
+    submittedTeamIds,
     identity,
     setIdentity,
     loading,
@@ -626,6 +627,7 @@ export default function App() {
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
+              submittedTeamIds={submittedTeamIds}
               onSwap={onSwap} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}

@@ -41,6 +41,11 @@ export function useLeague(store) {
    * instant while the write is debounced; this overlay is what makes that safe. */
   const [pendingStats, setPendingStats] = useState({});
 
+  /* Legacy team ids with a scheme in for this week, or null when we have not been
+   * told (not the commissioner, or the first answer has not landed). Null and []
+   * mean different things to the panel, so they stay distinguishable. */
+  const [submittedTeamIds, setSubmittedTeamIds] = useState(null);
+
   const viewRef = useRef(null);
   const loadAttempt = useRef(0);
   const loadRetryTimer = useRef(null);
@@ -107,26 +112,39 @@ export function useLeague(store) {
     });
   }, [store]);
 
-  /* Commissioner-only poll for `schemes`.
+  /* Commissioner-only: which teams have a scheme in this week.
    *
-   * storage/supabase.js leaves `schemes` out of the Realtime publication on purpose -
-   * a push would tell a manager, mid-week, that another team had just moved. That
-   * means nothing refreshes the commissioner's "N of M teams have submitted" count
-   * either, short of a manual reload, which is the bug this closes. Polling (rather
-   * than subscribing) keeps the fix scoped to the one screen that is entitled to that
-   * count instead of broadcasting scheme activity to everyone. */
-  useEffect(() => {
-    if (identity.role !== "commissioner") return undefined;
-    const id = setInterval(async () => {
-      try {
-        const next = await store.loadLeague();
-        if (next) setView(next);
-      } catch {
-        /* a missed poll is not fatal; the next tick retries */
-      }
-    }, 15000);
-    return () => clearInterval(id);
+   * This does NOT come from `view`, and re-reading the league would not produce it.
+   * An unresolved scheme is hidden from every browser read by design (OQ-9), and
+   * `schemes` is deliberately absent from the Realtime publication too - a push would
+   * tell a manager, mid-week, that a rival had just moved. So the count is ASKED for,
+   * from the one screen entitled to it, and the answer is a list of team ids and
+   * nothing else. See server/operations.js schemeStatus.
+   *
+   * A poll, because there is no event to subscribe to: the server call is the only
+   * way this number ever changes on a screen that is just sitting open. */
+  const refreshSchemeStatus = useCallback(async () => {
+    if (identity.role !== "commissioner" || !store.schemeStatus) return;
+    /* Only while schemes are actually being collected. Every other phase either has
+     * no answer to give or has already resolved them into the roster. */
+    if (viewRef.current?.currentPeriod?.phase !== "dealt") return;
+    try {
+      const r = await store.schemeStatus();
+      if (r?.ok) setSubmittedTeamIds(r.submittedTeamIds ?? []);
+    } catch {
+      /* a missed poll is not fatal; the next tick retries */
+    }
   }, [identity.role, store]);
+
+  useEffect(() => {
+    if (identity.role !== "commissioner" || !store.schemeStatus) {
+      setSubmittedTeamIds(null);
+      return undefined;
+    }
+    refreshSchemeStatus();
+    const id = setInterval(refreshSchemeStatus, 15000);
+    return () => clearInterval(id);
+  }, [identity.role, store, refreshSchemeStatus]);
 
   /* Flush on the three moments a pending write could otherwise be lost. */
   useEffect(() => {
@@ -222,10 +240,17 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* The commissioner can submit on a team's behalf from Manage Rosters, and when he
+   * does his own Weeks count should move at once rather than on the next tick. */
   const submitScheme = useCallback(
-    (teamId, scheme) =>
-      immediate(vkey.scheme(teamId), () => store.submitScheme(teamId, scheme, versions())),
-    [store, immediate]
+    async (teamId, scheme) => {
+      const r = await immediate(vkey.scheme(teamId), () =>
+        store.submitScheme(teamId, scheme, versions())
+      );
+      refreshSchemeStatus();
+      return r;
+    },
+    [store, immediate, refreshSchemeStatus]
   );
 
   const toggleRosterLock = useCallback(
@@ -271,6 +296,7 @@ export function useLeague(store) {
 
   return {
     view: effectiveView,
+    submittedTeamIds,
     identity,
     setIdentity,
     loading,
