@@ -181,13 +181,19 @@ prompt, that is the point to read what it says.
 
 ### What Claude will hand back to Kyle
 
-Some of the project is plumbing rather than game: the database schema, the server-side
-function, the hosting, the email, the domain. The idea is that this stays put and you
-build on top of it.
+Some of the project is plumbing rather than game, and a little of it is Kyle's alone: the
+hosting, the email service, the domain, the secrets, and *applying* a database change to
+the live site. Those are the ones with no undo.
 
-If something you ask for needs one of those changed, Claude will say so and stop rather
-than quietly reaching into the live database. That is not it being awkward - those are
-the changes with no undo. Forward it to Kyle and carry on with something else.
+That list is smaller than it sounds, and it is about the live services rather than the
+code. The server-side code in `server/` and `netlify/` is ordinary repository code and it
+is yours to change - you have already done it, in the fix that made the submitted-scheme
+count work. Claude should write server-side code with you rather than stopping and
+forwarding it.
+
+If something you ask for genuinely needs the live database or a hosting setting changed,
+Claude will say so and stop rather than quietly reaching into it. Forward that part to
+Kyle and carry on.
 
 ### One thing to be aware of
 
@@ -257,6 +263,58 @@ this league" twice.
 
 Your league is unaffected: it was set to be readable by anyone with the link, exactly as
 it was before. New leagues default to members-only.
+
+---
+
+## 6. Things waiting to be fixed
+
+Not decisions - actual bugs, found on 2026-08-27 while working out why the submitted-scheme
+count was stuck. All four are the same root cause wearing different hats, and all four are
+in code you can change. None of them needs the database schema touched.
+
+**The one thing to avoid until the first is fixed:** do not use the commissioner's Teams,
+Player Pool, Scoring or Standings Cfg tabs while a week is in progress. Renaming a team or
+marking a player OUT mid-week throws work away. Between weeks it is safe.
+
+### 1. Commissioner admin tools throw away schemes and past weeks *(most important)*
+
+Rename a team, add a player, mark someone OUT, or edit the scoring, and the app quietly
+deletes every scheme managers have submitted for the current week - plus every scheme from
+every past week, and every past week's rosters and stat lines. The standings survive; the
+detail behind them does not.
+
+Why: those buttons send the *whole league* back to the server, rebuilt from what your
+browser can see. Your browser deliberately cannot see a pending scheme, and it never holds
+past weeks' rosters at all. The server treats anything missing from that picture as
+something you deleted, and removes it.
+
+The fix is in `server/league.js`, in `persistBlob`: its delete pass should only remove rows
+the picture can actually speak for, rather than everything absent from it. It also wants a
+test - `replaceLeague` has none, which is why this went unnoticed.
+
+### 2. A manager's own scheme disappears when they reload
+
+Submit a scheme, refresh the page, and the form says No Action and the confirmation line is
+gone - as if nothing was submitted. It *was*; the screen just cannot see it, for the same
+reason your count could not. A manager who resubmits at that point overwrites their
+original with no warning.
+
+Same shape as the fix you already wrote for the count: the browser has to ask the server,
+because it cannot read this for itself. `src/components/scheme.jsx` is where it shows.
+
+### 3. Changing a scheme has no safety check
+
+Every other action in the app checks that nobody else changed the same thing first.
+Submitting a scheme is the exception - the check is skipped, because the browser never has
+the information it would compare. Combined with (2), a double submission is silent.
+
+### 4. Your downloaded backups are missing things
+
+The Backup tab tells you to treat manual backups as your primary safety net. A backup taken
+mid-week does not contain the schemes managers have submitted, and no backup contains past
+weeks' rosters or stat lines. Restoring one would not bring them back, because they were
+never in the file. Worth knowing before you rely on one, and worth fixing alongside (1) -
+it is the same missing picture.
 
 ---
 
