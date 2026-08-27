@@ -53,10 +53,19 @@ export function CommTeamRow({ team, onRenameTeam, onRemoveTeam }) {
   );
 }
 
-export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError }) {
+export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds }) {
   const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
-  const submitted = teams.filter((t) => state.schemes[t.id]);
-  const pending = teams.filter((t) => !state.schemes[t.id]);
+  /* `state.schemes` only ever holds what THIS browser was told, and a manager's
+   * pending scheme is hidden from every browser read by design - so on the
+   * commissioner's screen it counted his own submissions and nobody else's.
+   * submittedTeamIds is the server's answer to "who is in?", asked by the one
+   * person entitled to it. Null means we have not been told, and the old
+   * behaviour stands. See server/operations.js schemeStatus. */
+  const hasSubmitted = submittedTeamIds
+    ? (t) => submittedTeamIds.includes(t.id)
+    : (t) => !!state.schemes[t.id];
+  const submitted = teams.filter(hasSubmitted);
+  const pending = teams.filter((t) => !hasSubmitted(t));
   const phase = state.currentPeriod.phase;
   return (
     <div className="pp-card">
@@ -364,7 +373,7 @@ export function CommissionerTab(props) {
         {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
       </div>
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
-      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} />}
+      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}

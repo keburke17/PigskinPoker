@@ -652,6 +652,39 @@ export async function submitScheme(db, { leagueId, token, teamId, scheme, expect
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
+/**
+ * WHICH teams have a scheme in for the current week - and nothing else about it.
+ *
+ * The commissioner's Weeks panel has always offered to show "N of M teams have
+ * submitted", but nothing on his screen could ever learn it. `read_resolved_schemes`
+ * hides an UNRESOLVED scheme from every browser read (OQ-9, and
+ * tests/rls.test.js asserts it), the commissioner's included, and `schemes` is
+ * deliberately absent from the Realtime publication as well. The count only ever
+ * appeared as a side effect of his OWN writes - those return a server-built view,
+ * which is assembled with the secret key and so sees everything - which is exactly
+ * why his own submissions counted and no manager's ever did.
+ *
+ * So the count has to be ASKED for, by someone entitled to it. This is deliberately
+ * the narrowest thing that answers the question: a list of team ids. Not the type,
+ * not the position, not the player. A scheme's CONTENTS stay secret until they
+ * resolve - that is the rule the game is built on, and the commissioner is not an
+ * exception to it.
+ */
+export async function schemeStatus(db, { leagueId, token }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (!ctx.period) return good({ submittedTeamIds: [] });
+  /* Legacy ids, not row uuids - the whole UI is written against legacy ids. */
+  const submittedTeamIds = ctx.rows.schemes
+    .filter((s) => s.period_id === ctx.period.id && s.resolved_at == null)
+    .map((s) => ctx.rows.teams.find((t) => t.id === s.team_id)?.legacy_id)
+    .filter((id) => id != null);
+  return good({ submittedTeamIds });
+}
+
 export async function toggleSlotLock(db, { leagueId, token, teamId, playerId }) {
   const ctx = await context(db, leagueId, token);
   if (ctx.error) return ctx.error;

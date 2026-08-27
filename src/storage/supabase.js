@@ -364,6 +364,12 @@ export function createSupabaseStore(config) {
     setMemberRole: (userId, role) => call("setMemberRole", { userId, role }),
     setLeagueVisibility: (visibility) => call("setLeagueVisibility", { visibility }),
 
+    /* Which teams have a scheme in this week. A SERVER call rather than a read,
+     * because an unresolved scheme is invisible to every browser read by design -
+     * see the note on schemeStatus in server/operations.js. Commissioner only;
+     * anyone else gets a 403 from the server rather than a filtered answer. */
+    schemeStatus: () => call("schemeStatus", {}),
+
     /* ------------------------------- writes ------------------------------ */
     setStatLine: (teamId, slot, line, expect) => call("setStatLine", { teamId, slot, line, expect }),
     swapLineupSlot: (teamId, slot, benchIndex, expect) =>

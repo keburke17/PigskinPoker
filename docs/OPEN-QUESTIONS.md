@@ -225,6 +225,31 @@ If you would rather have the simpler story, option (c) - delete on resolve, exac
 - is still available at the cost of those history features. Say so and I will change it;
 it is one policy and one column.
 
+#### The mid-week half, answered 2026-08-26
+
+OQ-9 settled what happens to a scheme *after* it resolves. It never asked what the
+**commissioner** may see *before* that, and the answer had been decided by accident: the
+`resolved_at` gate hides an unresolved scheme from every browser read, his included, so his
+Weeks panel counted only the schemes he submitted himself and reported 0 for everyone
+else's. He could still process them - that runs server-side - so the screen and the button
+disagreed all week.
+
+**Scott's decision: the commissioner may see WHO has submitted, and not WHAT they chose.**
+The count and the pending-teams list are his to see; the type, the position and the player
+stay secret until the schemes resolve, exactly as they do for everyone else. He is the
+referee, not a player, and knowing the moves in advance is not part of the job.
+
+Built as `schemeStatus` in `server/operations.js` - commissioner-only, returns a list of
+team ids and nothing else. Deliberately NOT a widening of the RLS policy: no migration, and
+the browser's read of `schemes` is exactly as narrow as it was.
+
+**Still open, and found while building it:** every write response returns a server-built
+view assembled with the secret key, so a manager who submits a scheme currently receives
+*every other team's pending scheme* - type, player and `submitted_at`, the one column the
+schema deliberately withholds from browsers - in the reply. The UI never draws it, but it
+is in the payload. Confirmed against the running app on 2026-08-26. That contradicts the
+rule this whole question is about and wants fixing in `server/`; it is not a schema change.
+
 ---
 
 ### OQ-10. One league, or many? **[ANSWERED: many - and ownership lands with accounts]**
