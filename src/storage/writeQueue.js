@@ -60,13 +60,23 @@ export function createWriteQueue(opts = {}) {
    * @param {boolean}  [immediate] skip the debounce (lifecycle ops, Save Now)
    */
   function enqueue(key, run, immediate = false) {
-    pending.set(key, { run, attempts: 0 });
+    pending.set(key, { run, attempts: 0, immediate });
     if (immediate) return flush();
     schedule();
     return Promise.resolve();
   }
 
   async function flush() {
+    /* A batch is already on the wire. Leave everything where it is - the running
+     * flush schedules the follow-up itself when it finishes. This used to fall
+     * through to the clears below, which threw away the timer that was going to
+     * write the pending edit: type into a second box while the first is still
+     * saving and that second value sat here unwritten until the NEXT keystroke.
+     * That is how a typed number could vanish. */
+    if (inFlight) {
+      emit();
+      return;
+    }
     if (timer) {
       clearTimeout(timer);
       timer = null;
@@ -75,7 +85,7 @@ export function createWriteQueue(opts = {}) {
       clearTimeout(retryTimer);
       retryTimer = null;
     }
-    if (inFlight || pending.size === 0) {
+    if (pending.size === 0) {
       emit();
       return;
     }
@@ -115,6 +125,17 @@ export function createWriteQueue(opts = {}) {
 
     inFlight = false;
     if (!lastError) lastSavedAt = new Date().toISOString();
+    /* Anything enqueued while that batch was on the wire goes out now, rather than
+     * waiting for the next keystroke to carry it. An immediate write - a swap, a
+     * deal, Save Now - does not sit out the debounce a second time. */
+    if (pending.size > 0 && !retryTimer) {
+      const urgent = [...pending.values()].some((e) => e.immediate);
+      if (urgent) {
+        emit();
+        return flush();
+      }
+      schedule();
+    }
     emit();
   }
 

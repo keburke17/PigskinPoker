@@ -95,4 +95,45 @@ describe("createWriteQueue", () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(runs).toEqual(["slow", "late"]);
   });
+
+  it("writes an edit made DURING a slow save without waiting for the next keystroke", async () => {
+    /* The stat-entry bug, in miniature: type the yards, then move to the TDs box
+     * while the yards write is still on the wire. The TDs write used to have its
+     * scheduled flush thrown away by the flush that found a batch in flight, and
+     * then sat here unwritten until something else was typed. */
+    const runs = [];
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const q = createWriteQueue({ debounceMs: 10 });
+    q.enqueue("stat:t1:QB:yards", async () => {
+      await gate;
+      runs.push("yards");
+    });
+    await vi.advanceTimersByTimeAsync(20); // that write is now in flight
+    q.enqueue("stat:t1:QB:tds", async () => runs.push("tds"));
+    await vi.advanceTimersByTimeAsync(20); // its debounce fires mid-flight
+    expect(runs).toEqual([]);
+    release();
+    await vi.advanceTimersByTimeAsync(50); // nothing further is typed
+    expect(runs).toEqual(["yards", "tds"]);
+    expect(q.hasPending()).toBe(false);
+  });
+
+  it("does not make an immediate write sit out the debounce behind a slow one", async () => {
+    /* A lineup swap enqueued while something slow is saving. It must not wait for
+     * a debounce it was explicitly told to skip. */
+    const runs = [];
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const q = createWriteQueue({ debounceMs: 100000 });
+    q.enqueue("slow", async () => {
+      await gate;
+      runs.push("slow");
+    }, true);
+    q.enqueue("swap", async () => runs.push("swap"), true);
+    expect(runs).toEqual([]);
+    release();
+    await vi.advanceTimersByTimeAsync(0); // no debounce elapses
+    expect(runs).toEqual(["slow", "swap"]);
+  });
 });
