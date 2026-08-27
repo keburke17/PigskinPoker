@@ -709,3 +709,89 @@ In an authentication flow the absence of an answer and a negative answer are dif
 facts that produce the same screen unless somebody deliberately keeps them apart. All three
 were found from the outside, by someone using the thing, because from the inside each one
 looks like the state machine working.
+
+
+---
+
+## 2026-08-27: the blob write deletes what the browser cannot see
+
+Found while working out why the commissioner's "N of M teams have submitted" count sat at
+0 (fixed separately in `83bc6d4`). The count was one symptom; the same asymmetry has three
+others, and one of them destroys data.
+
+### The asymmetry
+
+Reads and writes see different leagues, on purpose:
+
+- the **browser** reads PostgREST with the publishable key, so RLS applies. After
+  `20260818050000`, every table gates on `pp_can_read_league` - except `schemes`, which
+  carries `resolved_at is not null` on top (OQ-9). It is the only table in the schema whose
+  row policy is narrower than league membership, and the only one with a column-level
+  grant.
+- the **server** reads with the secret key, which bypasses RLS entirely.
+
+Nothing reconciles the two at the boundary. PostgREST returns `[]` for a forbidden row
+exactly as it does for a row that does not exist, so the narrowing is invisible to the
+caller.
+
+### What it costs
+
+**1. `mutateLeague` deletes league history.** `src/storage/supabase.js` builds the blob
+from a client-side `readView()`, `server/league.js` `persistBlob` diffs it against the
+server's full rows, and deletes anything absent - *"Delete rows that no longer exist (e.g.
+a removed team, a cleared scheme)."* The blob is a lossy projection of the database, so
+"absent" and "deleted" are not the same fact:
+
+- pending schemes are invisible to the client (RLS), so they are never in it;
+- resolved schemes cannot round-trip at all - `hydrate.js` only ever emits *unresolved
+  current-period* schemes, so the OQ-9 history dies too;
+- historical `roster_slots` and `stat_lines` are not in it either. `decompose.js` says so
+  in its own header: past periods are reconstructed from `weeklyResults` and get `periods`
+  + `period_results` only. Written as a note about *importing* the artifact blob, where
+  lossy is harmless. Wired to `mutate`, lossy becomes destructive.
+
+Simulated against the demo league plus the rows a genuinely-played week leaves behind:
+
+```
+table            previous  in blob   DELETED
+roster_slots          144       72        72
+stat_lines             24       18         6
+schemes                 2        0         2
+```
+
+Reachable from all ten `ops.mutate` call sites (`src/App.jsx`) at any phase:
+`replaceLeague` is not in `PHASE_RULES` and never calls `guard()`. `mutateLeague` re-reads
+rather than using the view on screen, so a preceding write does not save it.
+
+**2. A manager's own pending scheme is invisible after a reload.**
+`src/components/scheme.jsx` reads `state.schemes[team.id]`; `SchemeSummary` renders nothing
+and `SchemeForm` resets to No Action, so the screen denies a submission that happened.
+
+**3. The stale-write check on `submitScheme` is inert.** `hydrate.js` builds
+`versions[vkey.scheme(t)]` only from unresolved schemes, so the browser never holds one,
+and `guard` skips a key the client did not send (`server/operations.js`, `expect[key] ==
+null) continue`). Every other operation has working optimistic concurrency; this one has
+none.
+
+**4. Backup export is lossy the same way.** `onDownloadBackup` serializes the client's
+`state`, while `commissioner.jsx` tells the commissioner backups are his *primary* safety
+net.
+
+### Why nothing caught it
+
+`replaceLeague` and `mutateLeague` have no test at all. Neither does the submitted-scheme
+count. `tests/rls.test.js` has asserted the narrowing all along - *"still hides an
+UNRESOLVED scheme even with the granted columns"* - but nothing asserts what the code above
+it does with an empty answer.
+
+### The pattern
+
+The same shape as the sign-in family recorded above, moved one layer down: **an empty
+answer and a forbidden one are the same value.** A missing scheme reads as no scheme; a row
+the reader may not see reads as a row that was deleted. The write path then acts on that
+reading with no way to tell the difference.
+
+Worth noting the mirror image, recorded in OQ-9 the same day: write responses carry a
+server-built view, so a manager who submits a scheme currently receives every rival's
+pending scheme in the reply. Server views are too wide going down, and client views too
+narrow coming back up. One boundary, two directions, both unguarded.

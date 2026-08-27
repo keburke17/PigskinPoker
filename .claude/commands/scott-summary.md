@@ -32,8 +32,11 @@ Write it for Kyle: what changed, and whether anything needs his attention.
    original designer owns. If `tests/parity.test.js` changed, say so loudly and
    quote the reason recorded there - that is a deliberate rules change and should
    have his sign-off.
-3. **Flag anything under `server/`, `netlify/` or `supabase/migrations/`.** Those
-   are Kyle's, and a migration written on a branch still has to be applied by hand.
+3. **Flag a migration in `supabase/migrations/`.** That is the one thing merging
+   does not finish: `npm run db:push` is Kyle's and has to be run by hand, or `main`
+   describes a schema the live database does not have. Server-side code in `server/`
+   and `netlify/` is ordinary repository code and Scott's to change - report it as
+   work he did, not as something waiting on Kyle.
 4. **Note new entries or answers in `docs/OPEN-QUESTIONS.md`** - that is where a
    decision Scott made gets recorded.
 5. **Note work in flight**: `git branch -r --no-merged origin/main` for `scott/*`

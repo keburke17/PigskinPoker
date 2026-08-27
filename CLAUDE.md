@@ -45,12 +45,14 @@ anyone's back, it is the decision the question was waiting for. When he decides 
 2. Make the change in `src/engine/`, and follow "If you are changing game rules" below.
 3. Record the answer and the date in `docs/OPEN-QUESTIONS.md` in the same change.
 
-**Kyle - the plumbing.** He did the port and owns everything the game runs on: Supabase,
-Netlify, DNS, the secrets, the migrations, the privileged write function. Technical,
-drives his own git, wants the reasoning rather than the summary. The intent is that the
-services stay put and Scott iterates on the app on top of them - so if a request needs
-the schema, the server or the hosting changed, that is worth saying out loud rather than
-quietly doing.
+**Kyle - the plumbing.** He did the port and owns the hosted services the game runs on:
+Supabase, Netlify, Resend, DNS, the secrets, and applying migrations to the live database.
+Technical, drives his own git, wants the reasoning rather than the summary. **He owns the
+configuration, not the code** - `server/`, `netlify/` and the migration files themselves
+are ordinary repository code and Scott changes them too. The intent is that the services
+stay put and both of them iterate on the app on top of them - so if a request needs the
+hosting, the secrets or the live database changed, that is worth saying out loud rather
+than quietly doing.
 
 If you cannot tell which of them you are talking to, ask once, early.
 
@@ -76,12 +78,29 @@ be able to say "save this" or "put it live" and have it happen.
 
 Hand these back to Kyle rather than doing them in Scott's session:
 
-- anything under `server/`, `netlify/` or `supabase/migrations/`
 - `npm run db:push`, or any other command that touches the hosted database
-- environment variables, keys, DNS, Netlify or Supabase settings
+- environment variables, keys, DNS, and the hosted service settings - Netlify, Supabase,
+  Resend
+
+**Repository code is not on that list, and that includes `server/` and `netlify/`.** Scott
+works server-side as well as on screens: `83bc6d4` is his, and it added a route to
+`server/operations.js` and wired it through `netlify/functions/api.mjs`. What is Kyle's is
+the hosted *configuration*, and anything that changes the live database - not the code in
+this repository that runs against them.
 
 Writing a migration on a branch is fine; applying one is not. The live database holds a
 season people are actually playing, and there is no undo.
+
+**That split is a two-person rule, not a limit on what Scott is allowed to do**, and it is
+worth knowing which - so a session does not send him away for a permission he is not
+actually missing. `db:push` needs a Supabase account with access to the project
+(`supabase login`, then `supabase link`, both per-machine and neither of them in this
+repository). It is Kyle's because the account is; nothing in the code gates it, and an
+organization invitation would change that whenever they decide to. It stays with him
+because applying a migration is the one step here with no undo: they are forward-only, so
+a mistake is corrected by writing another one against a live season, and hosted Supabase
+grants `GRANT ALL` to `anon` on every new table - which `verify:grants` reports only after
+the push has already happened. Scott writes the migration; Kyle runs `db:push`.
 
 If something breaks live, the fastest fix is Netlify's own **rollback to the previous
 deploy** (`docs/DEPLOYMENT.md`), not a hurried commit.
