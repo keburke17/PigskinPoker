@@ -91,6 +91,17 @@ this repository that runs against them.
 Writing a migration on a branch is fine; applying one is not. The live database holds a
 season people are actually playing, and there is no undo.
 
+**That split is a two-person rule, not a limit on what Scott is allowed to do**, and it is
+worth knowing which - so a session does not send him away for a permission he is not
+actually missing. `db:push` needs a Supabase account with access to the project
+(`supabase login`, then `supabase link`, both per-machine and neither of them in this
+repository). It is Kyle's because the account is; nothing in the code gates it, and an
+organization invitation would change that whenever they decide to. It stays with him
+because applying a migration is the one step here with no undo: they are forward-only, so
+a mistake is corrected by writing another one against a live season, and hosted Supabase
+grants `GRANT ALL` to `anon` on every new table - which `verify:grants` reports only after
+the push has already happened. Scott writes the migration; Kyle runs `db:push`.
+
 If something breaks live, the fastest fix is Netlify's own **rollback to the previous
 deploy** (`docs/DEPLOYMENT.md`), not a hurried commit.
 
