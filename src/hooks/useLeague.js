@@ -107,6 +107,27 @@ export function useLeague(store) {
     });
   }, [store]);
 
+  /* Commissioner-only poll for `schemes`.
+   *
+   * storage/supabase.js leaves `schemes` out of the Realtime publication on purpose -
+   * a push would tell a manager, mid-week, that another team had just moved. That
+   * means nothing refreshes the commissioner's "N of M teams have submitted" count
+   * either, short of a manual reload, which is the bug this closes. Polling (rather
+   * than subscribing) keeps the fix scoped to the one screen that is entitled to that
+   * count instead of broadcasting scheme activity to everyone. */
+  useEffect(() => {
+    if (identity.role !== "commissioner") return undefined;
+    const id = setInterval(async () => {
+      try {
+        const next = await store.loadLeague();
+        if (next) setView(next);
+      } catch {
+        /* a missed poll is not fatal; the next tick retries */
+      }
+    }, 15000);
+    return () => clearInterval(id);
+  }, [identity.role, store]);
+
   /* Flush on the three moments a pending write could otherwise be lost. */
   useEffect(() => {
     const flush = () => queue.flush();
