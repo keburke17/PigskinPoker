@@ -48,6 +48,7 @@ export function createSupabaseStore(config) {
   let leagueId = null;
   let listeners = new Set();
   let channel = null;
+  let pushTimer = null;
   /* The access token of a signed-in account, mirrored here so `call` stays synchronous.
    * Kept current by onAuthStateChange below, which also fires on token refresh - so a
    * long session does not start sending a stale token an hour in. */
@@ -234,13 +235,27 @@ export function createSupabaseStore(config) {
     subscribe(fn) {
       listeners.add(fn);
       if (!channel) {
-        const push = async () => {
+        /* One re-read per burst, not one per row.
+         *
+         * Every event here costs a full league read - a dozen queries - and stat
+         * entry produces them in bursts: a row changes for each box the
+         * commissioner fills in, and every connected client re-reads the whole
+         * league for each one. Coalescing on the trailing edge means a minute of
+         * typing costs one refresh per pause instead of one per number. */
+        const readAndPush = async () => {
           try {
             const v = await readView();
             if (v) listeners.forEach((l) => l(v));
           } catch {
             /* a dropped refresh is not fatal; the next event will retry */
           }
+        };
+        const push = () => {
+          if (pushTimer) clearTimeout(pushTimer);
+          pushTimer = setTimeout(() => {
+            pushTimer = null;
+            readAndPush();
+          }, 500);
         };
         channel = sb.channel("league");
         // Realtime respects RLS, so this leaks nothing beyond the read policies.
@@ -256,6 +271,10 @@ export function createSupabaseStore(config) {
       return () => {
         listeners.delete(fn);
         if (listeners.size === 0 && channel) {
+          if (pushTimer) {
+            clearTimeout(pushTimer);
+            pushTimer = null;
+          }
           sb.removeChannel(channel);
           channel = null;
         }

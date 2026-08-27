@@ -50,6 +50,12 @@ export function useLeague(store) {
   const loadAttempt = useRef(0);
   const loadRetryTimer = useRef(null);
   const queueRef = useRef(null);
+  /* The newest value typed into each stat box, whether or not it has been written.
+   * A write only clears the overlay if it wrote THIS value - see setStatLine. */
+  const latestStat = useRef({});
+  /* A refresh arrived while our own writes were in flight and was set aside rather
+   * than applied on top of them. Picked up once the queue drains. */
+  const missedRefresh = useRef(false);
 
   viewRef.current = view;
 
@@ -66,6 +72,7 @@ export function useLeague(store) {
       setView(next);
       setNoLeague(next === null);
       setPendingStats({});
+      latestStat.current = {};
       setLoading(false);
     } catch (e) {
       // Do NOT fall back to an empty league. Retry a few times, then block.
@@ -104,13 +111,24 @@ export function useLeague(store) {
 
   useEffect(() => () => queue.dispose(), [queue]);
 
-  /* Live updates from the store (Phase 2c: Supabase Realtime lands here unchanged). */
+  /* Live updates from the store (Phase 2c: Supabase Realtime lands here unchanged).
+   *
+   * A refresh is NEVER applied while our own writes are still in flight. Realtime
+   * fires on our own rows too, so a lineup swap or a typed stat would be answered,
+   * half a second later, by a snapshot taken before it - the change appearing, then
+   * reverting, then re-appearing when the write finished. What we set aside is not
+   * dropped: `missedRefresh` re-reads once the queue is empty. */
   useEffect(() => {
     if (!store.subscribe) return undefined;
     return store.subscribe((next) => {
-      if (next) setView(next);
+      if (!next) return;
+      if (queue.hasPending()) {
+        missedRefresh.current = true;
+        return;
+      }
+      setView(next);
     });
-  }, [store]);
+  }, [store, queue]);
 
   /* Commissioner-only: which teams have a scheme in this week.
    *
@@ -145,6 +163,25 @@ export function useLeague(store) {
     const id = setInterval(refreshSchemeStatus, 15000);
     return () => clearInterval(id);
   }, [identity.role, store, refreshSchemeStatus]);
+
+  /* The catch-up for the subscription above: as soon as nothing of ours is in
+   * flight, pick up the refresh it set aside. */
+  useEffect(() => {
+    if (saveState.status !== "saved" || !missedRefresh.current) return undefined;
+    missedRefresh.current = false;
+    let cancelled = false;
+    store
+      .loadLeague()
+      .then((next) => {
+        if (!cancelled && next && !queue.hasPending()) setView(next);
+      })
+      .catch(() => {
+        /* the next realtime event will bring it round again */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [saveState.status, store, queue]);
 
   /* Flush on the three moments a pending write could otherwise be lost. */
   useEffect(() => {
@@ -207,11 +244,22 @@ export function useLeague(store) {
   const setStatLine = useCallback(
     (teamId, slot, line) => {
       const k = teamId + ":" + slot;
+      latestStat.current[k] = line;
       setPendingStats((prev) => ({ ...prev, [k]: line }));
       queue.enqueue(vkey.statLine(teamId, slot), async () => {
         const r = await store.setStatLine(teamId, slot, line, versions());
         handle(r);
-        if (r.ok) {
+        /* Clear the overlay ONLY if this write carried the newest thing typed.
+         *
+         * It used to clear unconditionally, and that is what ate the numbers: type
+         * "500", and the write for "5" comes back a second later carrying a server
+         * view that says 5. Dropping the overlay then showed the server's 5 in a box
+         * he had already finished typing 500 into - so the value visibly shortened,
+         * and moving to the TDs box mid-flight made it likelier by giving the round
+         * trip time to land. If a newer value is queued, the overlay stays up until
+         * THAT write returns. */
+        if (r.ok && latestStat.current[k] === line) {
+          delete latestStat.current[k];
           setPendingStats((prev) => {
             const next = { ...prev };
             delete next[k];
@@ -232,12 +280,66 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /** Move the two players on screen NOW, then write it.
+   *
+   * A swap is a straight exchange of one starter and one bench player - the same
+   * two lines the artifact ran in place (`onSwap`), and the same two the server
+   * runs. Showing it immediately is therefore not a guess about what the server
+   * will do; it is the same move, drawn without waiting for the round trip. A
+   * refusal still wins: if it carries the real league (someone else moved first)
+   * `handle` puts that on screen, and if it does not, swapLineupSlot below undoes
+   * the move itself.
+   *
+   * Versions are untouched on purpose: the write still carries the versions we
+   * last saw from the server, so the compare-and-swap still catches a conflict. */
+  const applySwapLocally = useCallback((teamId, slot, benchIndex) => {
+    setView((prev) => {
+      const team = prev?.teams?.find((t) => t.id === teamId);
+      if (!team || !team.roster) return prev;
+      const starterId = team.roster.starters[slot];
+      const benchId = team.roster.bench[benchIndex];
+      const locks = prev.lockedPlayerIds || {};
+      if ((starterId && locks[starterId]) || (benchId && locks[benchId])) return prev;
+      const nextBench = team.roster.bench.slice();
+      nextBench[benchIndex] = starterId;
+      return {
+        ...prev,
+        teams: prev.teams.map((t) =>
+          t.id !== teamId
+            ? t
+            : {
+                ...t,
+                roster: {
+                  ...t.roster,
+                  starters: { ...t.roster.starters, [slot]: benchId },
+                  bench: nextBench,
+                },
+              }
+        ),
+      };
+    });
+  }, []);
+
   const swapLineupSlot = useCallback(
-    (teamId, slot, benchIndex) =>
-      immediate(vkey.starterSlot(teamId, slot), () =>
-        store.swapLineupSlot(teamId, slot, benchIndex, versions())
-      ),
-    [store, immediate]
+    (teamId, slot, benchIndex) => {
+      applySwapLocally(teamId, slot, benchIndex);
+      return immediate(vkey.starterSlot(teamId, slot), async () => {
+        const r = await store.swapLineupSlot(teamId, slot, benchIndex, versions());
+        /* Put the two players back if the swap was refused and the refusal did not
+         * carry the real league with it - "that player is locked" does not. Without
+         * this the move would sit there on screen beside the message saying it did
+         * not happen. A swap is its own inverse, so running it again undoes it
+         * without disturbing anything else that moved in the meantime.
+         *
+         * A network failure is NOT a refusal: the queue is still retrying it, and
+         * undoing would take away a move that is about to succeed. */
+        if (r && !r.ok && !r.view && r.reason !== "network") {
+          applySwapLocally(teamId, slot, benchIndex);
+        }
+        return r;
+      });
+    },
+    [store, immediate, applySwapLocally]
   );
 
   /* The commissioner can submit on a team's behalf from Manage Rosters, and when he
