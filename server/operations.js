@@ -21,7 +21,7 @@
 import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
-import { planPoolRefresh } from "./pool.js";
+import { planPoolRefresh, poolWriteRows } from "./pool.js";
 import {
   dealRosters,
   finalizeCurrentPeriod,
@@ -927,9 +927,14 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
     if (error) return fail(500, "Adding new players failed: " + error.message);
   }
 
-  for (const patch of plan.updates.concat(plan.retires)) {
-    const { id, ...set } = patch;
-    const { error } = await db.from("players").update(set).eq("id", id);
+  /* Batched deliberately: one request per changed player is a few hundred sequential
+   * round trips from a Netlify function, and the first live refresh is the worst case
+   * because every matched row gains its provider ids. See poolWriteRows. */
+  for (const chunk of poolWriteRows({
+    patches: plan.updates.concat(plan.retires),
+    existing: leaguePlayers,
+  })) {
+    const { error } = await db.from("players").upsert(chunk, { onConflict: "id" });
     if (error) return fail(500, "Updating the pool failed: " + error.message);
   }
 

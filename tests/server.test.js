@@ -816,3 +816,103 @@ gate()("membership and commissioner transfer", () => {
     expect((await ops.setLeagueVisibility(db, { leagueId, token: mgr, visibility: "public" })).status).toBe(403);
   });
 });
+
+/* The pool refresh, against real Postgres.
+ *
+ * The plan itself is covered without a database in tests/pool.test.js. What can only be
+ * checked here is how it REACHES the database: the outcome was always correct, it just
+ * used one request per changed player, which is invisible locally and a few hundred
+ * sequential round trips from a Netlify function on a 10-second timeout. So this asserts
+ * the writes are batched AND that batching them changed none of the rules.
+ */
+gate()("the pool refresh writes in batches", () => {
+  beforeEach(() => resetDemo());
+
+  const AT = "2026-08-29T12:00:00Z";
+
+  /* A feed built from the league's OWN players, so nearly every row matches and needs a
+   * write - which is exactly the first-live-refresh case that provoked this. */
+  const feedOf = (rows) => ({
+    fetchDepthChart: async () => ({
+      snapshotAt: AT,
+      players: rows.map((p, i) => ({
+        name: p.name,
+        position: p.position,
+        team: p.nfl_team,
+        depthRank: 1,
+        externalIds: { gsis: "g" + i },
+      })),
+    }),
+    fetchHeadCoaches: async () => ({ season: 2026, coaches: new Map() }),
+    buildPool: ({ depthPlayers }) => ({ players: depthPlayers, gaps: [] }),
+  });
+
+  /* Counts what actually reaches PostgREST. The old loop issued one request per row;
+   * nothing about the resulting rows could tell you that, which is why it survived. */
+  const counting = (client) => {
+    const calls = [];
+    return { calls, auth: client.auth, from: (t) => (calls.push(t), client.from(t)) };
+  };
+
+  async function poolFixture() {
+    const { data: season } = await db
+      .from("seasons").select("id").eq("league_id", leagueId).single();
+    // The refresh is pre-deal only; the demo league sits in week 2 stats.
+    await db.from("periods").update({ phase: "pre-deal" })
+      .eq("season_id", season.id).eq("number", 2);
+    const { data: players } = await db
+      .from("players").select("*").eq("league_id", leagueId).order("legacy_id");
+    return players;
+  }
+
+  it("refreshes the whole pool in a handful of requests, not one per player", async () => {
+    const token = await asCommissioner();
+    const players = await poolFixture();
+    const claimed = players.slice(0, 100); // the rest are no longer starters
+
+    const wrapped = counting(db);
+    const r = await ops.refreshPlayerPool(wrapped, { leagueId, token, feed: feedOf(claimed) });
+    expect(r.status).toBe(200);
+
+    const playerWrites = wrapped.calls.filter((t) => t === "players").length;
+    // Two reads and a couple of upserts. The old loop made well over two hundred.
+    expect(playerWrites).toBeLessThan(10);
+    expect(r.body.report.retired).toBe(players.length - claimed.length);
+  });
+
+  it("still leaves the commissioner's decisions alone when it batches them", async () => {
+    const token = await asCommissioner();
+    const players = await poolFixture();
+    const sidelined = players[0];
+    const hisOwn = players[1];
+    await db.from("players")
+      .update({ status: "IR", status_source: "manual" }).eq("id", sidelined.id);
+    await db.from("players").update({ source: "manual" }).eq("id", hisOwn.id);
+
+    const claimed = players.slice(0, 100);
+    const r = await ops.refreshPlayerPool(db, { leagueId, token, feed: feedOf(claimed) });
+    expect(r.status).toBe(200);
+
+    const { data: after } = await db.from("players").select("*").eq("league_id", leagueId);
+    const byId = new Map(after.map((p) => [p.id, p]));
+
+    // A status he set by hand: untouched, and the disagreement reported instead.
+    expect(byId.get(sidelined.id).status).toBe("IR");
+    expect(byId.get(sidelined.id).status_source).toBe("manual");
+    // A player he added himself: not restyled at all.
+    expect(byId.get(hisOwn.id).source).toBe("manual");
+    expect(byId.get(hisOwn.id).depth_rank).toBe(null);
+
+    // An ordinary seeded row: corrected, with its provider id attached.
+    const corrected = byId.get(players[5].id);
+    expect(corrected.source).toBe("feed");
+    expect(corrected.external_ids.gsis).toBeTruthy();
+    expect(corrected.version).toBe(players[5].version); // a refresh is not an edit
+
+    // One the feed did not claim: retired, never deleted.
+    const gone = byId.get(players[150].id);
+    expect(gone.status).toBe("OUT");
+    expect(gone.status_source).toBe("feed");
+    expect(gone.id).toBeTruthy();
+  });
+});
