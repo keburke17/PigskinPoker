@@ -3,8 +3,9 @@
 `DATA-MODEL.md` section 9 promised this file would become "a real procurement document"
 once a feed was on the table. This is it.
 
-**Status: nothing is wired.** No provider is chosen, no code is written, no dependency is
-added. What exists is the seam - the schema columns a feed needs, paid for up front in
+**Status when this was written: nothing was wired.** That is no longer true - see the 2026-08-28
+update below, and `docs/PHASE-4-PLAN.md` for what has since been built. Read this file for
+the provider survey and the reasoning, not for status. What existed then was the seam - the schema columns a feed needs, paid for up front in
 Phase 0 so that adding one later would not mean a migration and a backfill across a season
 people are playing. This document is the plan, the survey, and the questions that have to
 be answered before any of it can be built.

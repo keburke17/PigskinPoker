@@ -4,18 +4,25 @@ The plan `docs/LIVE-DATA.md` was waiting on. Scott answered OQ-4c and OQ-4b on
 **2026-08-28**, and the answers are larger than "wire a feed": the scoring rule itself
 changes, and the hand-typed player pool is replaced by current NFL starters.
 
-> **Stages 1 and 4 are BUILT as of 2026-08-28** - the scoring split (engine, settings,
-> stat entry, rules screen) and the pool refresh (nflverse feed, the "Refresh Player
-> Pool" button and its report), with migrations M1-M4 written and waiting for Kyle.
-> `npm test`: 295 passed, 1 skipped, 18 files, with the local stack up. Both verified in
-> the running app against the live nflverse feed, including the database round-trip. What
-> they changed - and the two bugs they turned up - is recorded in
-> `docs/MIGRATION-NOTES.md`.
+> **Stages 1 and 4 are BUILT AND LIVE.** The scoring split (engine, settings, stat entry,
+> rules screen) and the pool refresh (nflverse feed, the "Refresh Player Pool" button and
+> its report) shipped 2026-08-28; their migrations were applied to hosted on **2026-08-29**,
+> which is when both actually started working in production - the frontend deployed on
+> merge and spent a day running against a schema that did not have the columns yet.
+> `npm test`: 317 passed, 1 skipped, 19 files, with the local stack up. What they changed -
+> and the bugs they turned up - is recorded in `docs/MIGRATION-NOTES.md`.
+>
+> **Three things landed on 2026-08-29, after the handoff was written:** the refresh's
+> writes are batched (it was one request per player, 225 of them, against a 10-second
+> function timeout); `player_pool` was rebuilt from the live depth charts, so a new league
+> is no longer born holding the 2025 names; and the feed is recorded into
+> `server/feed/fixture/` for local development, which is what makes stage 5 buildable
+> before any 2026 game has been played.
 >
 > **Still unbuilt: stages 5, 6 and 7** - the stats pull, the disagreement view for stat
-> lines, status sync and scheduled polling. Stage 2's identity reconciliation is partly
-> done: the refresh attaches `gsis` and `espn` ids as it matches, so there is no separate
-> reconciliation pass to run.
+> lines, status sync and scheduled polling. Stage 2's identity reconciliation is done in
+> passing: the refresh attaches `gsis` and `espn` ids as it matches, and the rebuilt
+> template carries them from league creation, so there is no reconciliation pass to run.
 
 **Sections 5.2 onward describe work not started.** Everything above is built.
 
@@ -310,11 +317,11 @@ Ordered so the thing Scott most wants does not wait on the feed.
 | # | What | Migration | Whose | Why here |
 |---|---|---|---|---|
 | **0** | Write the rules down - `docs/RULES.md`, and the rules screen | no | Scott | The answers above are the specification. Recording them is the deliverable OQ-4c was actually asking for. |
-| **1** | **The scoring split.** Engine, settings, stat entry, rules screen. **No feed at all.** **DONE 2026-08-28** - awaiting M1 | M1 written, **not applied** | Built; Kyle applies M1 | Playable the next week it ships, whatever happens to the feed. This is the change that alters the game. |
+| **1** | **The scoring split.** Engine, settings, stat entry, rules screen. **No feed at all.** **DONE and LIVE** | M1 applied 2026-08-29 | Done | Playable the next week it ships, whatever happens to the feed. This is the change that alters the game. |
 | **2** | Player identity reconciliation | M3 | **Mostly folded into stage 4** | The refresh attaches gsis/espn ids as it matches, and refuses to fuzzy-match a misspelling - it replaces the row instead. No separate pass to run. |
-| **3** | `nfl_week` mapping | M2 | Kyle | An hour, but nothing can be fetched without it. |
-| **4** | **"Refresh pool" button** - current starters and head coaches from the live depth charts. **DONE 2026-08-28** - awaiting M2-M4 | M2-M4 written, **not applied** | Built; Kyle applies | Delivers the live-roster half. Independent of stats. |
-| **5** | **"Pull stats" button** - fills the boxes, manual lines protected | no | either | The Sunday-night payoff. |
+| **3** | `nfl_week` mapping | M2 applied | Kyle | **Column exists and the demo seed sets it; nothing writes it in the app yet.** An hour, but nothing can be fetched without it. |
+| **4** | **"Refresh pool" button** - current starters and head coaches from the live depth charts. **DONE and LIVE**, writes batched, template rebuilt | M2-M4 applied 2026-08-29 | Done | Delivers the live-roster half. Independent of stats. |
+| **5** | **"Pull stats" button** - fills the boxes, manual lines protected | no | either | The Sunday-night payoff. **Start here.** `parseWeeklyStats` and a recorded week of real stat lines already exist (`server/feed/`); what is missing is how the file is fetched - it is 8.6MB, and that is a measurement to make, not a default to pick - and the write into `stat_lines`. |
 | **6** | Show the disagreement - "the feed says 91, you set 84", one-click revert | no | Scott | What makes stage 5 trustworthy. Should not lag far behind it. |
 | **7** | Scheduled polling, or a live provider | no, but new infra | **Kyle** | Optional once 5 exists. First piece that can fail silently at 3am. |
 
@@ -346,7 +353,7 @@ the one that should not slip**, because it is the only one that changes what a s
 
 | # | Question | Whose |
 |---|---|---|
-| 1 | **How much of this has to be in before the reset?** Stage 1 is the one that should not slip. Whether stages 2 and 4 make the window is a scheduling call, not a design one - see section 7. | Scott + Kyle |
+| 1 | ~~**How much of this has to be in before the reset?**~~ **Settled 2026-08-29: stages 0-4 are all in and live, with a week to spare.** The reset can happen whenever Scott wants it. | Closed |
 | 2 | Backfield committees: does the commissioner want a standing override list for teams whose depth chart is wrong, or is per-refresh correction enough? | Scott |
 | 3 | A head coach fired mid-season: the refresh picks up the interim, nothing until the next deal. Consistent with the rostered-player answer - confirm it reads right. | Scott |
 | 4 | The two scoring paths in 3.2 - now purely about keeping `parity.test.js` intact, since no live data will carry the old shape. Confirm that is worth six frozen lines. | Kyle |

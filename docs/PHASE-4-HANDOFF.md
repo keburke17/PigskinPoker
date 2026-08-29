@@ -8,11 +8,20 @@ Branch: `scott/phase-4-plan`. Five commits, 27 files.
 
 ---
 
-## The one thing that needs you
+## The one thing that needs you - DONE 2026-08-29
 
 ```bash
 npm run db:push
 ```
+
+> **Applied 2026-08-29, and the day it took is the lesson.** The frontend deployed on
+> merge, as it always does; the migrations did not, because migrations never run
+> themselves. So for a day the live site ran Phase 4 code against a Phase 3 schema, and
+> Scott hit it as *"Adding new players failed: Could not find the 'depth_rank' column of
+> 'players' in the schema cache"*. That message reads like a stale PostgREST cache and was
+> not one - check `npx supabase migration list --linked` before reaching for a cache
+> reload. Nothing was half-written: the insert is one statement, and it runs before the
+> updates, so the failed refresh left the pool untouched.
 
 **Two migrations, and nothing works until they land.** Both are forward-only, add
 nullable or defaulted columns, rewrite no rows and delete nothing.
@@ -123,9 +132,9 @@ no coaches. That is the same file the Coach slot's Win/Tie/Loss will score from 
 
 ## Verification
 
-`npm test`: **295 passed, 1 skipped, 18 files**, with the local stack up - no skipped
-files, so RLS, server and bootstrap all ran. New: `tests/scoring.test.js` (20),
-`tests/pool.test.js` (26).
+`npm test`: **295 passed, 1 skipped, 18 files** at the time of writing; **317 / 19** after
+the three follow-ups below. Local stack up, no skipped files, so RLS, server and bootstrap
+all ran. New in this handoff: `tests/scoring.test.js` (20), `tests/pool.test.js` (26).
 
 Driven end to end in the running app, not just asserted:
 
@@ -140,6 +149,22 @@ Driven end to end in the running app, not just asserted:
 - No horizontal overflow at 375px on either screen.
 
 ---
+
+## What happened after this was written (2026-08-29)
+
+Three changes, all merged, none of them in the description above:
+
+- **The refresh's writes are batched.** It issued one PostgREST request per changed
+  player - 225 of them, measured, sequentially, against a 10-second function timeout, and
+  the first live refresh is the worst case. `poolWriteRows` merges each patch onto its row
+  and upserts in chunks: 2 requests instead of 224.
+- **`player_pool` was rebuilt from the live depth charts** (`20260829000000`). The refresh
+  only ever rewrote one league, so the template every NEW league is copied from still held
+  "Derek Henry". A league created now starts current, with provider ids attached.
+- **The feed is recorded** into `server/feed/fixture/`, and local development reads it by
+  default. `stats_player_week_2026.csv` is a 404 until games are played, so a recorded past
+  week is the only stat data stage 5 can be built against. It cannot reach production:
+  `server/feed/index.js` refuses the fixture unless the database is local.
 
 ## What is NOT built
 

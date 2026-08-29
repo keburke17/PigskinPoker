@@ -1002,3 +1002,40 @@ Verified against the local stack rather than reasoned about: a league created af
 migration holds 224 players, 192 of them carrying `gsis` ids (the 32 coaches have none),
 and refreshing it immediately against the live feed added nothing, retired nothing and
 renamed nothing - it only stamped provenance on rows that were already correct.
+
+### The feed became recordable
+
+Two things were impossible to work on before this. Refreshing the pool against the live
+depth charts retires whoever moved this morning, so no assertion about a refresh could
+survive a day. And the stats half of Phase 4 could not be started at all:
+`stats_player_week_2026.csv` returns 404 until games are played, so there was nothing to
+pull, parse or score before the season it is meant to serve.
+
+`server/feed/fixture/` is a committed recording - the newest depth-chart snapshot, one
+season of `games.csv` cut to the columns the coach lookup reads, and one real week of
+player stats filtered to players in the pool. `npm run feed:record` regenerates it.
+`server/feed/fixture.js` serves it through the live module's own parsing, by handing
+`fetchDepthChart` a `fetch` that answers from disk - so a fixture run exercises the real
+code path with the network removed, not a second implementation.
+
+**The stat lines are last season's week 1, relabelled to this season.** They are real
+numbers from a real week; they are not a prediction and not that week in this season, and
+`manifest.json` and the directory's README both say so at length. It is the only stat data
+that exists while the pull is being built.
+
+`server/feed/index.js` chooses between the two, and the choice is guarded twice:
+`PIGSKIN_FEED=fixture` asks, and the database must ALSO be local. A fixture served in
+production would freeze a league's pool at whatever was recorded and report success while
+doing it - the failure would look like nothing at all - so the environment variable is
+deliberately not sufficient on its own. `tests/feed.test.js` asserts the refusal with the
+variable set and a hosted URL. `isLocalUrl` moved to `server/localUrl.js` because the
+development scripts and this gate now guard the same mistake and must not drift.
+
+Also landed with it: `parseWeeklyStats` in the live feed module (parsing only - stage 5
+still has to decide how the file is fetched, which is a measurement to make rather than a
+default to pick), and three provenance cases planted in the demo seed so the disagreement
+screens have something to show on a fresh reset. They are derived against the recording
+rather than hard-coded, so re-recording re-picks them: today they land on Jeremiyah Love
+(OUT by hand, still starting per the feed), Jacoby Brisset (the artifact's misspelling,
+marked as added by hand) and Derek Henry (already retired by the feed). `periods.nfl_week`
+is seeded too, so a stats pull has a week to ask for - the real write path is stage 3.

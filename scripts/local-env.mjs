@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isLocalUrl } from "../server/localUrl.js";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const ENV_PATH = path.join(ROOT, ".env.local");
@@ -49,23 +50,10 @@ export function loadEnvLocal() {
   return { ...fromFile, ...process.env };
 }
 
-/**
- * Is this URL the local stack?
- *
- * Every script here creates or destroys data with the SECRET key, which bypasses RLS
- * entirely. Getting this wrong once - a `.env.local` still pointing at the hosted
- * project - would seed known-password accounts into the real league. So the check is a
- * hard gate in each script rather than a warning, and it keys off the host rather than
- * off anyone remembering which terminal they are in.
- */
-export function isLocalUrl(url) {
-  try {
-    const h = new URL(String(url)).hostname;
-    return h === "127.0.0.1" || h === "localhost" || h === "::1" || h === "0.0.0.0";
-  } catch {
-    return false;
-  }
-}
+/* Is this URL the local stack? One implementation, in server/localUrl.js, because
+ * server/feed/index.js guards the recorded fixture with the same question. Re-exported
+ * here so every script that already imports it keeps working. */
+export { isLocalUrl };
 
 /** Exit rather than proceed against anything that is not the local stack. */
 export function assertLocal(url, what) {

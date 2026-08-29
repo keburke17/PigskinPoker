@@ -880,7 +880,16 @@ gate()("the pool refresh writes in batches", () => {
     const playerWrites = wrapped.calls.filter((t) => t === "players").length;
     // Two reads and a couple of upserts. The old loop made well over two hundred.
     expect(playerWrites).toBeLessThan(10);
-    expect(r.body.report.retired).toBe(players.length - claimed.length);
+
+    /* Everything the feed did not claim is retired, except the rows the seed plants to
+     * be protected: one the commissioner added himself, one whose status he set, one the
+     * feed had already retired. See the fixture suite below for what each of them means. */
+    const protectedRows = players.filter(
+      (p) => !claimed.includes(p) &&
+        (p.source === "manual" || p.status_source === "manual" || p.feed_status === "OUT")
+    ).length;
+    expect(r.body.report.retired).toBe(players.length - claimed.length - protectedRows);
+    expect(r.body.report.retired).toBeGreaterThan(100); // it really did do the work
   });
 
   it("still leaves the commissioner's decisions alone when it batches them", async () => {
@@ -917,5 +926,102 @@ gate()("the pool refresh writes in batches", () => {
     expect(gone.status).toBe("OUT");
     expect(gone.status_source).toBe("feed");
     expect(gone.id).toBeTruthy();
+  });
+});
+
+/* The refresh against the RECORDED feed - the whole point of the fixture.
+ *
+ * Every assertion here was previously impossible to make: the live feed retires whoever
+ * the depth chart moved this morning, so the numbers changed daily and the interesting
+ * rows only existed if somebody had hand-edited them first. The seed now plants three
+ * provenance cases against the same recording (scripts/generate-seed.mjs), so this is
+ * the same run on every machine.
+ */
+gate()("the pool refresh, against the recorded fixture", () => {
+  beforeEach(() => resetDemo());
+
+  let feed;
+  beforeEach(async () => {
+    feed = await import("../server/feed/fixture.js");
+  });
+
+  const preDeal = async () => {
+    const { data: season } = await db
+      .from("seasons").select("id").eq("league_id", leagueId).single();
+    await db.from("periods").update({ phase: "pre-deal" })
+      .eq("season_id", season.id).eq("number", 2);
+  };
+
+  const players = async () => {
+    const { data } = await db.from("players").select("*").eq("league_id", leagueId);
+    return data;
+  };
+
+  it("plants the three provenance cases the screens exist to show", async () => {
+    const rows = await players();
+    expect(rows.filter((p) => p.status_source === "manual")).toHaveLength(1);
+    expect(rows.filter((p) => p.source === "manual")).toHaveLength(1);
+    expect(rows.filter((p) => p.feed_status === "OUT")).toHaveLength(1);
+
+    // League week is not NFL week, but in the demo league they coincide.
+    const { data: periods } = await db.from("periods").select("number, nfl_week, type");
+    for (const p of periods.filter((x) => x.type === "week")) expect(p.nfl_week).toBe(p.number);
+  });
+
+  it("corrects the pool, and reports the same thing twice running", async () => {
+    const token = await asCommissioner();
+    await preDeal();
+
+    const first = await ops.refreshPlayerPool(db, { leagueId, token, feed });
+    expect(first.status).toBe(200);
+    const r1 = first.body.report;
+    expect(r1.gaps).toEqual([]);
+    expect(r1.added.length).toBeGreaterThan(0);   // starters the 2025 pool never had
+    expect(r1.retired).toBeGreaterThan(0);        // and players who are not starters now
+
+    /* Idempotent: everything the feed wanted is now in place, so a second press adds
+     * nothing and retires nothing. Against the live feed this could only ever be
+     * "probably". */
+    const second = await ops.refreshPlayerPool(db, { leagueId, token, feed });
+    expect(second.status).toBe(200);
+    expect(second.body.report.added).toEqual([]);
+    expect(second.body.report.retired).toBe(0);
+  });
+
+  it("leaves both of the commissioner's decisions alone, and says why", async () => {
+    const before = await players();
+    const sidelined = before.find((p) => p.status_source === "manual");
+    const hisOwn = before.find((p) => p.source === "manual");
+    const token = await asCommissioner();
+    await preDeal();
+
+    const r = await ops.refreshPlayerPool(db, { leagueId, token, feed });
+    const untouched = r.body.report.untouched.map((u) => u.name);
+    expect(untouched).toContain(sidelined.name);
+    expect(untouched).toContain(hisOwn.name);
+
+    const after = await players();
+    const stillOut = after.find((p) => p.id === sidelined.id);
+    expect(stillOut.status).toBe("OUT");
+    expect(stillOut.status_source).toBe("manual");
+    // The feed's opinion is recorded BESIDE his, which is what the disagreement shows.
+    expect(stillOut.feed_status).toBe("Active");
+
+    const untouchedRow = after.find((p) => p.id === hisOwn.id);
+    expect(untouchedRow.source).toBe("manual");
+    expect(untouchedRow.depth_rank).toBe(null);
+  });
+
+  it("does not retire a player the feed already retired", async () => {
+    const alreadyOut = (await players()).find((p) => p.feed_status === "OUT");
+    const token = await asCommissioner();
+    await preDeal();
+
+    const r = await ops.refreshPlayerPool(db, { leagueId, token, feed });
+    expect(r.body.report.untouched.map((u) => u.name)).not.toContain(alreadyOut.name);
+
+    const after = (await players()).find((p) => p.id === alreadyOut.id);
+    expect(after.status).toBe("OUT");
+    expect(after.feed_updated_at).toBe(alreadyOut.feed_updated_at); // not rewritten
   });
 });
