@@ -943,3 +943,29 @@ not carry coaches. That is the same file the Coach slot's Win/Tie/Loss will come
 `player_pool`; and `periods.nfl_week`, which a stats pull cannot fetch without. Existing
 non-Active statuses are marked `manual` so the first refresh cannot overrule a decision
 made before the column existed. Forward-only; no row deleted, no status changed.
+
+### The refresh wrote one row at a time
+
+Found on 2026-08-29, before the first live refresh rather than during it.
+
+`planPoolRefresh` produces patches carrying an id and only the columns that change, and
+`refreshPlayerPool` applied them in a `for` loop of `update().eq("id", id)` - one
+PostgREST request per changed player. Locally a round trip is free, so a full 224-row
+refresh looked instant and the shape never drew attention.
+
+It is not free from a Netlify function against hosted Postgres. Measured against the
+demo league, a refresh that claims 100 players and retires the rest issues **225
+requests**, sequentially, on a 10-second default function timeout. The first real
+refresh is the worst case, because the `external_ids` fix above means nearly every
+matched row needs a write.
+
+`poolWriteRows` (`server/pool.js`) now merges each patch onto the row it came from and
+returns chunks of complete rows, which `refreshPlayerPool` upserts on `id` - 2 requests
+instead of 224. Merging is what makes the upsert safe: a patch on its own would INSERT a
+half-built player, so a patch whose row has vanished between the read and the write is
+dropped rather than written. `version` is carried through untouched, exactly as the
+per-row updates left it.
+
+Nothing about the resulting rows could ever have revealed this, which is why the test
+counts requests (`tests/server.test.js`) as well as checking the rows. Against the old
+loop it fails with "expected 225 to be less than 10".

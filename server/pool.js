@@ -168,3 +168,45 @@ export function planPoolRefresh({ existing, wanted, at }) {
     },
   };
 }
+
+/* --------------------------------------------------------------- writing -- */
+
+/**
+ * How many rows go in one write. PostgREST runs one statement per request, so the cost
+ * of a refresh is round trips, not rows: 224 sends 2 requests instead of 224.
+ */
+export const POOL_WRITE_CHUNK = 200;
+
+/**
+ * Turn the plan's patches into whole rows, batched.
+ *
+ * WHY THIS EXISTS. The patches from `planPoolRefresh` each carry an id and only the
+ * columns that change, which is the natural shape for `update().eq("id", id)` - one
+ * request per player. Locally that is free and it stayed invisible; against hosted
+ * Postgres from a Netlify function it is a few hundred sequential round trips against a
+ * 10-second default timeout, and the FIRST live refresh is the worst case because every
+ * matched row needs its provider ids written. An upsert takes many rows per request but
+ * needs COMPLETE rows, so each patch is merged onto the row it came from.
+ *
+ * A patch whose row has vanished between the read and the write is dropped rather than
+ * written: upserting a patch on its own would INSERT a half-built player, which is a
+ * far worse outcome than skipping a correction the next refresh will make anyway.
+ *
+ * `version` is carried through untouched, exactly as the per-row updates left it - a
+ * refresh is not an edit anybody is holding a stale view of.
+ *
+ * @returns {Array<Array>} chunks of full rows, ready to upsert on `id`
+ */
+export function poolWriteRows({ patches, existing, chunkSize = POOL_WRITE_CHUNK }) {
+  const byId = new Map(existing.map((r) => [r.id, r]));
+  const rows = [];
+  for (const patch of patches) {
+    const before = byId.get(patch.id);
+    if (!before) continue;
+    rows.push({ ...before, ...patch });
+  }
+  const size = Math.max(1, Math.floor(chunkSize) || 0);
+  const chunks = [];
+  for (let i = 0; i < rows.length; i += size) chunks.push(rows.slice(i, i + size));
+  return chunks;
+}

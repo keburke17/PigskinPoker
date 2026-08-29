@@ -19,7 +19,7 @@ import {
   parseCsvLine,
   readLatestSnapshot,
 } from "../server/feed/nflverse.js";
-import { normalizeName, planPoolRefresh } from "../server/pool.js";
+import { POOL_WRITE_CHUNK, normalizeName, planPoolRefresh, poolWriteRows } from "../server/pool.js";
 
 /* A depth chart shaped exactly like nflverse's, newest snapshot first. */
 const DEPTH_CSV = [
@@ -367,5 +367,70 @@ describe("planning a refresh - what it must never touch", () => {
     expect(plan.inserts).toEqual([]);
     expect(plan.retires).toEqual([]); // already retired; not retired again
     expect(plan.report.renamed).toEqual([]);
+  });
+});
+
+/* The write half. The plan says WHAT changes; this says how it reaches the database,
+ * and the answer has to be "in a couple of requests" rather than one per player -
+ * see the comment on poolWriteRows. */
+describe("batching the writes", () => {
+  const existing = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: "id" + i,
+      league_id: "L",
+      name: "Player " + i,
+      position: "WR",
+      nfl_team: "Buffalo Bills",
+      status: "Active",
+      status_source: "default",
+      source: "seed",
+      external_ids: {},
+      depth_rank: null,
+      version: 3,
+    }));
+
+  it("merges each patch onto its whole row, so an upsert cannot half-write a player", () => {
+    const rows = existing(1);
+    const [chunk] = poolWriteRows({
+      patches: [{ id: "id0", depth_rank: 1, source: "feed" }],
+      existing: rows,
+    });
+    expect(chunk[0]).toEqual({ ...rows[0], depth_rank: 1, source: "feed" });
+  });
+
+  it("carries version through untouched - a refresh is not an edit", () => {
+    const [chunk] = poolWriteRows({
+      patches: [{ id: "id0", status: "OUT" }],
+      existing: existing(1),
+    });
+    expect(chunk[0].version).toBe(3);
+  });
+
+  it("sends a whole pool in a couple of requests, not one per player", () => {
+    const rows = existing(224);
+    const chunks = poolWriteRows({
+      patches: rows.map((r) => ({ id: r.id, depth_rank: 1 })),
+      existing: rows,
+    });
+    expect(chunks.length).toBe(Math.ceil(224 / POOL_WRITE_CHUNK));
+    expect(chunks.flat()).toHaveLength(224);
+  });
+
+  it("drops a patch whose row has vanished rather than inserting a half-built player", () => {
+    const chunks = poolWriteRows({
+      patches: [{ id: "gone", status: "OUT" }],
+      existing: existing(1),
+    });
+    expect(chunks).toEqual([]);
+  });
+
+  it("never loops forever on a nonsense chunk size", () => {
+    const rows = existing(3);
+    const chunks = poolWriteRows({
+      patches: rows.map((r) => ({ id: r.id })),
+      existing: rows,
+      chunkSize: 0,
+    });
+    expect(chunks).toHaveLength(3);
   });
 });
