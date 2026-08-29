@@ -19,6 +19,9 @@ changes, and the hand-typed player pool is replaced by current NFL starters.
 > `server/feed/fixture/` for local development, which is what makes stage 5 buildable
 > before any 2026 game has been played.
 >
+> **Stage 3 landed on 2026-08-29:** every period now carries the NFL week it plays, so a
+> pull has a week to ask the feed for. See "Stage 3, as built" below.
+>
 > **Still unbuilt: stages 5, 6 and 7** - the stats pull, the disagreement view for stat
 > lines, status sync and scheduled polling. Stage 2's identity reconciliation is done in
 > passing: the refresh attaches `gsis` and `espn` ids as it matches, and the rebuilt
@@ -295,6 +298,31 @@ live provider later is that one file plus an account, not a rewrite.
 
 ---
 
+### 5.2 The fetch, measured (2026-08-29)
+
+The plan said this was a measurement to make rather than a default to pick. Measured
+against the live release:
+
+| | |
+|---|---|
+| `stats_player_week_2025.csv` | **8,656,387 bytes** (8.66 MB) |
+| Compression | **none on the wire** - the release blob store ignores `Accept-Encoding: gzip` |
+| `accept-ranges` | **bytes** (206 confirmed on a 512 KB range) |
+| Full download | 0.52 - 0.74 s, TTFB ~0.25 s |
+| Rows | 19,423 for a full season, **ordered by week ascending**, week 1 through 22 |
+
+So the depth chart's trick applies verbatim: `readLatestSnapshot` streams and aborts
+when the key field changes; a stats read streams and aborts once `week` passes the one
+wanted. Week 1 reads about 5% of the file and week 18 reads most of it - and most of it
+is the 0.7 s measured above, inside a 10 s function budget. **No range requests, no
+cache, no new infrastructure.** Ranges are the recorded fallback if nflverse ever
+reorders the file.
+
+`stats_player_week_2026.csv` is **still a 404**, as expected before any game is played,
+so stage 5 is built and tested entirely against `server/feed/fixture/stats-week.csv`.
+That is what the fixture was recorded for.
+
+
 ## 6. What must not change
 
 Carried forward from `LIVE-DATA.md` section 7, and still true under these answers:
@@ -319,13 +347,48 @@ Ordered so the thing Scott most wants does not wait on the feed.
 | **0** | Write the rules down - `docs/RULES.md`, and the rules screen | no | Scott | The answers above are the specification. Recording them is the deliverable OQ-4c was actually asking for. |
 | **1** | **The scoring split.** Engine, settings, stat entry, rules screen. **No feed at all.** **DONE and LIVE** | M1 applied 2026-08-29 | Done | Playable the next week it ships, whatever happens to the feed. This is the change that alters the game. |
 | **2** | Player identity reconciliation | M3 | **Mostly folded into stage 4** | The refresh attaches gsis/espn ids as it matches, and refuses to fuzzy-match a misspelling - it replaces the row instead. No separate pass to run. |
-| **3** | `nfl_week` mapping | M2 applied | Kyle | **Column exists and the demo seed sets it; nothing writes it in the app yet.** An hour, but nothing can be fetched without it. |
+| **3** | `nfl_week` mapping. **DONE** (2026-08-29) | M2 applied | Done | `server/schedule.js` defaults it, `setNflWeek` corrects it, and every week created after a correction counts on from it. Kept OFF the blob path on purpose - see below. |
 | **4** | **"Refresh pool" button** - current starters and head coaches from the live depth charts. **DONE and LIVE**, writes batched, template rebuilt | M2-M4 applied 2026-08-29 | Done | Delivers the live-roster half. Independent of stats. |
-| **5** | **"Pull stats" button** - fills the boxes, manual lines protected | no | either | The Sunday-night payoff. **Start here.** `parseWeeklyStats` and a recorded week of real stat lines already exist (`server/feed/`); what is missing is how the file is fetched - it is 8.6MB, and that is a measurement to make, not a default to pick - and the write into `stat_lines`. |
+| **5** | **"Pull stats" button** - fills the boxes, manual lines protected | no | either | The Sunday-night payoff. **Start here.** `parseWeeklyStats`, a recorded week of real stat lines (`server/feed/`) and now the NFL week to ask for all exist; what is missing is the fetch and the write into `stat_lines`. **The fetch was measured on 2026-08-29 - see 5.2.** |
 | **6** | Show the disagreement - "the feed says 91, you set 84", one-click revert | no | Scott | What makes stage 5 trustworthy. Should not lag far behind it. |
 | **7** | Scheduled polling, or a live provider | no, but new infra | **Kyle** | Optional once 5 exists. First piece that can fail silently at 3am. |
 
 Stages 1 and 4 are each independently worth shipping. Neither needs the other.
+
+### Stage 3, as built (2026-08-29)
+
+`periods.nfl_week` had existed since the M2 migration and nothing but the demo seed had
+ever written it, which is why a stats pull had no week to ask the feed for.
+
+**The default counts forward from the mapping, not from the league's week number.** A
+new period is mapped to one week later than the furthest-along mapping the season
+already has; with nothing mapped yet it falls back to the league's own week number,
+which is right for a league opening on opening weekend - the reset league's case - and
+correctable when it is not. The consequence worth having: **correct one week and every
+week after it follows.** Tell it league week 3 is NFL week 5 and week 4 becomes NFL week
+6 on its own. That makes the control a once-a-season thing rather than a weekly chore.
+
+A playoff round with nothing to count from stays **null** rather than guessing. "Playoff
+round 1" is no evidence about which Sunday it lands on, and unmapped is a question the
+commissioner can answer - a wrong number that looks right is not.
+
+**It is deliberately not in the app-state blob, and that is the whole design.** The
+artifact's state shape has no field for it, so putting `nfl_week` into `decompose.js`'s
+period row would put it in the upsert's `SET` list on every ordinary blob write - deal,
+process schemes, finalize, every pool edit - and any path where the blob did not carry
+it would write null straight over a correction. That is exactly the bug `external_ids`
+hit (`PHASE-4-HANDOFF.md`). It is a server-owned column in the same family as
+`deal_seed` and `scheme_seed`: written by direct update from `operations.js`, never
+derived from state. `tests/server.test.js` has a test named for it - *"SURVIVES AN
+ORDINARY BLOB WRITE"* - which runs finalize, deal and process-schemes and then checks
+the column, because "decompose never writes it" is a claim about code and that is a
+check against a real PostgREST.
+
+**Checked while building it:** a PostgREST upsert that OMITS a column preserves that
+column - the `SET` list is built from the payload's keys. So the omission itself was
+never the bug; the explicit `external_ids: {}` was. Probed against the local stack
+rather than reasoned about.
+
 
 ### The reset is the deadline
 

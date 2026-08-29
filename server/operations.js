@@ -22,6 +22,7 @@ import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
+import { isValidNflWeek, nextNflWeek } from "./schedule.js";
 import { selectFeed } from "./feed/index.js";
 import {
   dealRosters,
@@ -110,6 +111,35 @@ const teamRow = (rows, legacyId) => rows.teams.find((t) => t.legacy_id === legac
 const playerRow = (rows, legacyId) =>
   legacyId == null ? null : (rows.players.find((p) => p.legacy_id === legacyId) ?? null);
 
+/**
+ * Give a period the app just created its NFL week.
+ *
+ * A period is born unmapped: it is written by decompose along with the rest of the
+ * blob, and decompose does not carry `nfl_week` on purpose (server/schedule.js explains
+ * why at length). So without this nothing would ever set it, and a stats pull would
+ * have no week to ask the feed for - which is exactly the state the app was in until
+ * now, with only the demo seed filling the column.
+ *
+ * Runs AFTER the blob is persisted, because that is when the new row exists. Never
+ * overwrites a mapping that is already there, which makes it safe to call twice and
+ * keeps it away from a commissioner's correction.
+ */
+async function mapNewPeriod(client, seasonId, current) {
+  if (!current) return;
+  const { data: periods } = await client
+    .from("periods")
+    .select("id, type, number, nfl_week")
+    .eq("season_id", seasonId);
+  if (!periods) return;
+  const row = periods.find((p) => p.type === current.type && p.number === current.number);
+  if (!row || row.nfl_week != null) return;
+  const week = nextNflWeek({ periods, period: row });
+  if (week == null) return;
+  /* A failure here is not worth failing the deal or the finalize over: the week is
+   * still playable, and the commissioner can set the mapping himself. */
+  await client.from("periods").update({ nfl_week: week }).eq("id", row.id);
+}
+
 /* ----------------------------- accounts ---------------------------------- */
 
 /**
@@ -166,6 +196,16 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
     leagueKey: trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ":" + seasonYear + ":" + user.id,
     year: seasonYear,
   });
+
+  /* The blank league's week 1, mapped to an NFL week before it is written. decompose
+   * does not carry the column (server/schedule.js), so this is the only chance to set
+   * it at creation - and with nothing else mapped yet it resolves to league week 1 =
+   * NFL week 1, which is right for a league opening on opening weekend and correctable
+   * with setNflWeek when it is not. */
+  rows.periods = (rows.periods ?? []).map((p) => ({
+    ...p,
+    nfl_week: nextNflWeek({ periods: [], period: p }),
+  }));
 
   /* PLAYERS ARE NOT IN THAT LIST any more. They are copied from `player_pool` in one
    * statement instead of being shipped as 223 rows of JSON per league, which also means
@@ -841,15 +881,59 @@ export async function finalizePeriod(db, { leagueId, token, expect }) {
           .from("periods")
           .update({ phase: "finalized", finalized_at: new Date().toISOString() })
           .eq("id", ctx.period.id);
+        // Finalize advances to the next week, so a brand new period row now exists.
+        await mapNewPeriod(client, ctx.rows.seasons[0].id, result.state.currentPeriod);
       },
     };
   });
 }
 
 export async function startPlayoffs(db, { leagueId, token, bracketSize, advancement }) {
-  return commissionerLifecycle(db, leagueId, token, "startPlayoffs", null, async (ctx) => ({
-    blob: engineStartPlayoffs(ctx.view, bracketSize, advancement),
-  }));
+  return commissionerLifecycle(db, leagueId, token, "startPlayoffs", null, async (ctx) => {
+    const blob = engineStartPlayoffs(ctx.view, bracketSize, advancement);
+    return {
+      blob,
+      /* Playoff round 1 is a new period too, and it is the one case the default cannot
+       * work out on its own if the season was never mapped - "round 1" says nothing
+       * about which Sunday it is. It counts on from the last mapped week instead. */
+      afterPersist: async (client) => {
+        await mapNewPeriod(client, ctx.rows.seasons[0].id, blob.currentPeriod);
+      },
+    };
+  });
+}
+
+/**
+ * Correct which NFL week this period plays.
+ *
+ * The default is right for a league that opened on opening weekend and a guess for
+ * every other one, so the commissioner gets the last word. Because the default counts
+ * forward from the furthest-along mapping (server/schedule.js), correcting one week
+ * carries through every week created after it - he sets it once, not every Sunday.
+ *
+ * Deliberately not phase-gated: the mapping only decides which week a stats pull asks
+ * the feed for, so there is no point in the weekly flow where correcting it is unsafe.
+ * Passing null unmaps the period, which makes a pull refuse rather than fetch a week
+ * nobody vouched for.
+ */
+export async function setNflWeek(db, { leagueId, token, nflWeek, expect }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const bad = guard(ctx, "setNflWeek", expect, [vkey.period()]);
+  if (bad) return bad;
+  if (!ctx.period) return fail(404, "This league has no current week.");
+
+  const week = nflWeek === null || nflWeek === "" || nflWeek === undefined ? null : Number(nflWeek);
+  if (week !== null && !isValidNflWeek(week)) {
+    return fail(400, "An NFL week is a whole number from 1 to 23.");
+  }
+
+  const { error } = await db.from("periods").update({ nfl_week: week }).eq("id", ctx.period.id);
+  if (error) return fail(500, error.message);
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
 /* --------------------------- league administration ----------------------- */

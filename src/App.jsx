@@ -269,6 +269,7 @@ export default function App() {
   /* ---- commissioner: the weekly cycle ---- */
   const onDeal = () => ops.dealPeriod();
   const onRefreshPool = () => ops.refreshPlayerPool();
+  const onSetNflWeek = (week) => ops.setNflWeek(week);
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -633,6 +634,7 @@ export default function App() {
               onSwap={onSwap} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}
               onRefreshPool={onRefreshPool} poolReport={poolReport}
+              onSetNflWeek={onSetNflWeek}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
               onStartPlayoffs={onStartPlayoffs}
               onDownloadBackup={onDownloadBackup} onRestoreBackup={onRestoreBackup} restoreError={restoreError}

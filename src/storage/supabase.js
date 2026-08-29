@@ -402,6 +402,10 @@ export function createSupabaseStore(config) {
     startPlayoffs: (bracketSize, advancement) => call("startPlayoffs", { bracketSize, advancement }),
     refreshPlayerPool: (expect) => call("refreshPlayerPool", { expect }),
 
+    /* Which NFL week this league period plays. Correctable because league week is not
+     * NFL week - see server/schedule.js. Null unmaps it. */
+    setNflWeek: (nflWeek, expect) => call("setNflWeek", { nflWeek, expect }),
+
     async mutateLeague(fn) {
       const view = await readView();
       const blob = JSON.parse(JSON.stringify(view));

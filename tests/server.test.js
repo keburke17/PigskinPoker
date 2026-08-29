@@ -1025,3 +1025,111 @@ gate()("the pool refresh, against the recorded fixture", () => {
     expect(after.feed_updated_at).toBe(alreadyOut.feed_updated_at); // not rewritten
   });
 });
+
+/* ------------------------------------------------------------------------ *
+ * Stage 3: which NFL week a league period plays.
+ *
+ * League week is not NFL week, and until now nothing in the app wrote the mapping -
+ * only the demo seed did, which is why a stats pull had no week to ask the feed for.
+ * The rule itself is unit-tested in tests/schedule.test.js; what is asserted here is
+ * that the column is actually written, and - the part worth having - that the ordinary
+ * blob path does not wipe it.
+ * ------------------------------------------------------------------------ */
+gate()("the NFL week mapping", () => {
+  beforeEach(() => resetDemo());
+
+  const periods = async () => {
+    const { data } = await db
+      .from("periods").select("id, type, number, nfl_week").order("number");
+    return data;
+  };
+  const current = async () => (await periods()).find((p) => p.number === 2 && p.type === "week");
+
+  it("gives a period created by finalize its NFL week", async () => {
+    /* Week 3 does not exist until finalize creates it, and decompose does not carry
+     * the column on purpose (server/schedule.js). Without the afterPersist hook the row
+     * would be born null and stay null forever. */
+    const token = await asCommissioner();
+    const fin = await ops.finalizePeriod(db, { leagueId, token });
+    expect(fin.status).toBe(200);
+
+    const week3 = (await periods()).find((p) => p.number === 3 && p.type === "week");
+    expect(week3.nfl_week).toBe(3);
+    expect(fin.body.view._meta.nflWeek).toBe(3);
+  });
+
+  it("carries a correction forward into every week after it", async () => {
+    /* The reason the default counts from the existing mapping rather than from the
+     * league's week number: correct it once and the rest of the season follows. */
+    const token = await asCommissioner();
+    const set = await ops.setNflWeek(db, { leagueId, token, nflWeek: 7 });
+    expect(set.status).toBe(200);
+    expect(set.body.view._meta.nflWeek).toBe(7);
+
+    await ops.finalizePeriod(db, { leagueId, token });
+    const week3 = (await periods()).find((p) => p.number === 3 && p.type === "week");
+    expect(week3.nfl_week).toBe(8);
+  });
+
+  it("SURVIVES AN ORDINARY BLOB WRITE", async () => {
+    /* THE REGRESSION THIS BLOCK EXISTS FOR.
+     *
+     * Every lifecycle step rewrites the period row through decompose, and `external_ids`
+     * was silently cleared for weeks by exactly that path (docs/PHASE-4-HANDOFF.md).
+     * nfl_week is kept out of decompose so the column is never in the upsert's SET list
+     * - but "never" is a claim, and this is what checks it against a real PostgREST
+     * rather than against a reading of the code. */
+    const token = await asCommissioner();
+    const before = (await current()).nfl_week;
+    expect(before).toBe(2);
+
+    await ops.finalizePeriod(db, { leagueId, token });   // rewrites week 2 as historical
+    await ops.dealPeriod(db, { leagueId, token });       // rewrites the new week
+    await ops.processSchemes(db, { leagueId, token });   // and again
+
+    expect((await current()).nfl_week).toBe(before);
+    const week3 = (await periods()).find((p) => p.number === 3 && p.type === "week");
+    expect(week3.nfl_week).toBe(3);
+  });
+
+  it("lets the commissioner unmap a week, and nobody else touch it at all", async () => {
+    const token = await asCommissioner();
+    const cleared = await ops.setNflWeek(db, { leagueId, token, nflWeek: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.view._meta.nflWeek).toBe(null);
+    expect((await current()).nfl_week).toBe(null);
+
+    const mgr = await asManager(T1);
+    const refused = await ops.setNflWeek(db, { leagueId, token: mgr, nflWeek: 4 });
+    expect(refused.status).toBe(403);
+    expect((await current()).nfl_week).toBe(null);
+  });
+
+  it("refuses a week the column would refuse, with a message a person can act on", async () => {
+    /* Better here than as a check-constraint violation from Postgres, which arrives as
+     * unreadable SQL on the commissioner's screen. */
+    const token = await asCommissioner();
+    for (const bad of [0, 24, 2.5, "soon"]) {
+      const r = await ops.setNflWeek(db, { leagueId, token, nflWeek: bad });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/1 to 23/);
+    }
+    expect((await current()).nfl_week).toBe(2);
+  });
+
+  it("maps a brand new league's first week at creation", async () => {
+    const { token: jwt } = await makeAccount("kickoff@example.test");
+    const r = await ops.createLeague(db, { accountToken: jwt, name: "Kickoff League", year: 2033 });
+    expect(r.status).toBe(200);
+
+    const { data: season } = await db
+      .from("seasons").select("id").eq("league_id", r.body.leagueId).single();
+    const { data: made } = await db
+      .from("periods").select("number, nfl_week").eq("season_id", season.id);
+    // Opening weekend is the only thing a blank league can assume, and it is correctable.
+    expect(made).toHaveLength(1);
+    expect(made[0]).toEqual({ number: 1, nfl_week: 1 });
+
+    await db.from("leagues").delete().eq("name", "Kickoff League");
+  });
+});

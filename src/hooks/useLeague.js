@@ -396,6 +396,14 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* Correct which NFL week this period plays. League week is not NFL week (see
+   * server/schedule.js), and every later week counts forward from the correction, so
+   * this is normally pressed once a season rather than weekly. */
+  const setNflWeek = useCallback(
+    (nflWeek) => immediate("setNflWeek", () => store.setNflWeek(nflWeek, versions())),
+    [store, immediate]
+  );
+
   /** Commissioner admin: low-frequency, genuinely league-wide. */
   const mutate = useCallback(
     (key, fn) => immediate(key, () => store.mutateLeague(fn)),
@@ -443,6 +451,7 @@ export function useLeague(store) {
       toggleRosterLock,
       dealPeriod,
       refreshPlayerPool,
+      setNflWeek,
       processSchemes,
       finalizePeriod,
       startPlayoffs,

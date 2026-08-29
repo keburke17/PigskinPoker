@@ -50,6 +50,7 @@ const ROUTES = {
 
   replaceLeague: (db, p) => ops.replaceLeague(db, p),
   refreshPlayerPool: (db, p) => ops.refreshPlayerPool(db, p),
+  setNflWeek: (db, p) => ops.setNflWeek(db, p),
 };
 
 export async function handler(event) {

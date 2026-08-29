@@ -1039,3 +1039,87 @@ rather than hard-coded, so re-recording re-picks them: today they land on Jeremi
 (OUT by hand, still starting per the feed), Jacoby Brisset (the artifact's misspelling,
 marked as added by hand) and Derek Henry (already retired by the feed). `periods.nfl_week`
 is seeded too, so a stats pull has a week to ask for - the real write path is stage 3.
+
+---
+
+## Phase 4 stage 3 - which NFL week a league week plays (2026-08-29)
+
+The smallest stage in the plan and the one everything else was waiting on.
+`periods.nfl_week` had existed since the M2 migration on 2026-08-28, and nothing but the
+demo seed had ever written it, so an actual stats pull would have had no week to ask
+nflverse for. `scripts/generate-seed.mjs` said so in a comment: *"nothing writes the
+mapping yet (stage 3)"*.
+
+**Why the column exists at all.** `periods.number` counts the weeks THIS LEAGUE has
+played and nflverse publishes by NFL week. They coincide for a league that opened on
+opening weekend and for nothing else - a league that started late, one playing through a
+bye, next season. Deriving one from the other would be a guess that looks like a fact.
+
+### The default counts forward from the mapping
+
+`server/schedule.js` is the whole rule, and it is I/O-free for the same reason
+`server/pool.js` is: the rule is the thing worth testing. A new period is mapped to one
+week later than the furthest-along mapping the season already has. With nothing mapped
+it falls back to the league's own week number - right for a league opening on opening
+weekend, which is the reset league's case, and correctable when it is not.
+
+Counting from the mapping rather than from `number` buys the property that matters:
+**correct one week and every week after it follows.** Tell it league week 3 is NFL week 5
+and week 4 becomes NFL week 6 by itself. That turns the control into a once-a-season
+thing instead of a weekly chore, which is the difference between a mapping that stays
+right and one that quietly rots.
+
+A playoff round with nothing to count from stays **null**. "Playoff round 1" says nothing
+about which Sunday it lands on, and a pull that refuses because the week is unmapped is a
+question the commissioner can answer; a wrong number that looks right is not. Past week 23
+it returns null for the same reason rather than clamping.
+
+### It is kept off the blob path, and that is the design
+
+The obvious way to make the mapping "correctable by the commissioner" is to put it in app
+state and let it flow through `decompose`. That would have been the bug.
+
+The artifact's state shape has no field for it, so the moment `nfl_week` appears in
+decompose's period row it joins the upsert's `SET` list on every ordinary blob write -
+deal, process schemes, finalize, every pool edit - and any path where the blob does not
+carry it writes null straight over a correction. **That is exactly what happened to
+`external_ids`** (see the 2026-08-28 notes above), on a column a stats pull cannot work
+without.
+
+So it is a server-owned column in the same family as `deal_seed` and `scheme_seed`:
+written by direct update from `operations.js` in `afterPersist`, never derived from state.
+Three places write it - `createLeague` for a blank league's week 1, and `mapNewPeriod`
+after `finalizePeriod` and `startPlayoffs` create one - and `setNflWeek` is the
+commissioner's correction. It reaches the UI through `_meta.nflWeek`, which is where
+non-artifact facts live precisely so the state shape parity depends on stays untouched.
+
+`tests/server.test.js` carries a test named for it - **"SURVIVES AN ORDINARY BLOB
+WRITE"** - which runs finalize, deal and process-schemes and then reads the column back.
+"decompose never writes it" is a claim about code; that is a check against a real
+PostgREST.
+
+### Checked rather than assumed: an omitted column is preserved
+
+Worth recording because the first reading of this was wrong. **A PostgREST upsert that
+omits a column does not null it** - the `ON CONFLICT DO UPDATE SET` list is built from the
+payload's keys, so a column that is not in the payload is not in the SET list. Probed
+against the running local stack with decompose's exact period column set, and `nfl_week`
+came back untouched.
+
+Which means the `external_ids` bug was never about omission. `decompose` wrote a literal
+`external_ids: {}`, an explicit empty object, and PostgREST duly applied it. The lesson
+generalises the other way round from how it first read: **omitting a column is safe;
+writing a default for one you do not know about is not.**
+
+### The fetch, measured
+
+Stage 5's open engineering question, settled the same day. `stats_player_week_2025.csv`
+is **8.66 MB**, served with no compression (the release blob store ignores
+`Accept-Encoding: gzip`), supports byte ranges, downloads in 0.52-0.74 s, and is
+**ordered by week ascending** - 19,423 rows across weeks 1 to 22. So the depth chart's
+stream-and-abort trick applies verbatim, capped at the whole file for a late week, which
+is under a second inside a 10 s function budget. No ranges, no cache, no new
+infrastructure. `stats_player_week_2026.csv` is still a 404, so stage 5 is built entirely
+against the recorded fixture - which is what it was recorded for.
+
+`npm test`: **334 passed, 1 skipped, 20 files** with the local stack up.

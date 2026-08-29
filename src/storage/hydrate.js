@@ -298,6 +298,12 @@ export function hydrateLeague(db, opts = {}) {
       leagueId: league.id,
       seasonId: season.id,
       periodId: current?.id ?? null,
+      /* Which week of NFL football this league period plays. It lives in _meta rather
+       * than in the state proper because the artifact's shape has no field for it and
+       * parity depends on that shape staying exactly as it was - see server/schedule.js
+       * for why it is a server-owned column. Null means unmapped, which is a stats pull
+       * refusing to guess rather than an error. */
+      nflWeek: current?.nfl_week ?? null,
       versions: buildVersionMap(db, season, current, slotsForCurrent, teamLegacy),
     },
   };
