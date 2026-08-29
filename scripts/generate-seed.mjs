@@ -108,9 +108,11 @@ scenario(unclaimed[1], {
   status: "OUT", status_source: "feed", feed_status: "OUT", feed_updated_at: feedChart.snapshotAt,
 }, "already retired BY the feed - a second refresh leaves him alone");
 
-/* League week is not NFL week, and nothing writes the mapping yet (stage 3). The demo
- * league opens on week 1, so here they coincide - which is what lets a stats pull ask
- * the fixture for a week and get an answer. */
+/* League week is not NFL week. The app writes the mapping itself now (stage 3:
+ * server/schedule.js, and setNflWeek for corrections), but the seed still sets it
+ * because these period rows are written straight to SQL and never pass through
+ * createLeague or a finalize. The demo league opens on week 1, so here they coincide -
+ * which is what lets a stats pull ask the fixture for a week and get an answer. */
 rows.periods = rows.periods.map((r) => ({
   ...r, nfl_week: r.type === "week" ? r.number : null,
 }));

@@ -4,7 +4,7 @@
  * declaration. No component body was edited.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DEFAULT_SCORING, POSITIONS, deepClone, defaultAdvancement, periodLabel, standingsPointsArray } from "../engine/index.js";
 import { MyTeamTab } from "./MyTeamTab.jsx";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
@@ -53,7 +53,68 @@ export function CommTeamRow({ team, onRenameTeam, onRemoveTeam }) {
   );
 }
 
-export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds }) {
+/* Which week of NFL football this league week plays.
+ *
+ * League week is not NFL week: `currentPeriod.number` counts the weeks THIS LEAGUE has
+ * played, and the stats feed only publishes by NFL week. They match for a league that
+ * opened on opening weekend and not for one that started late, played through a bye, or
+ * came back the next season - so the mapping is stored and this is where it is fixed.
+ * Every week created after a correction counts forward from it, which is why this is
+ * normally touched once a season rather than every Sunday. See server/schedule.js.
+ */
+export function CommNflWeekPanel({ state, onSetNflWeek }) {
+  const current = (state._meta && state._meta.nflWeek) ?? null;
+  const [draft, setDraft] = useState(current == null ? "" : String(current));
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    setDraft(current == null ? "" : String(current));
+    setSaved(false);
+  }, [current]);
+
+  const trimmed = draft.trim();
+  const parsed = trimmed === "" ? null : Number(trimmed);
+  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= 1 && parsed <= 23);
+  const changed = (parsed == null ? null : parsed) !== current;
+
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">NFL Week</h3>
+      <p className="pp-sub">
+        {current == null ? (
+          <><strong>Not set.</strong> Stats cannot be pulled for a week nobody has said is
+          a week - set it and every week after this one follows on by itself.</>
+        ) : (
+          <>{periodLabel(state.currentPeriod)} plays <strong>NFL week {current}</strong>.
+          Weeks created after this one count on from it, so you should not need to come
+          back here.</>
+        )}
+      </p>
+      <div className="pp-field">
+        <label className="pp-label">NFL week (1-23, blank to unset)</label>
+        <input
+          className="pp-input"
+          inputMode="numeric"
+          value={draft}
+          onChange={(e) => { setDraft(e.target.value); setSaved(false); }}
+        />
+      </div>
+      {!valid ? <p className="pp-sub">An NFL week is a whole number from 1 to 23.</p> : null}
+      <button
+        className="pp-btn pp-btn-gold"
+        disabled={!valid || !changed}
+        onClick={async () => {
+          await onSetNflWeek(parsed);
+          setSaved(true);
+        }}
+      >
+        Save NFL Week
+      </button>
+      {saved && !changed ? <p className="pp-sub">Saved.</p> : null}
+    </div>
+  );
+}
+
+export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek }) {
   const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
   /* `state.schemes` only ever holds what THIS browser was told, and a manager's
    * pending scheme is hidden from every browser read by design - so on the
@@ -68,7 +129,8 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
   const pending = teams.filter((t) => !hasSubmitted(t));
   const phase = state.currentPeriod.phase;
   return (
-    <div className="pp-card">
+    <>
+      <div className="pp-card">
       <h3 className="pp-h3">{periodLabel(state.currentPeriod)} - {phase.replace("-", " ")}</h3>
       {dealError ? <ErrorBanner message={dealError} /> : null}
       {phase === "pre-deal" && (
@@ -87,7 +149,9 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
       {phase === "schemes-processed" && (
         <p className="pp-sub">Schemes have been processed. Head to Live Stats to enter results and finalize.</p>
       )}
-    </div>
+      </div>
+      <CommNflWeekPanel state={state} onSetNflWeek={onSetNflWeek} />
+    </>
   );
 }
 
@@ -498,7 +562,7 @@ export function CommissionerTab(props) {
         {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
       </div>
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
-      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} />}
+      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
