@@ -6,6 +6,10 @@ changes, and the hand-typed player pool is replaced by current NFL starters.
 
 **Nothing here is built yet. No code has changed.** This document is the plan.
 
+**Read section 2 first if you are Kyle.** The deployed league is test data and resets before
+NFL week 1, which makes three of the four migrations easier than they look - and turns the
+reset into a deadline for the two stages that should be true on day one.
+
 ---
 
 ## 1. What Scott decided
@@ -16,7 +20,7 @@ changes, and the hand-typed player pool is replaced by current NFL starters.
 | **OQ-4c** | Touchdowns | **Split the same way.** Passing TD 4, rushing TD 6, receiving TD 6. All customizable. |
 | **OQ-4c** | Return yards, two-point conversions, fumble-recovery TDs | **Out.** Only passing, rushing and receiving count, for both yards and TDs. |
 | **OQ-4c** | A starter who does not play | **Zero.** The line reads 0 and he contributes 0. Same bad break as any manager who starts an inactive player. |
-| **OQ-4c** | When it takes effect | **Next week, mid-season.** Finalized weeks keep the scores they were given. |
+| **OQ-4c** | When it takes effect | **NFL week 1, on the reset league.** Originally "next week, mid-season"; Scott confirmed later the same day that the deployed league is test data and resets before the season, so there is no mid-season cutover to manage (section 2). |
 | **OQ-4b** | Is `TEAM_ROWS` curated or typed? | **Typed out of necessity - rebuild it from live rosters.** The pool becomes each team's current starters, refreshed so it tracks injuries and depth-chart moves. |
 | - | Pool depth | **Fixed counts: 32 QB, 64 RB, 64 WR, 32 TE, 32 head coaches = 224.** That is each NFL team's starters - 1 QB, 2 RB, 2 WR, 1 TE, 1 coach. No WR3s, no TE2s, **and no ranking step** (updated 2026-08-28, replacing an earlier "top 150-200" filter). |
 | - | "Automatic" means | **Ready by Sunday night now; keep the option to go live later.** |
@@ -35,14 +39,27 @@ to `12 + 6 = 18`. QB moves from "block or steal him every single time" to one go
 among six. That is the stated goal, and it will visibly change scheme behaviour - expect
 blocks and steals to spread across the roster instead of piling on the QB.
 
-**Weeks already played do not move.** `weeklyResults` stores each week's raw score and
-standings points as recorded, so finished weeks are frozen. The standings will be part
-old-scoring, part new for the rest of this season. That is a real thing to tell the league
-before the first week under the new rates, not after.
+**Nothing already played has to survive it.** Scott confirmed on 2026-08-28 that the
+deployed league is **test data, to be reset before NFL week 1**. That removes the whole
+mid-season problem this section originally described - there is no live season to split
+down the middle, no part-old-scoring standings, and nobody to warn.
 
-**Old stat lines cannot be converted.** Every `stat_lines` row already in the database
-holds one combined `yards` number, and nothing records how much of it was passing. There
-is no way to split them after the fact, which forces the design in section 3.2.
+It also changes three things elsewhere in this plan, and they are all simplifications:
+
+| Was | Is now |
+|---|---|
+| M3 backfills player ids into a live season (4.6) | The reset league copies a template that already has ids. **The delicate migration stops being delicate.** |
+| `nfl_week` needs a sensible default and a correction path (M2) | League week 1 **is** NFL week 1. The column still earns its place for later seasons, but the mapping is not a guess. |
+| The league is told mid-season that scoring changed | Nothing to tell. The new rules are simply the rules from week 1. |
+
+**What it does add is a deadline.** Everything that should be true on day one - the scoring
+split, and a pool built from real starters - wants to land **before the reset**, not after
+it. Miss that window and the mid-season problem comes back, this time in a season that
+counts. See section 7.
+
+**Old stat lines still cannot be converted**, and that still shapes section 3.2 - but now
+only because `tests/parity.test.js` replays the artifact's combined-yards data, not because
+anybody's real scores depend on it.
 
 ---
 
@@ -69,19 +86,22 @@ working the moment the code ships.
 `computeStarterPoints` reads the new fields when a stat line has any of them, and falls
 back to the old `yards` / `tds` math when it does not.
 
-This is not hedging. It is forced by the data: a row recorded before 2026-08-28 has one
-combined yards number that cannot be split, so the only honest way to score it is the way
-it was scored when it was entered. The payoff is large:
+**Why keep the old path at all, once the league is reset?** For one reason, and it is
+enough: **`tests/parity.test.js` stays green.** It lifts the artifact's own scoring code and
+replays it on combined-yards data. A hard cutover means that test has to be rewritten around
+the rules change instead of surviving it - and `CLAUDE.md` is emphatic that parity is the
+safety net, not a formality. Keeping a frozen legacy branch costs about six lines and keeps
+the net intact.
 
-- **`tests/parity.test.js` stays green.** It feeds legacy-shaped lines, so it takes the
-  legacy path and still matches the artifact exactly. The safety net survives the rules
-  change rather than being rewritten around it.
-- Re-deriving an old week produces the number that is already on the board.
-- The cutover is automatic. The first week entered with the new boxes scores the new way;
-  nothing has to be flipped on a date.
+Two things fall out for free:
 
-The legacy branch is frozen and commented as historical. It only ever reads rows written
-before the split.
+- Any stat line still carrying the old shape - test fixtures, an imported backup, a league
+  that was not reset - scores the way it was entered rather than being silently rescored.
+- The cutover needs no flag and no date. The first line entered with the new boxes scores
+  the new way.
+
+The legacy branch is frozen and commented as historical. Nothing new ever writes rows that
+reach it.
 
 ### 3.3 Stat entry
 
@@ -186,15 +206,21 @@ new leagues start current.
 
 ### 4.6 Migrations required
 
-- **M2 - `periods.nfl_week`:** one nullable column. League week 1 is only NFL week 1 by
-  coincidence, and nothing can be fetched without the mapping. Set at period creation,
-  correctable by the commissioner.
+- **M2 - `periods.nfl_week`:** one nullable column, set at period creation and correctable
+  by the commissioner. With the reset landing on NFL week 1 the mapping starts out correct
+  rather than guessed - but the column is still needed, because a league starting late, a
+  bye-week schedule, or next season all break the coincidence.
 - **M3 - player identity:** the unique index on `external_ids` the schema already
-  anticipates, plus a one-off backfill joining the live league's `players` to the template
-  on `legacy_id`. **This one touches the live season.** It is the reconciliation described
-  in `LIVE-DATA.md` 4.1 - proposes an id for each pool row, auto-accepts exact matches
-  only, and makes a human confirm everything ambiguous. Fuzzy-matching a hand-typed pool
+  anticipates, plus ids on the `player_pool` template. It is the reconciliation described
+  in `LIVE-DATA.md` 4.1 - proposes an id for each pool row, auto-accepts exact matches only,
+  and makes a human confirm everything ambiguous. Fuzzy-matching a hand-typed pool
   unattended is the worst available outcome: a wrong number that looks right.
+
+  **The reset removes the hard half of this.** The original plan needed a backfill joining a
+  live league's `players` rows to the template on `legacy_id`, mid-season. With the league
+  reset before week 1, `copy_player_pool_into` carries the ids across at creation and there
+  is nothing to backfill. What remains is confirming the names once, against a pool that is
+  being rebuilt from the feed anyway.
 - **M4 (optional) - `players.depth_rank`:** records why a player is in the pool, so a
   disputed roster can be audited.
 
@@ -277,21 +303,47 @@ Ordered so the thing Scott most wants does not wait on the feed.
 
 Stages 1 and 4 are each independently worth shipping. Neither needs the other.
 
+### The reset is the deadline
+
+Scott is resetting the league before NFL week 1 and starting the real season on it. That
+splits the table above into two halves with very different urgency:
+
+**Wanted before the reset - stages 0, 1, 2 and 4.** The scoring split and a pool built from
+real starters should both be true on the day the season starts. Landing them after it puts
+the league back in exactly the mid-season position that section 2 just deleted, except in a
+season that counts. Stage 2 (identity) comes along because the reset is what makes it easy -
+ids get copied into the new league at creation instead of backfilled into a running one.
+
+**Fine after the reset - stages 3, 5, 6 and 7.** The stats pull, the disagreement view and
+status sync all improve a week that is already being played correctly. Week 1's numbers can
+be typed in by hand exactly as they are today if the button is not ready; that is the whole
+reason stage 1 was separated from the feed in the first place.
+
+If the window is too short for all four, the order to cut from is 4, then 2 - a season can
+open on the current hand-typed pool and have it replaced at a later refresh. **Stage 1 is
+the one that should not slip**, because it is the only one that changes what a score means.
+
 ---
 
 ## 8. Still open
 
 | # | Question | Whose |
 |---|---|---|
-| 1 | Does the league get told before the first week under the new rates? Recommended yes - standings become part old-scoring, part new, and that is better said out loud in week 1 than argued about in week 15. | Scott |
+| 1 | **How much of this has to be in before the reset?** Stage 1 is the one that should not slip. Whether stages 2 and 4 make the window is a scheduling call, not a design one - see section 7. | Scott + Kyle |
 | 2 | Backfield committees: does the commissioner want a standing override list for teams whose depth chart is wrong, or is per-refresh correction enough? | Scott |
 | 3 | A head coach fired mid-season: the refresh picks up the interim, nothing until the next deal. Consistent with the rostered-player answer - confirm it reads right. | Scott |
-| 4 | The two scoring paths in 3.2 - confirm keeping the old math for old rows, rather than a hard cutover. | Scott / Kyle |
+| 4 | The two scoring paths in 3.2 - now purely about keeping `parity.test.js` intact, since no live data will carry the old shape. Confirm that is worth six frozen lines. | Kyle |
 
-**Closed since the first draft:** how a "top 150-200" filter should rank players. Scott
-replaced it on 2026-08-28 with fixed per-team starter counts (section 4.2), which needs no
-ranking and no second data source. And whether to use ESPN rather than nflverse for depth
-charts - section 5.1; nflverse gets them from ESPN.
+**Closed since the first draft:**
+
+- How a "top 150-200" filter should rank players - replaced on 2026-08-28 with fixed
+  per-team starter counts (section 4.2). No ranking, no second data source.
+- Whether to use ESPN rather than nflverse for depth charts - section 5.1. nflverse gets
+  them from ESPN.
+- Whether the bench includes a tight end - it does (section 4.1).
+- Whether the league needs telling that scoring changed mid-season - **no.** The deployed
+  league is test data and resets before NFL week 1, so the new rules are simply the rules
+  from day one (section 2).
 
 **Also still on the standing agenda, unrelated to this phase:** OQ-A (the sixth tiebreaker),
 OQ-B (blocks validated server-side), OQ-E (stat writes while the roster is unlocked), and
