@@ -219,7 +219,22 @@ function readFeedSetting() {
  * rolls forward instead - which is what forward-only migrations are for.
  */
 function applyPendingMigrations() {
-  const r = sh("npx", ["supabase", "migration", "list", "--local"], { capture: true });
+  /* `--output-format json` IS THE FIX, and the bug is worth naming because it is easy
+   * to write again. This asked for `migration list --local` and then parsed the answer
+   * as JSON - but the CLI's default output format is TEXT, a markdown table of local
+   * and remote columns, so `JSON.parse` was being handed a table header on every run.
+   * The check therefore reported "could not parse the list - skipping" every single
+   * time, which is precisely the silent stop the comment below warns about: honest,
+   * and ignored by everyone who read past it.
+   *
+   * It is a GLOBAL flag on supabase 2.114.0 (`--output-format text|json|stream-json`),
+   * not the per-command `--output` that `status` takes. Never infer the format from
+   * what a CLI happens to print - ask for it. */
+  const r = sh(
+    "npx",
+    ["supabase", "migration", "list", "--local", "--output-format", "json"],
+    { capture: true }
+  );
 
   /* EVERY path below says what it decided, including the boring one.
    *
@@ -233,10 +248,22 @@ function applyPendingMigrations() {
    * reset path and `db:reset` still work - so this reports and carries on rather than
    * dying. It just refuses to be silent about it. */
 
+  /* The result lands on stdout and the "Connecting to local database..." progress line
+   * on stderr. Searching both costs nothing and means a future version moving the
+   * result between streams does not silently break the check a second time. */
+  const output = (r.stdout || "") + "\n" + (r.stderr || "");
+  const jsonLine = output.split("\n").find((l) => l.trim().startsWith("{"));
+
   if (r.status !== 0) {
     const how = r.error ? r.error.code : "exit " + r.status;
     say("  migrations: could not read the list (" + how + ") - skipping the check");
-    const why = (r.stderr || "").trim().split("\n").pop();
+    /* The last line of stderr is the CLI's complaint - unless the JSON is down there
+     * too, which is no use to a human. */
+    const why = (r.stderr || "")
+      .trim()
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("{"))
+      .pop();
     if (why) say("              " + why);
     say("              if the app misbehaves, `npm run dev -- --reset` starts clean");
     return;
@@ -244,8 +271,7 @@ function applyPendingMigrations() {
 
   let pending = [];
   try {
-    const line = r.stdout.split("\n").find((l) => l.trim().startsWith("{"));
-    pending = (JSON.parse(line).migrations ?? []).filter((m) => m.local && !m.remote);
+    pending = (JSON.parse(jsonLine).migrations ?? []).filter((m) => m.local && !m.remote);
   } catch (err) {
     /* An output format we do not recognise is not worth guessing at - but it is worth
      * naming, because it means this check has quietly stopped working. */
