@@ -12,6 +12,14 @@ be answered before any of it can be built.
 Written 2026-08-23, scoping the idea with Kyle. **It is deliberately not started**, because
 the central question belongs to Scott. See OQ-4c in `docs/OPEN-QUESTIONS.md`.
 
+> **Update 2026-08-28 - Scott answered, and the plan moved.** OQ-4c and OQ-4b are both
+> settled: yards and touchdowns split into passing / rushing / receiving at customizable
+> rates, and the hand-typed pool is rebuilt from current NFL starters. **Build from
+> `docs/PHASE-4-PLAN.md`**, which carries the decisions, the staging and the migrations.
+> This file stays as the provider survey and the reasoning behind choosing nflverse -
+> sections 3 and 8 below are the questions that were open, kept for the argument in them,
+> not for their answers.
+
 ---
 
 ## 1. Where this stands today
