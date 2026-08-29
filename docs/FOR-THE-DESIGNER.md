@@ -257,8 +257,27 @@ disagree rather than quietly changing it.
 Scoring Settings. This was a real rules change and it is the reason a quarterback no
 longer decides the week on his own.
 
-**Still typed in by hand: the weekly stats themselves.** Pulling them from the feed is the
-next piece of work; nothing about it changes how a week is played.
+**The weekly stats now fill themselves in.** On the Live Stats screen there is a **Pull
+Stats** button beside Lock Rosters. Press it after the games and every starter's boxes
+fill in from that week's real NFL numbers - including each coach's Win or Loss, read off
+his team's game.
+
+Three things about it are worth knowing, because they are all deliberate:
+
+- **It never overwrites a number you typed.** If you have already entered 84 and the feed
+  says 91, yours stands and it tells you the two of you disagree - the same way Refresh
+  Player Pool does about a player you marked OUT. Correcting a number is still yours to
+  do, and pressing Pull again will not undo it.
+- **It leaves a player blank when the feed has nothing for him**, and says who and why -
+  a bye week, a game that has not finished yet, or a player it does not recognise. A blank
+  scores zero, which is the same as a starter who did not play. If a late game was still
+  going when you pressed it, press it again afterwards.
+- **Nothing finalizes itself.** The week still ends when you press Finalize, exactly as
+  before. The button fills boxes in; every decision is still yours.
+
+It needs two things to be true first, and it will say so if they are not: the rosters have
+to be locked, and the week has to know which NFL week it is (that lives on your
+commissioner screen, and you normally set it once a season rather than weekly).
 
 ### OQ-8 - the phone question
 

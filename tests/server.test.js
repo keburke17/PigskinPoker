@@ -1133,3 +1133,213 @@ gate()("the NFL week mapping", () => {
     await db.from("leagues").delete().eq("name", "Kickoff League");
   });
 });
+
+/* The stats pull, against real Postgres.
+ *
+ * The planner is covered without a database in tests/stats.test.js. What can only be
+ * checked here is what actually reaches the table: that a manual line survives a pull
+ * through a real PostgREST upsert, that the feed mirrors land in the columns the split
+ * migration added for them, and that each refusal leaves the week untouched rather than
+ * half-written. "The planner returns the right rows" is a claim about code; "the
+ * commissioner's 84 is still 84 afterwards" is a claim about the database.
+ */
+gate()("the stats pull", () => {
+  beforeEach(() => resetDemo());
+
+  const current = async () => {
+    const { data: season } = await db
+      .from("seasons").select("id").eq("league_id", leagueId).single();
+    const { data } = await db
+      .from("periods").select("*").eq("season_id", season.id).eq("number", 2).single();
+    return data;
+  };
+
+  const startersOf = async (periodId) => {
+    const { data } = await db
+      .from("roster_slots").select("*, players(*)")
+      .eq("period_id", periodId).eq("area", "starter");
+    return data;
+  };
+
+  /* A feed built from the league's OWN starters, so every slot matches and the rules
+   * are what is being tested rather than the matching. */
+  const feedOf = (starters, over = {}) => ({
+    fetchWeeklyStats: async () => ({
+      lines: starters
+        .filter((s) => s.players && s.players.position !== "Coach")
+        .map((s) => ({
+          gsis: s.players.external_ids?.gsis,
+          name: s.players.name,
+          passYards: 0, passTds: 0, rushYards: 0, rushTds: 0,
+          recYards: 91, recTds: 1,
+        }))
+        .filter((l) => l.gsis),
+      stoppedEarly: true,
+    }),
+    fetchGameResults: async () => ({
+      results: new Map(
+        starters
+          .filter((s) => s.players && s.players.position === "Coach")
+          .map((s) => [s.players.nfl_team, "Win"])
+      ),
+    }),
+    ...over,
+  });
+
+  /* Two things about the demo league shape these, and neither is worth asserting by
+   * accident: the pool is the artifact's hand-typed one, so only the names the recorded
+   * feed also knows carry a gsis; and week 2 already has stat lines typed for about half
+   * its slots, every one of them source 'manual'. So a test picks the CASE it is about -
+   * an empty slot to fill, or a typed one to leave alone - rather than a slot name. */
+  const withGsis = (starters) =>
+    starters.filter((s) => s.players && s.players.position !== "Coach" && s.players.external_ids?.gsis);
+
+  const pick = async (periodId, starters, { typed }) => {
+    const existing = await lines(periodId);
+    const has = (s) => existing.some((l) => l.team_id === s.team_id && l.slot === s.slot);
+    const found = withGsis(starters).find((s) => (typed ? has(s) : !has(s)));
+    if (!found) throw new Error("no " + (typed ? "typed" : "empty") + " slot in the demo league");
+    return found;
+  };
+
+  const lines = async (periodId) => {
+    const { data } = await db.from("stat_lines").select("*").eq("period_id", periodId);
+    return data;
+  };
+
+  it("fills the boxes in and records the feed's numbers beside them", async () => {
+    const token = await asCommissioner();
+    const period = await current();
+    const starters = await startersOf(period.id);
+    const scorer = await pick(period.id, starters, { typed: false });
+    const existingBefore = await lines(period.id);
+
+    const r = await ops.pullStats(db, { leagueId, token, feed: feedOf(starters) });
+    expect(r.status).toBe(200);
+    expect(r.body.report.nflWeek).toBe(2);
+    expect(r.body.report.filled.length).toBeGreaterThan(0);
+
+    const written = await lines(period.id);
+    const line = written.find((s) => s.team_id === scorer.team_id && s.slot === scorer.slot);
+    expect(line.rec_yards).toBe(91);
+    expect(line.feed_rec_yards).toBe(91); // the mirror the split migration added for this
+    expect(line.source).toBe("feed");
+    expect(line.feed_provider).toBe("nflverse");
+
+    /* The Coach slot has no player id to match on at all - it resolves by team - so it
+     * is worth asserting separately from the skill players. An untyped one, for the same
+     * reason as above: the seed has already typed some. */
+    const before = existingBefore.filter((l) => l.slot === "Coach").map((l) => l.team_id);
+    const coachSlot = starters.find((s) => s.slot === "Coach" && !before.includes(s.team_id));
+    const coach = written.find((s) => s.team_id === coachSlot.team_id && s.slot === "Coach");
+    expect(coach.coach_result).toBe("Win");
+    expect(coach.feed_coach_result).toBe("Win");
+  });
+
+  /* THE ONE THAT MATTERS, and the reason this suite exists at all: an upsert writes
+   * whole rows, so "the planner preserved his numbers" is only half the claim - the
+   * other half is that the round trip did not quietly replace them. */
+  it("LEAVES A COMMISSIONER'S OWN NUMBERS EXACTLY AS HE TYPED THEM", async () => {
+    const token = await asCommissioner();
+    const period = await current();
+    const starters = await startersOf(period.id);
+    const his = await pick(period.id, starters, { typed: true });
+    const { data: team } = await db
+      .from("teams").select("legacy_id").eq("id", his.team_id).single();
+
+    const typed = await ops.setStatLine(db, {
+      leagueId, token, teamId: team.legacy_id, slot: his.slot,
+      line: { recYards: 84, recTds: 1 },
+    });
+    expect(typed.status).toBe(200);
+
+    const r = await ops.pullStats(db, { leagueId, token, feed: feedOf(starters) });
+    expect(r.status).toBe(200);
+
+    const written = (await lines(period.id)).find(
+      (s) => s.team_id === his.team_id && s.slot === his.slot
+    );
+    expect(written.rec_yards).toBe(84); // his
+    expect(written.feed_rec_yards).toBe(91); // the feed's, beside it
+    expect(written.source).toBe("manual");
+
+    const kept = r.body.report.kept.find((k) => k.slot === his.slot);
+    expect(kept.differences).toContainEqual({
+      field: "recYards", label: "Rec Yds", yours: 84, feed: 91,
+    });
+  });
+
+  it("refuses when the period is not mapped to an NFL week, and changes nothing", async () => {
+    const token = await asCommissioner();
+    const period = await current();
+    await db.from("periods").update({ nfl_week: null }).eq("id", period.id);
+    const before = await lines(period.id);
+
+    const r = await ops.pullStats(db, { leagueId, token, feed: feedOf(await startersOf(period.id)) });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe("unmapped");
+    expect(await lines(period.id)).toEqual(before);
+  });
+
+  /* Same rule setStatLine enforces (OQ-E): stats are keyed by slot, so a lineup change
+   * after a pull would move these numbers to a different player silently. */
+  it("refuses while the rosters are unlocked, and changes nothing", async () => {
+    const token = await asCommissioner();
+    const period = await current();
+    await db.from("periods").update({ roster_locked: false }).eq("id", period.id);
+    const before = await lines(period.id);
+
+    const r = await ops.pullStats(db, { leagueId, token, feed: feedOf(await startersOf(period.id)) });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe("unlocked");
+    expect(await lines(period.id)).toEqual(before);
+  });
+
+  it("says so when the feed has nothing for the week, rather than reporting success", async () => {
+    const token = await asCommissioner();
+    const r = await ops.pullStats(db, {
+      leagueId, token,
+      feed: {
+        fetchWeeklyStats: async () => ({ lines: [], stoppedEarly: false }),
+        fetchGameResults: async () => ({ results: new Map() }),
+      },
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe("feed-empty");
+    expect(r.body.error).toMatch(/week 2/);
+  });
+
+  it("leaves the week alone when the feed is down", async () => {
+    const token = await asCommissioner();
+    const period = await current();
+    const before = await lines(period.id);
+    const r = await ops.pullStats(db, {
+      leagueId, token,
+      feed: {
+        fetchWeeklyStats: async () => { throw new Error("HTTP 503"); },
+        fetchGameResults: async () => ({ results: new Map() }),
+      },
+    });
+    expect(r.status).toBe(502);
+    expect(r.body.error).toMatch(/unchanged/);
+    expect(await lines(period.id)).toEqual(before);
+  });
+
+  it("is commissioner-only", async () => {
+    const token = await asManager(T1);
+    const r = await ops.pullStats(db, { leagueId, token, feed: feedOf([]) });
+    expect(r.status).toBe(403);
+  });
+
+  /* End to end on the recording, which is the whole point of having one: the demo
+   * league sits in week 2 and the fixture now carries it. */
+  it("works against the recorded fixture, start to finish", async () => {
+    const token = await asCommissioner();
+    const fixture = await import("../server/feed/fixture.js");
+
+    const r = await ops.pullStats(db, { leagueId, token, feed: fixture });
+    expect(r.status).toBe(200);
+    expect(r.body.report.filled.length + r.body.report.missing.length).toBeGreaterThan(0);
+    expect(r.body.report.nflWeek).toBe(2);
+  });
+});

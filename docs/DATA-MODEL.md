@@ -311,6 +311,10 @@ create table stat_lines (
 
   -- Last values a feed reported, retained even after a manual override, so the UI can
   -- say "the feed says 91, you set 84" and offer a one-click revert. Null until Phase 4.
+  --
+  -- PHASE 4 CHANGED THIS TABLE, and the migrations are the authority, not this block:
+  -- 20260828000000 split yards/tds into six per-category columns with six matching
+  -- feed_* mirrors, and the stats pull has been writing them since 2026-08-29.
   feed_yards        int,
   feed_tds          int,
   feed_coach_result text check (feed_coach_result in ('Win','Tie','Loss')),

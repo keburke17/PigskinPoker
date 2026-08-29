@@ -47,7 +47,23 @@ const flag = (name, fallback) => {
 };
 const season = Number(flag("season", new Date().getUTCFullYear()));
 const statsSeason = Number(flag("stats-season", season - 1));
-const statsWeek = Number(flag("stats-week", 1));
+
+/* SEVERAL WEEKS, NOT ONE. The demo league is dealt further along than week 1, so a
+ * single recorded week left a pull asking for a week the fixture had nothing for and
+ * getting an empty answer that looked like a bug. Recording a few weeks also keeps the
+ * empty case reachable on purpose - ask for a week beyond this range and the fixture
+ * honestly has nothing, which is what the live feed does before a game is played.
+ * Weeks keep their own numbers; only the SEASON is relabelled. */
+const statsWeeks = String(flag("stats-weeks", "1-4"))
+  .split(",")
+  .flatMap((part) => {
+    const [a, b] = part.split("-").map(Number);
+    if (!Number.isFinite(a)) return [];
+    const to = Number.isFinite(b) ? b : a;
+    return Array.from({ length: to - a + 1 }, (_, i) => a + i);
+  });
+if (!statsWeeks.length) throw new Error("--stats-weeks parsed to nothing");
+const statsWeekSet = new Set(statsWeeks.map(String));
 
 const OUT = FIXTURE_DIR;
 fs.mkdirSync(OUT, { recursive: true });
@@ -90,6 +106,28 @@ const wantedSeason = gameRows.some((r) => r.season === String(season))
   : gameRows.reduce((a, r) => (Number(r.season) > Number(a) ? r.season : a), "0");
 write("games.csv", toCsv(GAME_COLUMNS, gameRows.filter((r) => r.season === wantedSeason)));
 
+/* ---------------------------------------------------------------- results -- */
+
+/* WHY THIS IS A SECOND FILE. games.csv above is THIS season's schedule, recorded for
+ * the head coaches - and before the season starts its score columns are empty, so the
+ * Coach slot could not be developed against it at all. This is the same trick the stat
+ * lines use: real finished games from the stats season, relabelled, and matched BY TEAM
+ * when they are read - so a team that has changed coach since still resolves. */
+const RESULT_COLUMNS = ["season", "week", "home_team", "away_team", "home_score", "away_score"];
+const resultRows = gameRows.filter(
+  (r) =>
+    r.season === String(statsSeason) &&
+    statsWeekSet.has(r.week) &&
+    r.home_score !== "" &&
+    r.away_score !== ""
+);
+if (!resultRows.length) {
+  throw new Error(
+    "results: no finished games for " + statsSeason + " weeks " + statsWeeks.join(",")
+  );
+}
+write("results-week.csv", toCsv(RESULT_COLUMNS, resultRows.map((r) => ({ ...r, season: String(season) }))));
+
 /* ------------------------------------------------------------------ stats -- */
 
 /* Filtered to the players the recorded pool actually contains, because a stat line for
@@ -102,10 +140,10 @@ const poolGsis = new Set(pool.map((p) => p.externalIds && p.externalIds.gsis).fi
 const statsRes = await fetch(WEEKLY_STATS_URL(statsSeason));
 if (!statsRes.ok) throw new Error("weekly stats: HTTP " + statsRes.status + " for " + statsSeason);
 const statRows = parseCsv(await statsRes.text()).filter(
-  (r) => Number(r.week) === statsWeek && r.season_type === "REG" && poolGsis.has(r.player_id)
+  (r) => statsWeekSet.has(r.week) && r.season_type === "REG" && poolGsis.has(r.player_id)
 );
 /* Relabelled to the season the fixture stands in for. The numbers are real and last
- * season's; the label is what makes them line up with a demo league playing week 1. */
+ * season's; the label is what makes them line up with a demo league playing that week. */
 write("stats-week.csv", toCsv(STATS_COLUMNS, statRows.map((r) => ({ ...r, season: String(season) }))));
 
 /* ----------------------------------------------------------------- manifest -- */
@@ -121,15 +159,24 @@ const manifest = {
   stats: {
     source: "stats_player_week_" + statsSeason + ".csv",
     sourceSeason: statsSeason,
-    sourceWeek: statsWeek,
-    relabelledTo: { season, week: statsWeek },
+    /* WHICH WEEKS ARE REAL. Anything outside this comes back empty on purpose - see
+     * fetchWeeklyStats in server/feed/fixture.js. */
+    weeks: statsWeeks,
+    relabelledTo: { season },
     rows: statRows.length,
+  },
+  results: {
+    source: "games.csv",
+    sourceSeason: statsSeason,
+    weeks: statsWeeks,
+    relabelledTo: { season },
+    rows: resultRows.length,
   },
 };
 fs.writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 console.log("  manifest.json");
 console.log(
   "\nPool from this snapshot: " + pool.length + " players, " + gaps.length + " gap(s). " +
-  "Stat lines: " + statRows.length + " (real " + statsSeason + " week " + statsWeek +
-  " numbers, relabelled " + season + ")."
+  "Stat lines: " + statRows.length + " and " + resultRows.length + " game result(s) " +
+  "(real " + statsSeason + " week(s) " + statsWeeks.join(",") + ", relabelled " + season + ")."
 );

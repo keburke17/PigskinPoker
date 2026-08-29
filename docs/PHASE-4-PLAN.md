@@ -22,12 +22,17 @@ changes, and the hand-typed player pool is replaced by current NFL starters.
 > **Stage 3 landed on 2026-08-29:** every period now carries the NFL week it plays, so a
 > pull has a week to ask the feed for. See "Stage 3, as built" below.
 >
-> **Still unbuilt: stages 5, 6 and 7** - the stats pull, the disagreement view for stat
-> lines, status sync and scheduled polling. Stage 2's identity reconciliation is done in
-> passing: the refresh attaches `gsis` and `espn` ids as it matches, and the rebuilt
-> template carries them from league creation, so there is no reconciliation pass to run.
+> **Stage 5 landed on 2026-08-29:** the "Pull Stats" button reads one NFL week off the
+> feed and fills every starter's boxes in, and never overwrites a line the commissioner
+> typed. See "Stage 5, as built" below.
+>
+> **Still unbuilt: stages 6 and 7** - the persistent disagreement view beside each box,
+> and scheduled polling. Stage 2's identity reconciliation is done in passing: the
+> refresh attaches `gsis` and `espn` ids as it matches, and the rebuilt template carries
+> them from league creation, so there is no reconciliation pass to run.
 
-**Sections 5.2 onward describe work not started.** Everything above is built.
+**Sections 6 onward describe the rules everything here has to keep; stages 6 and 7 in
+section 7 are the work not started.** Everything else is built.
 
 **Read section 2 first if you are Kyle.** The deployed league is test data and resets before
 NFL week 1, which makes three of the four migrations easier than they look - and turns the
@@ -349,7 +354,7 @@ Ordered so the thing Scott most wants does not wait on the feed.
 | **2** | Player identity reconciliation | M3 | **Mostly folded into stage 4** | The refresh attaches gsis/espn ids as it matches, and refuses to fuzzy-match a misspelling - it replaces the row instead. No separate pass to run. |
 | **3** | `nfl_week` mapping. **DONE** (2026-08-29) | M2 applied | Done | `server/schedule.js` defaults it, `setNflWeek` corrects it, and every week created after a correction counts on from it. Kept OFF the blob path on purpose - see below. |
 | **4** | **"Refresh pool" button** - current starters and head coaches from the live depth charts. **DONE and LIVE**, writes batched, template rebuilt | M2-M4 applied 2026-08-29 | Done | Delivers the live-roster half. Independent of stats. |
-| **5** | **"Pull stats" button** - fills the boxes, manual lines protected | no | either | The Sunday-night payoff. **Start here.** `parseWeeklyStats`, a recorded week of real stat lines (`server/feed/`) and now the NFL week to ask for all exist; what is missing is the fetch and the write into `stat_lines`. **The fetch was measured on 2026-08-29 - see 5.2.** |
+| **5** | **"Pull stats" button** - fills the boxes, manual lines protected. **DONE** (2026-08-29) | no | Done | The Sunday-night payoff. `server/stats.js` holds the rule, `pullStats` in operations.js writes it, and the button lives on the Live Stats screen. See below. |
 | **6** | Show the disagreement - "the feed says 91, you set 84", one-click revert | no | Scott | What makes stage 5 trustworthy. Should not lag far behind it. |
 | **7** | Scheduled polling, or a live provider | no, but new infra | **Kyle** | Optional once 5 exists. First piece that can fail silently at 3am. |
 
@@ -389,6 +394,57 @@ column - the `SET` list is built from the payload's keys. So the omission itself
 never the bug; the explicit `external_ids: {}` was. Probed against the local stack
 rather than reasoned about.
 
+
+### Stage 5, as built (2026-08-29)
+
+**No migration.** The `feed_*` mirror columns went in with the scoring split on
+2026-08-28 precisely so this stage would not need one, and they did.
+
+**The feed grew two reads.** `fetchWeeklyStats` streams `stats_player_week_<season>.csv`
+and stops once the week asked for has gone by - the measurement in 5.2 made flesh, and
+it reports `stoppedEarly` so a file that gets reordered shows up as a symptom rather than
+a slow afternoon. `fetchGameResults` reads `games.csv` for the Coach slot's Win/Tie/Loss.
+Both are generalised onto one `readCsvRows`, which `readLatestSnapshot` now sits on too.
+
+**Two identity spaces, deliberately.** A skill player is matched on `gsis` and never on
+name - a wrong number that looks right is the worst outcome available here. A head coach
+has no player id at all, so the Coach slot resolves BY TEAM, which also means a team that
+changed coach mid-season still scores off the right game.
+
+**An unplayed game is not a tie.** `games.csv` carries the whole schedule from the day it
+is published with the score columns empty, and `Number("")` is 0 - so a blank read as a
+number would have given every coach in the league a tie on Saturday morning. Absent from
+the results map means "no result yet", and the pull reports it rather than writing it.
+
+**A player the feed has nothing for is left blank, not zeroed.** Scott's answer is that a
+starter who does not play scores zero, and a blank already scores zero - so writing an
+explicit 0 would claim the feed reported one, which on a Sunday afternoon with half the
+games still to kick off is a different statement. The report names those slots instead.
+
+**Found while building it, both against real Postgres:**
+
+- **A batched upsert is not a faster loop.** PostgREST builds ONE insert whose column
+  list is the union of the batch, so the moment any row carried `id`, every new row
+  beside it was sent an explicit NULL and `default gen_random_uuid()` never ran. It fails
+  loudly rather than corrupting anything, but only once a pull has both new and existing
+  lines - which is every pull after the first. `statWriteRows` mints the ids. Same shape
+  as the bug `poolWriteRows` documents; second time on this project.
+- **The demo league had no provider ids at all.** Its pool is the artifact's hand-typed
+  one, so every skill slot came back "no provider id" and the button looked broken.
+  `scripts/generate-seed.mjs` now attaches the fixture's ids by name, which is also what
+  really happens: `player_pool` was rebuilt from the feed with ids on it, and
+  `copy_player_pool_into` carries them into a new league. **A pull against a league whose
+  pool has never been refreshed still reports exactly that, and says to refresh it.**
+- **A pre-split line cannot be compared field by field.** The demo league's week 2 lines
+  are the old combined shape, and comparing them column by column reported six
+  disagreements ("you have passing yards blank, the feed says 295") about a line that was
+  filled in perfectly well. Said once, on totals, instead. Only historical rows and the
+  seed reach this.
+
+**The fixture now records several weeks and the game results.** One week was not enough:
+the demo league is dealt past week 1, so a pull asked for a week the recording did not
+have. Weeks outside the recorded range still come back empty on purpose - that is what
+the live feed does before a game is played, so the empty case is reachable locally.
 
 ### The reset is the deadline
 

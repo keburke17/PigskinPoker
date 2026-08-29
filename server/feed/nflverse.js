@@ -128,19 +128,25 @@ export function parseCsv(text) {
 /* ------------------------------------------------------- depth charts -- */
 
 /**
- * Read only the newest snapshot out of a depth-chart stream, then stop.
+ * Read a CSV stream row by row and stop as soon as the caller has seen enough.
  *
- * Reads line by line, keeps rows whose `dt` matches the first data row's, and returns
- * as soon as a different `dt` appears. `onEnough` is called at that point so the caller
- * can abort the request rather than download the rest of the season.
+ * BOTH BIG FILES ARE READ THIS WAY, which is why this is generic. The depth chart is
+ * ~45MB written newest-first, so the refresh stops when the snapshot `dt` changes; the
+ * weekly stats file is ~8.7MB ordered by week ascending, so a pull stops once the week
+ * it wants has gone by. Neither needs range requests, a cache, or new infrastructure -
+ * just the discipline of not reading to the end. See docs/PHASE-4-PLAN.md section 5.2.
+ *
+ * `onRow` returns true to stop. `onEnough` is then called so the caller can abort the
+ * HTTP request rather than let the rest of the file arrive.
+ *
+ * @returns {{ stoppedEarly: boolean }} false means the whole file was read, which is
+ *   correct but slow - and is the signal that the file's order has changed.
  */
-export async function readLatestSnapshot(stream, { onEnough } = {}) {
+export async function readCsvRows(stream, { onRow, onEnough } = {}) {
   const decoder = new TextDecoder();
   const reader = stream.getReader();
   let buffer = "";
   let header = null;
-  let snapshotAt = null;
-  const rows = [];
   let done = false;
 
   const takeLine = (line) => {
@@ -154,10 +160,7 @@ export async function readLatestSnapshot(stream, { onEnough } = {}) {
     header.forEach((h, i) => {
       row[h] = cells[i] ?? "";
     });
-    if (snapshotAt === null) snapshotAt = row.dt;
-    if (row.dt !== snapshotAt) return true; // a different snapshot: we have what we need
-    rows.push(row);
-    return false;
+    return onRow(row) === true;
   };
 
   while (!done) {
@@ -183,6 +186,27 @@ export async function readLatestSnapshot(stream, { onEnough } = {}) {
   }
   if (!done) takeLine(buffer.replace(/\r$/, ""));
 
+  return { stoppedEarly: done };
+}
+
+/**
+ * Read only the newest snapshot out of a depth-chart stream, then stop.
+ *
+ * Keeps rows whose `dt` matches the first data row's and returns as soon as a different
+ * `dt` appears - the file is written newest-first, so that is the whole current chart.
+ */
+export async function readLatestSnapshot(stream, { onEnough } = {}) {
+  let snapshotAt = null;
+  const rows = [];
+  await readCsvRows(stream, {
+    onEnough,
+    onRow: (row) => {
+      if (snapshotAt === null) snapshotAt = row.dt;
+      if (row.dt !== snapshotAt) return true; // a different snapshot: we have what we need
+      rows.push(row);
+      return false;
+    },
+  });
   return { snapshotAt, rows };
 }
 
@@ -362,14 +386,33 @@ const statNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** One CSV row as a stat line, or null when it is not one this project scores. */
+function statLineFrom(r, wanted) {
+  if (wanted !== null && String(r.week) !== wanted) return null;
+  // Preseason and postseason both carry week numbers that collide with the regular one.
+  if (r.season_type && r.season_type !== "REG") return null;
+  if (!r.player_id) return null;
+  return {
+    gsis: r.player_id,
+    name: r.player_display_name,
+    position: r.position,
+    teamAbbr: r.team,
+    season: Number(r.season),
+    week: Number(r.week),
+    passYards: statNum(r.passing_yards),
+    passTds: statNum(r.passing_tds),
+    rushYards: statNum(r.rushing_yards),
+    rushTds: statNum(r.rushing_tds),
+    recYards: statNum(r.receiving_yards),
+    recTds: statNum(r.receiving_tds),
+  };
+}
+
 /**
  * One week's stat lines, in the shape the six split columns want.
  *
- * PARSING ONLY, no fetch. Stage 5 decides how the file is read - whole, ranged, or
- * cached - and that is a measurement to make against the real file rather than a
- * default to pick here; the pool refresh has already taught this project what an
- * unmeasured request inside a handler costs. Meanwhile this is testable against the
- * recorded fixture, which is the only stat data that exists before the season starts.
+ * PARSING ONLY, no fetch - `fetchWeeklyStats` below is the streaming path. This one
+ * takes whole text, which is how the recorded fixture and the tests read it.
  *
  * A player who did not play is simply absent from the file. That is the same thing as
  * zero under Scott's answer to OQ-4c, and it is the caller's job to say so.
@@ -378,23 +421,122 @@ export function parseWeeklyStats(text, { week } = {}) {
   const wanted = week == null ? null : String(week);
   const out = [];
   for (const r of parseCsv(text)) {
-    if (wanted !== null && String(r.week) !== wanted) continue;
-    if (r.season_type && r.season_type !== "REG") continue;
-    if (!r.player_id) continue;
-    out.push({
-      gsis: r.player_id,
-      name: r.player_display_name,
-      position: r.position,
-      teamAbbr: r.team,
-      season: Number(r.season),
-      week: Number(r.week),
-      passYards: statNum(r.passing_yards),
-      passTds: statNum(r.passing_tds),
-      rushYards: statNum(r.rushing_yards),
-      rushTds: statNum(r.rushing_tds),
-      recYards: statNum(r.receiving_yards),
-      recTds: statNum(r.receiving_tds),
-    });
+    const line = statLineFrom(r, wanted);
+    if (line) out.push(line);
+  }
+  return out;
+}
+
+/**
+ * One NFL week's stat lines, read off the live file and stopped as soon as the week
+ * has gone by.
+ *
+ * MEASURED, NOT GUESSED (2026-08-29, against stats_player_week_2025.csv): 8.66MB, no
+ * compression on the wire, ordered by week ascending, week 1 through 22. So week 1
+ * reads about 5% of the file and week 18 reads most of it - and the whole file is 0.7s
+ * inside a 10s function budget. Range requests are the recorded fallback if nflverse
+ * ever reorders it; `stoppedEarly` is how we would find out, since a pull that read to
+ * the end is the symptom.
+ *
+ * @returns {{ season, week, lines, stoppedEarly }}
+ */
+export async function fetchWeeklyStats({ season, week, fetchImpl = fetch } = {}) {
+  const wanted = Number(week);
+  if (!Number.isFinite(wanted)) throw new Error("fetchWeeklyStats needs a week");
+
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const res = await fetchImpl(WEEKLY_STATS_URL(season), {
+    signal: controller ? controller.signal : undefined,
+  });
+  if (!res.ok) {
+    /* A 404 is the ordinary state of affairs before the season's first game, not a
+     * fault, and the message says so - it is the single most likely thing to go wrong
+     * the first time anyone presses the button. */
+    throw new Error(
+      "nflverse weekly stats returned HTTP " + res.status + " for " + season +
+      (res.status === 404 ? " - no games have been played in that season yet" : "")
+    );
+  }
+
+  if (!res.body || typeof res.body.getReader !== "function") {
+    // No streaming available (some test doubles): fall back to the whole text.
+    return {
+      season,
+      week: wanted,
+      lines: parseWeeklyStats(await res.text(), { week: wanted }),
+      stoppedEarly: false,
+    };
+  }
+
+  const asWeek = String(wanted);
+  const lines = [];
+  const { stoppedEarly } = await readCsvRows(res.body, {
+    onEnough: () => controller && controller.abort(),
+    onRow: (row) => {
+      const w = Number(row.week);
+      /* Ordered ascending, so a REGULAR-SEASON week beyond the one wanted means the
+       * rest of the file is no use. Postseason rows repeat low week numbers under a
+       * different season_type, which is why the check is not on `week` alone. */
+      if ((!row.season_type || row.season_type === "REG") && Number.isFinite(w) && w > wanted) {
+        return true;
+      }
+      const line = statLineFrom(row, asWeek);
+      if (line) lines.push(line);
+      return false;
+    },
+  });
+  return { season, week: wanted, lines, stoppedEarly };
+}
+
+/* --------------------------------------------------------- game results -- */
+
+/**
+ * Win / Tie / Loss for every team that played in one NFL week - what the Coach slot
+ * scores from.
+ *
+ * Read off games.csv, the same file the head coaches come from, and matched BY TEAM
+ * rather than by coach name: a team that changed coach mid-season still resolves, and
+ * the pool's Coach rows carry the team they belong to rather than an id.
+ *
+ * @returns {{ season, week, results: Map<string, "Win"|"Tie"|"Loss"> }} keyed by the
+ *   full team name the player pool uses.
+ */
+export async function fetchGameResults({ season, week, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(GAMES_URL);
+  if (!res.ok) throw new Error("nflverse games returned HTTP " + res.status);
+  return {
+    season,
+    week: Number(week),
+    results: resultsFromGames(parseCsv(await res.text()), { season, week }),
+  };
+}
+
+/** Exported for testing: one week's results out of the whole games file. */
+export function resultsFromGames(rows, { season, week }) {
+  const wantedSeason = String(season);
+  const wantedWeek = String(week);
+  const out = new Map();
+
+  for (const r of rows) {
+    if (String(r.season) !== wantedSeason) continue;
+    if (String(r.week) !== wantedWeek) continue;
+
+    const home = NFL_TEAMS[r.home_team];
+    const away = NFL_TEAMS[r.away_team];
+    if (!home || !away) continue; // an abbreviation we do not know: never guessed at
+
+    /* AN UNPLAYED GAME IS NOT A TIE. games.csv carries the whole schedule from the day
+     * it is published, with the score columns empty until the game is over, and
+     * Number("") is 0 - so a blank read as a number would score every coach in the
+     * league a tie on Saturday morning. Absent from the map means "no result yet", and
+     * the pull reports it rather than writing it. */
+    if (r.home_score === "" || r.away_score === "") continue;
+    const hs = Number(r.home_score);
+    const as = Number(r.away_score);
+    if (!Number.isFinite(hs) || !Number.isFinite(as)) continue;
+
+    out.set(home, hs > as ? "Win" : hs < as ? "Loss" : "Tie");
+    out.set(away, as > hs ? "Win" : as < hs ? "Loss" : "Tie");
   }
   return out;
 }

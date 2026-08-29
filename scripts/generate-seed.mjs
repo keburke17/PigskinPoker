@@ -84,11 +84,30 @@ const feedPool = buildPool({
 const feedKeys = new Set(feedPool.map((p) => normalizeName(p.name) + "|" + p.position));
 const keyOf = (r) => normalizeName(r.name) + "|" + r.position;
 
+/* ---------- the provider ids a stats pull matches on ----------
+ *
+ * WITHOUT THESE THE DEMO LEAGUE CANNOT BE PULLED AGAINST. A stat line is matched to a
+ * player by `gsis`, the id the depth charts and the stats file share, and the artifact's
+ * hand-typed pool has no ids at all - so every skill slot came back "no provider id" and
+ * the button appeared broken. Attaching them at league creation is also what really
+ * happens now: `player_pool` was rebuilt from the feed with the ids on it
+ * (20260829000000), and copy_player_pool_into carries them into a new league.
+ *
+ * Matched by name against the SAME recorded pool the scenarios above use, so this stays
+ * true after a re-record. Anyone the feed does not know keeps an empty `external_ids` -
+ * which is worth having too: it is the case whose report line says to refresh the pool.
+ */
+const feedIds = new Map(feedPool.map((p) => [keyOf(p), p.externalIds || {}]));
+
 /* Columns decompose does not write, spelled out on EVERY row: insertStatement takes its
  * column list from the first row, so a key that exists on only some of them would be
  * dropped from the statement entirely. */
 rows.players = rows.players.map((r) => ({
-  ...r, depth_rank: null, feed_status: null, feed_updated_at: null,
+  ...r,
+  depth_rank: null,
+  feed_status: null,
+  feed_updated_at: null,
+  external_ids: feedIds.get(keyOf(r)) ?? r.external_ids ?? {},
 }));
 
 const scenarios = [];

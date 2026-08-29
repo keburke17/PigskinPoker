@@ -22,6 +22,7 @@ import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
+import { planStatsPull, statWriteRows } from "./stats.js";
 import { isValidNflWeek, nextNflWeek } from "./schedule.js";
 import { selectFeed } from "./feed/index.js";
 import {
@@ -64,6 +65,10 @@ const PHASE_RULES = {
    * somebody's team. It is also what the designer asked for: a player who stops being a
    * starter finishes his week and is simply absent from the next deal. */
   refreshPlayerPool: ["pre-deal"],
+  /* The same phases stat entry itself allows, for the same reason: a pull is stat entry
+   * done quickly, and there is no week in which typing the numbers is legal but reading
+   * them off the feed is not. */
+  pullStats: ["schemes-processed", "stats"],
 };
 
 const fail = (status, error, extra = {}) => ({ status, body: { ok: false, error, ...extra } });
@@ -1027,6 +1032,109 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
   return good({
     view: hydrate(await fetchLeagueRows(db, leagueId)),
     report: { ...plan.report, gaps: snapshot.gaps, season },
+  });
+}
+
+/**
+ * Fill this week's stat lines in from the feed.
+ *
+ * The Sunday-night payoff of Phase 4, and the promise it has to keep is the one the
+ * pool refresh already keeps: it writes its own work and never a person's. What the
+ * commissioner typed stays exactly as he typed it and the feed's opinion is recorded
+ * beside it. server/stats.js holds that rule and is where it is tested.
+ *
+ * Commissioner-pressed. Nothing here finalizes anything - the week still ends when he
+ * says it does, which is the whole point of section 6 of the plan.
+ *
+ * THREE REFUSALS, all of which leave the week exactly as it was:
+ *   - an unmapped period, because a pull needs a week of football to ask for and
+ *     guessing one would write another week's numbers into this one;
+ *   - unlocked rosters, for the same reason `setStatLine` refuses (OQ-E): stats are
+ *     keyed by slot, so a lineup change after a pull would move these numbers to a
+ *     different player with nothing on screen to say so;
+ *   - a feed that is down, late, or 404 - which before the season's first game is the
+ *     ordinary state of affairs rather than a fault.
+ */
+export async function pullStats(db, { leagueId, token, expect, feed }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const bad = guard(ctx, "pullStats", expect, []);
+  if (bad) return bad;
+  if (!ctx.period) return fail(404, "This league has no current week.");
+
+  const nflWeek = ctx.period.nfl_week;
+  if (!isValidNflWeek(nflWeek)) {
+    return fail(409, "This week is not mapped to an NFL week yet - set that first and the pull will know which week to ask for.", {
+      reason: "unmapped",
+      view: ctx.view,
+    });
+  }
+  if (!ctx.period.roster_locked) {
+    return fail(409, "Lock the rosters before pulling stats - otherwise a lineup change would move these numbers to a different player.", {
+      reason: "unlocked",
+      view: ctx.view,
+    });
+  }
+
+  const season = ctx.rows.seasons[0]?.year ?? new Date().getUTCFullYear();
+
+  let feedLines;
+  let results;
+  let stoppedEarly;
+  try {
+    /* `feed` is injected by tests. Otherwise the environment chooses, and it can only
+     * ever choose the recorded fixture against a local database - see feed/index.js. */
+    const source = feed || (await selectFeed());
+    const [stats, games] = await Promise.all([
+      source.fetchWeeklyStats({ season, week: nflWeek }),
+      source.fetchGameResults({ season, week: nflWeek }),
+    ]);
+    feedLines = stats.lines;
+    stoppedEarly = stats.stoppedEarly;
+    results = games.results;
+  } catch (err) {
+    return fail(502, "Could not reach the stats feed - this week is unchanged. " + err.message, {
+      reason: "feed",
+      view: ctx.view,
+    });
+  }
+
+  if (!feedLines.length && results.size === 0) {
+    /* Not an error: before Sunday's games finish this is simply the truth, and saying
+     * so is more use than an empty success. */
+    return fail(409, "The feed has nothing for NFL week " + nflWeek + " yet - this week is unchanged.", {
+      reason: "feed-empty",
+      view: ctx.view,
+    });
+  }
+
+  const starters = ctx.rows.roster_slots.filter(
+    (r) => r.period_id === ctx.period.id && r.area === "starter"
+  );
+  const { writes, report } = planStatsPull({
+    starters,
+    players: ctx.rows.players.filter((p) => p.league_id === leagueId),
+    teams: ctx.rows.teams,
+    statLines: ctx.rows.stat_lines.filter((s) => s.period_id === ctx.period.id),
+    feedLines,
+    results,
+    at: new Date().toISOString(),
+    periodId: ctx.period.id,
+  });
+
+  for (const chunk of statWriteRows({ writes })) {
+    const { error } = await db
+      .from("stat_lines")
+      .upsert(chunk, { onConflict: "period_id,team_id,slot" });
+    if (error) return fail(500, "Writing the stat lines failed: " + error.message);
+  }
+
+  return good({
+    view: hydrate(await fetchLeagueRows(db, leagueId)),
+    report: { ...report, season, nflWeek, stoppedEarly },
   });
 }
 

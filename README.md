@@ -191,7 +191,7 @@ Not done yet:
 
 | | |
 |---|---|
-| **Phase 4** | Live NFL data. The pool refreshes from nflverse depth charts and scoring splits by category (done); the weekly stats pull is not built yet |
+| **Phase 4** | Live NFL data. The pool refreshes from nflverse depth charts, scoring splits by category, and the weekly stats pull fills the boxes in (done); the disagreement view beside each box and scheduled polling are not built yet |
 | **Phase 6** | `docs/RULES.md` - the game rules written down outside the code |
 
 Phase 3 is done. Accounts and magic links are the only way in; join codes, the hand-rolled

@@ -75,7 +75,7 @@ describe("the recorded fixture", () => {
   });
 
   it("carries a week of stat lines that match the pool by id", async () => {
-    const lines = fixture.readWeeklyStats({ week: 1 });
+    const { lines } = await fixture.fetchWeeklyStats({ season: 2026, week: 1 });
     expect(lines.length).toBeGreaterThan(100);
 
     const chart = await fixture.fetchDepthChart({ season: 2026 });
@@ -87,6 +87,30 @@ describe("the recorded fixture", () => {
     // Somebody threw for something: a fixture of all zeroes would pass everything else.
     expect(lines.some((l) => l.passYards > 100)).toBe(true);
     expect(lines.some((l) => l.recYards > 40)).toBe(true);
+  });
+
+  /* The demo league is dealt past week 1, so one recorded week was not enough to press
+   * the button against - and a week the fixture does not have must come back honestly
+   * empty rather than serving whichever week it does have. */
+  it("carries every week it says it does, and nothing for one it does not", async () => {
+    const { weeks } = fixture.manifest().stats;
+    expect(weeks.length).toBeGreaterThan(1);
+    for (const week of weeks) {
+      const { lines } = await fixture.fetchWeeklyStats({ season: 2026, week });
+      expect(lines.length).toBeGreaterThan(50);
+      expect(lines.every((l) => l.week === week)).toBe(true);
+    }
+    const beyond = await fixture.fetchWeeklyStats({ season: 2026, week: Math.max(...weeks) + 1 });
+    expect(beyond.lines).toEqual([]);
+  });
+
+  it("has a Win/Tie/Loss for both teams in every recorded game", async () => {
+    const { results } = await fixture.fetchGameResults({ season: 2026, week: 1 });
+    expect(results.size).toBe(32); // every team plays in week 1
+    expect([...results.values()].every((r) => ["Win", "Tie", "Loss"].includes(r))).toBe(true);
+    expect([...results.values()].filter((r) => r === "Win").length).toBeGreaterThan(10);
+    // Keyed by the full team name the pool uses, not the abbreviation.
+    expect(results.has("Buffalo Bills")).toBe(true);
   });
 });
 

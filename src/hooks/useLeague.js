@@ -396,6 +396,22 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* Fill the stat boxes from the feed. Returns the server's report for the same reason
+   * the pool refresh does: the point of the button is not that stats arrived, it is
+   * seeing WHICH slots it filled, which it left alone because they were typed by hand,
+   * and which it had nothing for. Captured inside the queued call - see the note on
+   * refreshPlayerPool above for why reading it from the outside returns undefined. */
+  const [statsReport, setStatsReport] = useState(null);
+  const pullStats = useCallback(
+    () =>
+      immediate("pullStats", async () => {
+        const r = await store.pullStats(versions());
+        setStatsReport(r && r.ok ? (r.report ?? null) : null);
+        return r;
+      }),
+    [store, immediate]
+  );
+
   /* Correct which NFL week this period plays. League week is not NFL week (see
    * server/schedule.js), and every later week counts forward from the correction, so
    * this is normally pressed once a season rather than weekly. */
@@ -426,6 +442,7 @@ export function useLeague(store) {
     view: effectiveView,
     submittedTeamIds,
     poolReport,
+    statsReport,
     identity,
     setIdentity,
     loading,
@@ -451,6 +468,7 @@ export function useLeague(store) {
       toggleRosterLock,
       dealPeriod,
       refreshPlayerPool,
+      pullStats,
       setNflWeek,
       processSchemes,
       finalizePeriod,

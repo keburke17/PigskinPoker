@@ -148,7 +148,103 @@ export function LiveScoresBar({ state, teams }) {
   );
 }
 
-export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRosterLock, onFinalize, finalizeError }) {
+/* Pull this week's numbers off the feed.
+ *
+ * Says why it cannot rather than just sitting there greyed out - both preconditions are
+ * things the commissioner can fix in one click, and a dead button that explains nothing
+ * is how a feature gets a reputation for being broken. The server checks both again
+ * regardless; this is the explanation, not the gate.
+ */
+function PullStatsButton({ state, onPullStats }) {
+  const [busy, setBusy] = useState(false);
+  const nflWeek = (state._meta && state._meta.nflWeek) ?? null;
+  const blocked = !nflWeek
+    ? "Set this week's NFL week on the Commissioner tab first - the pull needs to know which week to ask for."
+    : !state.rosterLocked
+      ? "Lock the rosters first, so the numbers cannot end up on a different player."
+      : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+      <button
+        className="pp-btn pp-btn-gold"
+        disabled={!!blocked || busy}
+        title={blocked || "Fills every starter's boxes from NFL week " + nflWeek}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onPullStats();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Reading the feed..." : "Pull Stats"}
+      </button>
+      {blocked ? <span className="pp-sub" style={{ maxWidth: 260, textAlign: "right" }}>{blocked}</span> : null}
+    </div>
+  );
+}
+
+/* What the pull did, and - the part that matters - what it deliberately did not do.
+ *
+ * A button that silently filled in six boxes per team would be worth less than typing
+ * them, because nobody could tell which numbers came from where. This says which slots
+ * it filled, which it left alone because they were typed by hand, and which it had
+ * nothing for at all. See docs/PHASE-4-PLAN.md section 7, stage 6 - the persistent
+ * "the feed says 91, you set 84" beside each box builds on this.
+ */
+export function StatsPullReport({ report }) {
+  if (!report) return null;
+  const { filled = [], kept = [], keptAgreeing = 0, missing = [], nflWeek } = report;
+  const when = report.at ? String(report.at).replace("T", " ").replace(/\..*/, " UTC") : "just now";
+  return (
+    <div className="pp-card pp-card-tight">
+      <h3 className="pp-h3">What the pull filled in</h3>
+      <p className="pp-sub">NFL week {nflWeek}, read {when}.</p>
+      <ul className="pp-rule-list">
+        <li>{filled.length} stat line{filled.length === 1 ? "" : "s"} filled in from the feed.</li>
+        {keptAgreeing > 0 ? <li>{keptAgreeing} of yours left as they were - the feed agrees with them.</li> : null}
+      </ul>
+      {kept.length > 0 && (
+        <>
+          <p className="pp-sub" style={{ marginBottom: 4 }}>
+            <strong>Left alone - yours, not the feed's</strong>
+          </p>
+          <ul className="pp-rule-list">
+            {kept.slice(0, 12).map((k, i) => (
+              <li key={i}>
+                {k.team} {k.slot} ({k.player}) - {k.differences
+                  .map((d) => "you have " + (d.label || d.field) + " " + (d.yours ?? "blank") + ", the feed says " + d.feed)
+                  .join("; ")}.
+              </li>
+            ))}
+            {kept.length > 12 ? <li>...and {kept.length - 12} more.</li> : null}
+          </ul>
+        </>
+      )}
+      {missing.length > 0 && (
+        <>
+          <p className="pp-sub" style={{ marginBottom: 4 }}>
+            <strong>The feed had nothing for these</strong>
+          </p>
+          <ul className="pp-rule-list">
+            {missing.slice(0, 12).map((m, i) => (
+              <li key={i}>{m.team} {m.slot}{m.player ? " (" + m.player + ")" : ""} - {m.why}.</li>
+            ))}
+            {missing.length > 12 ? <li>...and {missing.length - 12} more.</li> : null}
+          </ul>
+          <p className="pp-sub">
+            They are left blank, which scores zero - the same as a starter who did not
+            play. If a game has not finished yet, pull again once it has.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRosterLock, onFinalize, finalizeError, onPullStats, statsReport }) {
   const teamsForPeriod = state.currentPeriod.type === "playoff"
     ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id))
     : state.teams;
@@ -166,6 +262,7 @@ export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRost
               <p className="pp-sub">Enter stats for each starter, then finalize the {state.currentPeriod.type === "playoff" ? "round" : "week"} once everyone's in.</p>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
+              {onPullStats ? <PullStatsButton state={state} onPullStats={onPullStats} /> : null}
               <button className={"pp-btn " + (state.rosterLocked ? "pp-btn-danger" : "")} onClick={onToggleRosterLock}>
                 {state.rosterLocked ? "Unlock Rosters" : "Lock Rosters for the Weekend"}
               </button>
@@ -175,6 +272,7 @@ export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRost
           {finalizeError ? <ErrorBanner message={finalizeError} /> : null}
         </div>
       )}
+      {isCommissioner ? <StatsPullReport report={statsReport} /> : null}
       <LiveScoresBar state={state} teams={teamsForPeriod} />
       {teamsForPeriod.map((team) => (
         <div key={team.id} className="pp-card">
