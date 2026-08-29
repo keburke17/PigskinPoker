@@ -339,3 +339,62 @@ export function buildPool({ depthPlayers, coaches }) {
 
   return { players: wanted, gaps };
 }
+
+/* --------------------------------------------------------- weekly stats -- */
+
+/* Per-player, per-week stat lines. Same project and the same `gsis_id` the depth charts
+ * carry, which is the whole reason for choosing nflverse. */
+export const WEEKLY_STATS_URL = (season) =>
+  "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_" +
+  season +
+  ".csv";
+
+/* The columns this project reads, out of the ~100 the file carries. Passing, rushing and
+ * receiving only: returns, two-point conversions and fumble-recovery touchdowns score
+ * nothing (OQ-4c), so they are not even carried. */
+export const STATS_COLUMNS = [
+  "player_id", "player_display_name", "position", "team", "season", "week", "season_type",
+  "passing_yards", "passing_tds", "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds",
+];
+
+const statNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * One week's stat lines, in the shape the six split columns want.
+ *
+ * PARSING ONLY, no fetch. Stage 5 decides how the file is read - whole, ranged, or
+ * cached - and that is a measurement to make against the real file rather than a
+ * default to pick here; the pool refresh has already taught this project what an
+ * unmeasured request inside a handler costs. Meanwhile this is testable against the
+ * recorded fixture, which is the only stat data that exists before the season starts.
+ *
+ * A player who did not play is simply absent from the file. That is the same thing as
+ * zero under Scott's answer to OQ-4c, and it is the caller's job to say so.
+ */
+export function parseWeeklyStats(text, { week } = {}) {
+  const wanted = week == null ? null : String(week);
+  const out = [];
+  for (const r of parseCsv(text)) {
+    if (wanted !== null && String(r.week) !== wanted) continue;
+    if (r.season_type && r.season_type !== "REG") continue;
+    if (!r.player_id) continue;
+    out.push({
+      gsis: r.player_id,
+      name: r.player_display_name,
+      position: r.position,
+      teamAbbr: r.team,
+      season: Number(r.season),
+      week: Number(r.week),
+      passYards: statNum(r.passing_yards),
+      passTds: statNum(r.passing_tds),
+      rushYards: statNum(r.rushing_yards),
+      rushTds: statNum(r.rushing_tds),
+      recYards: statNum(r.receiving_yards),
+      recTds: statNum(r.receiving_tds),
+    });
+  }
+  return out;
+}

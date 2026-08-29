@@ -22,6 +22,7 @@ import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
+import { selectFeed } from "./feed/index.js";
 import {
   dealRosters,
   finalizeCurrentPeriod,
@@ -881,8 +882,9 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
 
   let snapshot;
   try {
-    // `feed` is injected by tests; production uses the real nflverse module.
-    const source = feed || (await import("./feed/nflverse.js"));
+    /* `feed` is injected by tests. Otherwise the environment chooses, and it can only
+     * ever choose the recorded fixture against a local database - see server/feed/index.js. */
+    const source = feed || (await selectFeed());
     const [chart, coachData] = await Promise.all([
       source.fetchDepthChart({ season }),
       source.fetchHeadCoaches({ season }),

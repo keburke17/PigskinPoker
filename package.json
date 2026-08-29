@@ -16,6 +16,7 @@
     "seed:generate": "node scripts/generate-seed.mjs",
     "pool:sql": "node scripts/generate-pool-migration.mjs",
     "pool:sql:feed": "node scripts/generate-pool-migration.mjs --from-feed",
+    "feed:record": "node scripts/record-feed-fixture.mjs",
     "seed:accounts": "node scripts/seed-accounts.mjs",
     "db:reset": "supabase db reset && node scripts/seed-accounts.mjs",
     "db:push": "supabase db push && node scripts/verify-grants.mjs",

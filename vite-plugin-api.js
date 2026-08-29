@@ -17,7 +17,7 @@ export function apiPlugin() {
     configureServer(server) {
       const env = loadEnv(server.config.mode, process.cwd(), "");
       // Make the non-VITE_ variables visible to the handler, in this process only.
-      for (const k of ["SUPABASE_URL", "SUPABASE_SECRET_KEY"]) {
+      for (const k of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "PIGSKIN_FEED"]) {
         if (env[k] && !process.env[k]) process.env[k] = env[k];
       }
 

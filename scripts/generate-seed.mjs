@@ -15,6 +15,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDemoLeague } from "../src/storage/demoLeague.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
+import { buildPool, fetchDepthChart, fetchHeadCoaches } from "../server/feed/fixture.js";
+import { normalizeName } from "../server/pool.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "supabase", "seed.sql");
@@ -59,6 +61,59 @@ const rows = decomposeLeague(state, {
   leagueKey: DEMO_LEAGUE_KEY,
   year: DEMO_YEAR,
 });
+
+/* ---------- what the pool refresh will find here ----------
+ *
+ * A freshly reset demo league used to have every player row identical: source 'seed',
+ * status_source 'default', nothing the feed had ever said. Pressing Refresh against it
+ * produced one enormous undifferentiated diff, and the screens that exist to show
+ * DISAGREEMENT had nothing to show - so the interesting cases could only be tested by
+ * editing rows by hand first, which nobody does twice.
+ *
+ * These three rows are chosen against the RECORDED fixture (server/feed/fixture/), so
+ * they mean the same thing on every machine and after every reset. Derived rather than
+ * hard-coded by name: re-recording the fixture re-picks them instead of quietly making
+ * the scenario meaningless.
+ */
+const feedChart = await fetchDepthChart({ season: DEMO_YEAR });
+const feedCoaches = await fetchHeadCoaches({ season: DEMO_YEAR });
+const feedPool = buildPool({
+  depthPlayers: feedChart.players,
+  coaches: feedCoaches.coaches,
+}).players;
+const feedKeys = new Set(feedPool.map((p) => normalizeName(p.name) + "|" + p.position));
+const keyOf = (r) => normalizeName(r.name) + "|" + r.position;
+
+/* Columns decompose does not write, spelled out on EVERY row: insertStatement takes its
+ * column list from the first row, so a key that exists on only some of them would be
+ * dropped from the statement entirely. */
+rows.players = rows.players.map((r) => ({
+  ...r, depth_rank: null, feed_status: null, feed_updated_at: null,
+}));
+
+const scenarios = [];
+const scenario = (row, patch, why) => {
+  if (!row) return;
+  Object.assign(row, patch);
+  scenarios.push("  " + (row.name + " (" + row.position + ")").padEnd(34) + why);
+};
+const claimed = rows.players.filter((r) => r.position !== "Coach" && feedKeys.has(keyOf(r)));
+const unclaimed = rows.players.filter((r) => r.position !== "Coach" && !feedKeys.has(keyOf(r)));
+
+scenario(claimed[0], { status: "OUT", status_source: "manual" },
+  "OUT by hand, still starting per the feed - the disagreement");
+scenario(unclaimed[0], { source: "manual" },
+  "added by hand - a refresh must never retire him");
+scenario(unclaimed[1], {
+  status: "OUT", status_source: "feed", feed_status: "OUT", feed_updated_at: feedChart.snapshotAt,
+}, "already retired BY the feed - a second refresh leaves him alone");
+
+/* League week is not NFL week, and nothing writes the mapping yet (stage 3). The demo
+ * league opens on week 1, so here they coincide - which is what lets a stats pull ask
+ * the fixture for a week and get an answer. */
+rows.periods = rows.periods.map((r) => ({
+  ...r, nfl_week: r.type === "week" ? r.number : null,
+}));
 
 const ORDER = [
   "leagues", "seasons", "teams", "players", "periods",
@@ -170,3 +225,6 @@ for (const t of ORDER) {
   const n = rows[t]?.length ?? 0;
   if (n) console.log("  " + String(n).padStart(4) + "  " + t);
 }
+
+console.log("\nPool scenarios a refresh will meet (from the recorded fixture):");
+for (const line of scenarios) console.log(line);

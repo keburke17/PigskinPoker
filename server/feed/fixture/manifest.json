@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-08-29T18:21:53.118Z",
+  "season": 2026,
+  "depthChartSnapshotAt": "2026-08-29T12:56:08Z",
+  "depthChartRows": 3260,
+  "poolPlayers": 224,
+  "poolGaps": 0,
+  "coachSeason": "2026",
+  "stats": {
+    "source": "stats_player_week_2025.csv",
+    "sourceSeason": 2025,
+    "sourceWeek": 1,
+    "relabelledTo": {
+      "season": 2026,
+      "week": 1
+    },
+    "rows": 163
+  }
+}

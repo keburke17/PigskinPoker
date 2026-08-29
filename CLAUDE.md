@@ -65,7 +65,7 @@ be able to say "save this" or "put it live" and have it happen.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **302 passed, 1 skipped, 18 files**. If the output says
+2. `npm test` before committing: **317 passed, 1 skipped, 19 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -182,6 +182,26 @@ The **one** concession is `rng.js`: functions needing randomness take an `rng` p
 defaulting to `Math.random`. That is what makes tests deterministic and lets the server
 store a seed so a week can be replayed.
 
+### The feed is recorded locally, live in production
+
+`npm run dev` reads the pool from `server/feed/fixture/` - a committed snapshot of the
+nflverse depth charts - not from the network. Two reasons:
+
+- **Determinism.** Against the live feed a refresh retires whoever the depth chart moved
+  this morning, so nothing about it can be asserted, and the demo league's seeded
+  provenance cases (a status set by hand, a player added by hand, a player the feed has
+  already retired) would drift out of meaning.
+- **The stats half does not exist yet.** `stats_player_week_2026.csv` is a 404 until games
+  are played, so a recorded past week is the only stat data there is to build against.
+  Those lines are real numbers from a real week, relabelled - see the README in that
+  directory, which is emphatic about what they are not.
+
+`server/feed/index.js` chooses. `PIGSKIN_FEED=fixture` asks for the recording, and it is
+honoured **only when the database is local** - a fixture served in production would freeze
+a league's pool and report success, so the variable alone is deliberately not enough.
+`npm run dev` writes the variable, says which feed it picked, and `PIGSKIN_FEED=live` in
+`.env.local` switches back. Re-record with `npm run feed:record`.
+
 ### The storage boundary
 
 Nothing outside `src/storage/` knows how data is persisted. There is no `window.storage`
@@ -251,7 +271,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-302 tests. Three groups worth knowing about:
+317 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -260,7 +280,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 110 of the 302
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 114 of the 317
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
