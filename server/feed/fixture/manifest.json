@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-08-29T18:21:53.118Z",
+  "recordedAt": "2026-08-29T21:47:06.195Z",
   "season": 2026,
   "depthChartSnapshotAt": "2026-08-29T12:56:08Z",
   "depthChartRows": 3260,
@@ -9,11 +9,29 @@
   "stats": {
     "source": "stats_player_week_2025.csv",
     "sourceSeason": 2025,
-    "sourceWeek": 1,
+    "weeks": [
+      1,
+      2,
+      3,
+      4
+    ],
     "relabelledTo": {
-      "season": 2026,
-      "week": 1
+      "season": 2026
     },
-    "rows": 163
+    "rows": 632
+  },
+  "results": {
+    "source": "games.csv",
+    "sourceSeason": 2025,
+    "weeks": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "relabelledTo": {
+      "season": 2026
+    },
+    "rows": 64
   }
 }

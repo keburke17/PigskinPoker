@@ -1123,3 +1123,97 @@ infrastructure. `stats_player_week_2026.csv` is still a 404, so stage 5 is built
 against the recorded fixture - which is what it was recorded for.
 
 `npm test`: **334 passed, 1 skipped, 20 files** with the local stack up.
+
+<!-- stage 3's entry ends here; stage 5 follows. -->
+
+---
+
+## Phase 4 stage 5 - the stats pull (2026-08-29)
+
+The Sunday-night payoff. A commissioner presses **Pull Stats** on the Live Stats screen
+and every starter's boxes fill in from one NFL week of the nflverse feed.
+
+**No migration.** The `feed_*` mirror columns went in with the scoring split the day
+before precisely so this stage would not need one, and they did.
+
+### The rule, and where it lives
+
+`server/stats.js`, pure and free of I/O for the same reason `server/pool.js` is - and it
+is the same rule, because it is the same promise:
+
+> **A pull may write its own work and nothing a person typed.**
+
+`stat_lines.source` says who last set a line. `'feed'` is the pull's own and it may
+correct it; `'manual'` is the commissioner's and is never overwritten. The `feed_*`
+mirrors are written **either way**, so "the feed says 91, you set 84" is available
+whether or not anybody has typed over the numbers - which is what stage 6 renders beside
+each box.
+
+### Two identity spaces, deliberately
+
+A skill player is matched on `gsis`, the id the depth charts and the stats file share,
+and never on name: a wrong number that looks right is the worst outcome available here.
+A head coach has no player id at all, so the Coach slot resolves **by team** - which also
+means a team that changed coach mid-season still scores off the right game.
+
+### An unplayed game is not a tie
+
+`games.csv` carries the whole schedule from the day it is published with the score
+columns empty, and `Number("")` is `0`. Read as a number, a blank would have given every
+coach in the league a tie on Saturday morning. Absent from the results map means "no
+result yet", and the pull reports it rather than writing it.
+
+### A player the feed has nothing for is left blank, not zeroed
+
+Scott's answer to OQ-4c is that a starter who does not play scores zero, and a blank
+already scores zero - so writing an explicit `0` would claim the feed reported one. On a
+Sunday afternoon with half the games still to kick off that is a different statement.
+The report names those slots instead, and says which kind of nothing it was: a bye, a
+game not finished, or a player with no provider id.
+
+### Three things this turned up
+
+**A batched upsert is not a faster loop.** PostgREST builds ONE insert statement whose
+column list is the union of the keys across the batch - so the moment any row carried
+`id`, every new row beside it was sent an explicit NULL and `default gen_random_uuid()`
+never ran. It fails loudly (not-null violation) rather than corrupting anything, but only
+once a pull has both new and existing lines in it, which is every pull after the first.
+`statWriteRows` mints the ids. **Same shape as the bug `poolWriteRows` documents, and the
+second time on this project** - which is why it is written down in both places.
+
+**The demo league had no provider ids at all.** Its pool is the artifact's hand-typed one,
+so every skill slot came back "no provider id" and the button looked broken locally.
+`scripts/generate-seed.mjs` now attaches the recorded feed's ids by name, matching the
+same pool the provenance scenarios are derived from. That is also what really happens:
+`player_pool` was rebuilt from the feed with ids on it and `copy_player_pool_into` carries
+them into a new league. A pull against a league whose pool has never been refreshed still
+reports exactly that, and says to refresh it.
+
+**A pre-split line cannot be compared field by field.** The demo league's week 2 lines are
+the old combined shape, so comparing column by column reported six disagreements ("you
+have passing yards blank, the feed says 295") about a line that was filled in perfectly
+well. It is said once, on totals, and only when the totals actually differ. Only
+historical rows and the seed reach this; nothing written since 2026-08-28 has the shape.
+
+### The fixture grew
+
+One recorded week was not enough - the demo league is dealt past week 1, so a pull asked
+for a week the recording did not have and got an empty answer that looked like a fault.
+`npm run feed:record` now takes `--stats-weeks` (default `1-4`) and also records
+`results-week.csv`, a few weeks of finished games for the Coach slot. **Weeks outside the
+recorded range still come back empty on purpose:** that is what the live feed does before
+a game is played, so the "nothing for this week yet" path is reachable locally instead of
+existing only in production.
+
+### Refusals, each leaving the week exactly as it was
+
+- **an unmapped period** - a pull needs a week of football to ask for, and guessing one
+  would write another week's numbers into this one;
+- **unlocked rosters** - the same rule `setStatLine` enforces (OQ-E): stats are keyed by
+  slot, so a lineup change after a pull would move the numbers to a different player;
+- **a feed that is down, late, or 404** - which before the season's first game is the
+  ordinary state of affairs rather than a fault, and the message says so.
+
+Nothing here finalizes anything. The week still ends when the commissioner says it does.
+
+`npm test`: **365 passed, 1 skipped, 21 files** with the local stack up.

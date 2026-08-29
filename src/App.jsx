@@ -67,6 +67,7 @@ export default function App() {
     view: state,
     submittedTeamIds,
     poolReport,
+    statsReport,
     identity,
     setIdentity,
     loading,
@@ -269,6 +270,7 @@ export default function App() {
   /* ---- commissioner: the weekly cycle ---- */
   const onDeal = () => ops.dealPeriod();
   const onRefreshPool = () => ops.refreshPlayerPool();
+  const onPullStats = () => ops.pullStats();
   const onSetNflWeek = (week) => ops.setNflWeek(week);
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
@@ -620,6 +622,7 @@ export default function App() {
               state={state} isCommissioner={isCommissioner}
               onStatChange={onStatChange} onToggleRosterLock={onToggleRosterLock}
               onFinalize={onFinalize} finalizeError={finalizeError}
+              onPullStats={onPullStats} statsReport={statsReport}
             />
           )}
           {tab === "results" && <WeeklyResultsTab state={state} />}

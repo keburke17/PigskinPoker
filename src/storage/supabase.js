@@ -402,6 +402,10 @@ export function createSupabaseStore(config) {
     startPlayoffs: (bracketSize, advancement) => call("startPlayoffs", { bracketSize, advancement }),
     refreshPlayerPool: (expect) => call("refreshPlayerPool", { expect }),
 
+    /* Fill this week's stat lines from the feed. Manual entries are never overwritten -
+     * the server decides that, not this call. */
+    pullStats: (expect) => call("pullStats", { expect }),
+
     /* Which NFL week this league period plays. Correctable because league week is not
      * NFL week - see server/schedule.js. Null unmaps it. */
     setNflWeek: (nflWeek, expect) => call("setNflWeek", { nflWeek, expect }),

@@ -22,7 +22,9 @@ import {
   buildPool,
   fetchDepthChart as fetchDepthChartFrom,
   fetchHeadCoaches as fetchHeadCoachesFrom,
+  parseCsv,
   parseWeeklyStats,
+  resultsFromGames,
 } from "./nflverse.js";
 
 export const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixture");
@@ -45,9 +47,42 @@ export async function fetchHeadCoaches({ season } = {}) {
   return fetchHeadCoachesFrom({ season, fetchImpl: fileFetch("games.csv") });
 }
 
-/** The recorded week's stat lines. Stage 5's fetch does not exist yet; this does. */
-export function readWeeklyStats({ week } = {}) {
-  return parseWeeklyStats(read("stats-week.csv"), { week });
+/**
+ * The recorded weeks' stat lines. Same signature and same return shape as the live
+ * `fetchWeeklyStats`, so `pullStats` calls one or the other without knowing which.
+ *
+ * A WEEK THAT WAS NOT RECORDED COMES BACK EMPTY, and that is deliberate rather than a
+ * limitation to work around: it is exactly what the live feed does before a game is
+ * played, so the "the feed has nothing for this week yet" path is reachable locally
+ * instead of existing only in production. `manifest().stats.weeks` says which weeks are
+ * real. Serving the one recorded week whatever was asked for would answer a different
+ * question than the one put to it - the same mistake feed/index.js refuses to make
+ * about production.
+ */
+export async function fetchWeeklyStats({ season, week } = {}) {
+  return {
+    season,
+    week: Number(week),
+    lines: parseWeeklyStats(read("stats-week.csv"), { week }),
+    stoppedEarly: false,
+  };
+}
+
+/**
+ * The recorded weeks' game results, for the Coach slot.
+ *
+ * Recorded separately from `games.csv` because those two files answer different
+ * questions here: games.csv holds THIS season's schedule, which is where the head
+ * coaches come from and which has no scores in it before the season starts, while this
+ * holds a real past week's finished games relabelled to the fixture season. Matched by
+ * team, so a team that has changed coach since still resolves.
+ */
+export async function fetchGameResults({ season, week } = {}) {
+  return {
+    season,
+    week: Number(week),
+    results: resultsFromGames(parseCsv(read("results-week.csv")), { season, week }),
+  };
 }
 
 export { buildPool };
