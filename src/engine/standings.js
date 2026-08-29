@@ -6,7 +6,7 @@
 import { defaultRng } from "./rng.js";
 import { deepClone, emptyCumulative, nowStamp, periodLabel, uid } from "./helpers.js";
 import { getPlayer } from "./state.js";
-import { computeStarterPoints, currentStandingsPointsArray } from "./scoring.js";
+import { computeStarterPoints, currentStandingsPointsArray, statLineTotals } from "./scoring.js";
 import { ICON, STARTER_SLOTS } from "./constants.js";
 
 /**
@@ -79,8 +79,11 @@ export function finalizeCurrentPeriod(state, rng = defaultRng) {
       if (player && player.position === "Coach") {
         coachResult = line ? line.result : null;
       } else if (line) {
-        tds += Number(line.tds) || 0;
-        yards += Number(line.yards) || 0;
+        /* Combined across every category, so the "Total TDs" and "Total Yards"
+         * tiebreakers keep the meaning they had before the 2026-08-28 split. */
+        const totals = statLineTotals(line);
+        tds += totals.tds;
+        yards += totals.yards;
       }
       if (player && (!bestThisPeriod || pts > bestThisPeriod.points)) {
         bestThisPeriod = { name: player.name, position: player.position, points: pts };

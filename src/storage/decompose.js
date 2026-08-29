@@ -18,6 +18,7 @@
  */
 
 import { stableUuid } from "./ids.js";
+import { splitColumnsFor } from "./statLine.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -38,9 +39,12 @@ const periodKey = (p) => p.type + "-" + p.number;
  * @param {object} opts
  * @param {string} opts.leagueKey   stable key for the league (e.g. 'demo')
  * @param {number} opts.year        season year
+ * @param {string} [opts.newPlayerSource] 'seed' (default) for generated/restored pools a
+ *   refresh may replace; 'manual' when a person is adding the player, which makes the
+ *   pool refresh leave it alone forever.
  */
 export function decomposeLeague(state, opts) {
-  const { leagueKey, year, existing } = opts;
+  const { leagueKey, year, existing, newPlayerSource = "seed" } = opts;
   const ns = (kind) => leagueKey + ":" + kind;
   const uid = (kind, key) => stableUuid(ns(kind), key);
 
@@ -67,6 +71,7 @@ export function decomposeLeague(state, opts) {
     season: new Map((prev.seasons ?? []).map((s) => [String(s.year), s.id])),
     team: new Map((prev.teams ?? []).map((t) => [t.legacy_id, t.id])),
     player: new Map((prev.players ?? []).map((p) => [p.legacy_id, p.id])),
+    playerRow: new Map((prev.players ?? []).map((p) => [p.legacy_id, p])),
     period: new Map((prev.periods ?? []).map((p) => [p.type + "-" + p.number, p.id])),
     totals: new Map(
       (prev.team_totals ?? []).map((t) => [uuidToTeamLegacy.get(t.team_id) + ":" + t.scope, t.id])
@@ -102,6 +107,7 @@ export function decomposeLeague(state, opts) {
   const seasonId = known.season.get(String(year)) ?? uid("season", String(year));
   const teamId = (legacy) => known.team.get(legacy) ?? uid("team", legacy);
   const playerId = (legacy) => known.player.get(legacy) ?? uid("player", legacy);
+  const knownPlayerRow = known.playerRow;
   const periodId = (p) => known.period.get(periodKey(p)) ?? uid("period", periodKey(p));
 
   const out = {
@@ -167,8 +173,21 @@ export function decomposeLeague(state, opts) {
     out.team_totals.push(totals(t.playoffCumulative, "playoff"));
   });
 
-  /* ---- players ---- */
+  /* ---- players ----
+   *
+   * THIS PATH IS THE HUMAN ONE. A blob write only ever comes from the commissioner's own
+   * screens; the pool refresh writes through server/operations.js and never through here.
+   * So a status that differs from the row already in the database is, by construction, a
+   * decision somebody made - and it is recorded as such, which is what stops the next
+   * refresh from quietly putting it back. Found by setting a player OUT in the running
+   * app on 2026-08-28 and watching the feed's rule fail to protect it.
+   *
+   * `newPlayerSource` distinguishes the two callers that create players from nothing:
+   * the demo seed generator (rows that a refresh may replace) from a commissioner adding
+   * a player by hand (rows it must never touch). */
   state.playerPool.forEach((p) => {
+    const before = knownPlayerRow.get(p.id);
+    const statusChanged = before ? before.status !== p.status : false;
     out.players.push({
       id: playerId(p.id),
       league_id: leagueId,
@@ -176,7 +195,14 @@ export function decomposeLeague(state, opts) {
       position: p.position,
       nfl_team: p.team,
       status: p.status,
-      external_ids: {},
+      source: before ? before.source : newPlayerSource,
+      status_source: statusChanged ? "manual" : (before?.status_source ?? "default"),
+      /* PRESERVED, NOT RESET. The app-state blob has no field for a player's provider
+       * ids, so writing `{}` here - as this did until 2026-08-28 - silently cleared
+       * them on every ordinary pool edit, and the next stats pull would have had
+       * nothing to match on. They are carried forward from the row already in the
+       * database instead. A genuinely new player has none yet, which is correct. */
+      external_ids: knownPlayerRow.get(p.id)?.external_ids ?? {},
       legacy_id: p.id,
       active: true,
     });
@@ -291,6 +317,12 @@ export function decomposeLeague(state, opts) {
         player_id: legacyPid ? playerId(legacyPid) : null,
         // The artifact stored yards/tds as STRINGS straight off the input element.
         // They become real integers here; "" becomes null, not 0.
+        //
+        // Both shapes are carried: the six per-category columns for anything entered
+        // since the 2026-08-28 split, and the combined pair for anything recorded
+        // before it. A line only ever has one or the other - the entry UI drops the
+        // combined keys the moment a category is typed into.
+        ...splitColumnsFor(line),
         yards: num(line.yards),
         tds: num(line.tds),
         coach_result: line.result ?? null,

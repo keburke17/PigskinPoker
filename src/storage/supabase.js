@@ -400,6 +400,7 @@ export function createSupabaseStore(config) {
     processSchemes: (expect) => call("processSchemes", { expect }),
     finalizePeriod: (expect) => call("finalizePeriod", { expect }),
     startPlayoffs: (bracketSize, advancement) => call("startPlayoffs", { bracketSize, advancement }),
+    refreshPlayerPool: (expect) => call("refreshPlayerPool", { expect }),
 
     async mutateLeague(fn) {
       const view = await readView();

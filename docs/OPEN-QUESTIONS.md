@@ -23,6 +23,12 @@ Each has a recommendation so you have something to say yes or no to.
 > code is confirmed a testing artefact and retires with league creation.
 > **The season archive (OQ-2's other half) is held for the original designer**, not built
 > this phase. See `docs/PHASE-3-PLAN.md`.
+>
+> **Answered 2026-08-28, scoping Phase 4 with Scott:** OQ-4c **yards and touchdowns split
+> into passing / rushing / receiving**, each with its own customizable rate - and OQ-4b
+> **the pool was typed out of necessity; rebuild it from live NFL starters**. Both are
+> recorded in full below and planned in `docs/PHASE-4-PLAN.md`. **OQ-4c is a real rules
+> change**, the first in the port; nothing already on the board moves.
 
 ---
 
@@ -81,7 +87,51 @@ which players are in the game? "Curated on purpose" and "typed out of necessity"
 different Phase 4s - the first keeps a hand-maintained list that a feed only enriches, the
 second replaces it wholesale.
 
-### OQ-4c. What counts as "yards"? *(new 2026-08-23 - blocks the stats feed)*
+**OQ-4b answered 2026-08-28: typed out of necessity - rebuild it.** Scott wants the pool to
+be the league's current starters and to track injuries and depth-chart moves: "I need this
+game to have the current and most up to date rosters to combat injuries and depth chart
+changes, however for roster dealing purposes, I only want relevant starters in the game."
+
+Per NFL team that means **1 QB, 2 RB, 2 WR, 1 TE, 1 head coach** - 224 rows, against 223 in
+the hand-typed pool today, so dealing is unaffected. Two backs because of 1A/1B backfields;
+deliberately no WR3s and no second tight ends. The commissioner keeps every manual override
+he has now, and a refresh never overwrites one. Refreshes are commissioner-pressed and never
+mid-week: a player who stops being a starter finishes the week and is simply absent from the
+next deal.
+
+`src/data/teamRows.js` **does not move** - `tests/parity.test.js` replays dealing against it,
+so it becomes a test fixture rather than the live pool. Full plan in `docs/PHASE-4-PLAN.md`.
+
+### OQ-4c. What counts as "yards"? **[ANSWERED 2026-08-28: split into three categories]**
+
+> **Scott's answer, 2026-08-28.** One yards box becomes three, and one touchdown value
+> becomes three, each customizable exactly as `yardsPerPoint` is today:
+>
+> | | Rate | Touchdown |
+> |---|---|---|
+> | Passing | 1 point per **25** yards | **4** |
+> | Rushing | 1 point per **10** yards | **6** |
+> | Receiving | 1 point per **10** yards | **6** |
+>
+> - **Return yards, two-point conversions and fumble-recovery touchdowns do not count** -
+>   neither the yards nor the scores.
+> - **A starter who does not play scores zero**, not a blank. Same bad break as starting
+>   any inactive player.
+> - **It takes effect next week, mid-season.** Weeks already finalized keep the scores they
+>   were given, so the rest of this season's standings are part old-scoring, part new.
+>
+> Why he chose it, in his words: under one rate for every position a quarterback "would
+> make the position dominant and protected or stolen almost every time." A 300-yard, 3-TD
+> passing day drops from 45 points to 24; a 120-yard, 1-TD receiver goes from 17 to 18.
+>
+> **This is a genuine rules change** - the first deliberate one since the port - and the
+> whole build plan is `docs/PHASE-4-PLAN.md`. It does not renumber anything already played:
+> old stat lines hold one combined yards figure that cannot be split after the fact, so they
+> keep being scored the way they were entered, which is also what keeps
+> `tests/parity.test.js` green.
+
+The original question, kept for the reasoning:
+
 
 Nowhere in the app - not in the rules screen, not in the code, not in the original
 artifact - does anything say *which* yards go in the Yards box. The rules say "1 point per
@@ -432,8 +482,8 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | **OQ-E** reject stat writes while unlocked | **Done (Phase 3a)** | Enforced in `setStatLine`. Same conversation as OQ-B; it is his rule to confirm. |
 | **OQ-6** notifications | Phase 3c | Now nearly free: magic-link sign-in needs the same SMTP provider notifications would. |
 | **league visibility** (new, from OQ-10) | Phase 3d | Members-only or link-public, per league. Recommended: a setting, defaulting to members-only, with the existing league set public so nothing changes for it. |
-| **OQ-4c** what counts as "yards"? | **Phase 4 - blocks it entirely** | Nothing else about a stats feed can be built or tested until the number is defined. `docs/LIVE-DATA.md`. |
-| **OQ-4b** is `TEAM_ROWS` curated or typed? | Phase 4 | Decides whether a feed enriches the pool or replaces it. |
+| **OQ-4c** what counts as "yards"? | **Done - answered 2026-08-28** | Split into passing / rushing / receiving, each customizable. A rules change; built in `docs/PHASE-4-PLAN.md` stage 1. |
+| **OQ-4b** is `TEAM_ROWS` curated or typed? | **Done - answered 2026-08-28** | Typed out of necessity. The pool is rebuilt from live starters; `teamRows.js` becomes a test fixture. |
 | **OQ-3** history depth | Phase 2 | Schema already preserves it; this is about what we surface. |
 | **OQ-C / OQ-D / OQ-E** rules quirks | Anytime | All preserved as-is; each is a small, reversible behaviour question. |
 | **OQ-F** per-slot vs. per-player locks | Anytime | Behaviour-preserving; noted so it is not discovered later. |
@@ -446,10 +496,15 @@ agenda for that conversation.
 accounts, an `invites` table replacing `team_secrets`, league-scoped read policies, and a
 landing page with three doors (sign in / redeem a code / create a league).
 
-**The standing agenda for the designer is now OQ-A, OQ-B, OQ-E and OQ-4c**, plus the
-season archive, which is held for him rather than built.
+**The standing agenda for the designer is now OQ-A, OQ-B and OQ-E**, plus the season
+archive, which is held for him rather than built.
 
-**OQ-4c is the newest and the only one that blocks work.** Scoping a stats feed on
-2026-08-23 turned up the fact that the app has never defined which yards go in the
-Yards box - manual entry meant it never had to. The plan that waits on the answer is
-`docs/LIVE-DATA.md`; nothing in it is started.
+**OQ-4c and OQ-4b were answered on 2026-08-28 and no longer block anything.** Yards and
+touchdowns split into passing / rushing / receiving at customizable rates, and the player
+pool is rebuilt from current NFL starters. Both are recorded above and planned in
+`docs/PHASE-4-PLAN.md`, which supersedes `docs/LIVE-DATA.md` as the thing to build from;
+`LIVE-DATA.md` remains the provider survey and the reasoning behind the choice.
+
+Five smaller questions came out of answering those two, and are listed in
+`PHASE-4-PLAN.md` section 8 - the biggest is how the "top 150-200" filter should rank
+players.

@@ -12,6 +12,14 @@ be answered before any of it can be built.
 Written 2026-08-23, scoping the idea with Kyle. **It is deliberately not started**, because
 the central question belongs to Scott. See OQ-4c in `docs/OPEN-QUESTIONS.md`.
 
+> **Update 2026-08-28 - Scott answered, and the plan moved.** OQ-4c and OQ-4b are both
+> settled: yards and touchdowns split into passing / rushing / receiving at customizable
+> rates, and the hand-typed pool is rebuilt from current NFL starters. **Build from
+> `docs/PHASE-4-PLAN.md`**, which carries the decisions, the staging and the migrations.
+> This file stays as the provider survey and the reasoning behind choosing nflverse -
+> sections 3 and 8 below are the questions that were open, kept for the argument in them,
+> not for their answers.
+
 ---
 
 ## 1. Where this stands today
@@ -158,6 +166,13 @@ before a single stat can be fetched, and it is a migration.
 | **ESPN (undocumented)** | The endpoints their own site calls | Free, no key | Live | Unsupported, undocumented, can change or close without notice |
 | **SportsDataIO** | Commercial real-time NFL feed | Paid | Live | None technically; it is a bill |
 | **FantasyPros** | Rankings, projections, news | Freemium | n/a | Projections, not results - wrong shape for this |
+
+> **Correction, 2026-08-28.** The ESPN row above is misleading by omission: **nflverse
+> sources its depth charts from ESPN.** So for the roster half of this, the two are the same
+> data, and nflverse adds cleaning plus its own player ids - the ones the weekly stats file
+> uses. Choosing ESPN directly would buy freshness and cost a second identity space to
+> reconcile. Reasoning in `docs/PHASE-4-PLAN.md` section 5.1. ESPN's depth-chart endpoint is
+> recorded there as a fallback.
 
 ### Recommendation: nflverse
 

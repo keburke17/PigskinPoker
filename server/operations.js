@@ -20,6 +20,8 @@
 
 import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
+import { splitColumnsFor } from "../src/storage/statLine.js";
+import { planPoolRefresh } from "./pool.js";
 import {
   dealRosters,
   finalizeCurrentPeriod,
@@ -55,6 +57,11 @@ const PHASE_RULES = {
   toggleSlotLock: ["schemes-processed", "stats"],
   toggleRosterLock: ["dealt", "schemes-processed", "stats"],
   finalizePeriod: ["schemes-processed", "stats"],
+  /* Pre-deal only, and that is the whole safety argument. In pre-deal no rosters exist
+   * for the week - finalize deletes them - so a refresh cannot move a player who is on
+   * somebody's team. It is also what the designer asked for: a player who stops being a
+   * starter finishes his week and is simply absent from the next deal. */
+  refreshPlayerPool: ["pre-deal"],
 };
 
 const fail = (status, error, extra = {}) => ({ status, body: { ok: false, error, ...extra } });
@@ -508,6 +515,12 @@ export async function setStatLine(db, { leagueId, token, teamId, slot, line, exp
     team_id: team.id,
     slot,
     player_id: slotRow?.player_id ?? null,
+    /* The six per-category columns, from the 2026-08-28 split (OQ-4c). The combined
+     * pair below is written as whatever the caller sent, which for anything entered
+     * through the stats screen is null - the entry UI drops the combined keys the
+     * moment a category is typed. Old rows keep the values they were entered with;
+     * nothing here converts them, because a total does not say how much was passing. */
+    ...splitColumnsFor(line),
     yards: num(line.yards),
     tds: num(line.tds),
     coach_result: line.result ?? null,
@@ -841,6 +854,91 @@ export async function startPlayoffs(db, { leagueId, token, bracketSize, advancem
 /* --------------------------- league administration ----------------------- */
 
 /** Commissioner-only, low-frequency, genuinely league-wide (teams, pool, scoring). */
+/**
+ * Rebuild the player pool from each NFL team's current starters.
+ *
+ * The designer's answer to OQ-4b: the hand-typed pool was typed out of necessity, so the
+ * pool becomes 1 QB, 2 RB, 2 WR, 1 TE and 1 head coach per team - 224 rows - and tracks
+ * depth-chart moves and injuries instead of going stale.
+ *
+ * Commissioner-pressed, pre-deal only, never automatic and never mid-week. It writes
+ * over its own work and never over a person's: see server/pool.js for that rule, which
+ * is where it is tested.
+ *
+ * Retiring means status OUT, not deletion - a deleted player would break the rosters,
+ * stat lines and results that already reference him.
+ */
+export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const bad = guard(ctx, "refreshPlayerPool", expect, []);
+  if (bad) return bad;
+
+  const season = ctx.rows.seasons[0]?.year ?? new Date().getUTCFullYear();
+
+  let snapshot;
+  try {
+    // `feed` is injected by tests; production uses the real nflverse module.
+    const source = feed || (await import("./feed/nflverse.js"));
+    const [chart, coachData] = await Promise.all([
+      source.fetchDepthChart({ season }),
+      source.fetchHeadCoaches({ season }),
+    ]);
+    snapshot = {
+      at: chart.snapshotAt,
+      ...source.buildPool({ depthPlayers: chart.players, coaches: coachData.coaches }),
+    };
+  } catch (err) {
+    /* A feed that is down, late, or has changed shape must not take the league with it.
+     * The pool is left exactly as it was and the commissioner deals from what he has. */
+    return fail(502, "Could not reach the stats feed - the pool is unchanged. " + err.message, {
+      reason: "feed",
+      view: ctx.view,
+    });
+  }
+
+  if (!snapshot.players.length) {
+    return fail(502, "The stats feed returned no players - the pool is unchanged.", {
+      reason: "feed-empty",
+      view: ctx.view,
+    });
+  }
+
+  const leaguePlayers = ctx.rows.players.filter((p) => p.league_id === leagueId);
+  const plan = planPoolRefresh({
+    existing: leaguePlayers,
+    wanted: snapshot.players,
+    at: snapshot.at,
+  });
+
+  if (plan.inserts.length) {
+    const rows = plan.inserts.map((r, i) => ({
+      ...r,
+      league_id: leagueId,
+      // legacy_id keeps the artifact-shaped view working; hydrate maps players by it.
+      legacy_id: "pf" + Date.now().toString(36) + "_" + i,
+      active: true,
+      version: 1,
+    }));
+    const { error } = await db.from("players").insert(rows);
+    if (error) return fail(500, "Adding new players failed: " + error.message);
+  }
+
+  for (const patch of plan.updates.concat(plan.retires)) {
+    const { id, ...set } = patch;
+    const { error } = await db.from("players").update(set).eq("id", id);
+    if (error) return fail(500, "Updating the pool failed: " + error.message);
+  }
+
+  return good({
+    view: hydrate(await fetchLeagueRows(db, leagueId)),
+    report: { ...plan.report, gaps: snapshot.gaps, season },
+  });
+}
+
 export async function replaceLeague(db, { leagueId, token, blob }) {
   const ctx = await context(db, leagueId, token);
   if (ctx.error) return ctx.error;
@@ -850,6 +948,9 @@ export async function replaceLeague(db, { leagueId, token, blob }) {
   await persistBlob(db, ctx.rows, blob, {
     leagueKey: ctx.rows.leagues[0].name === "Pigskin Poker (Demo League)" ? "demo" : leagueId,
     year: ctx.rows.seasons[0].year,
+    /* A player appearing through this path was added by the commissioner on his own
+     * screen, so the pool refresh must never touch him. See server/pool.js. */
+    newPlayerSource: "manual",
   });
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }

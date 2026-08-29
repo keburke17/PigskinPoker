@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { SUIT_GLYPH, formatClock, periodLabel } from "../engine/index.js";
+import { SUIT_GLYPH, formatClock, hasSplitStats, periodLabel, statLineTotals } from "../engine/index.js";
 
 export function SuitBadge({ position }) {
   return <span className={"pp-suit-badge pp-suit-" + position} title={position}>{SUIT_GLYPH[position] || "?"}</span>;
@@ -135,6 +135,22 @@ export function statLineText(state, player, line) {
   if (!player) return "";
   if (player.position === "Coach") {
     return line && line.result ? line.result : "no result entered";
+  }
+  /* Split lines read out only the categories that actually have something in them, so a
+   * receiver says "84 rec yds, 1 TD" rather than dragging six zeroes behind him. Lines
+   * recorded before the 2026-08-28 split still read the way they always did. */
+  if (hasSplitStats(line)) {
+    const parts = [];
+    const add = (v, label) => {
+      const n = Number(v) || 0;
+      if (n !== 0) parts.push(n + " " + label);
+    };
+    add(line.passYards, "pass yds");
+    add(line.rushYards, "rush yds");
+    add(line.recYards, "rec yds");
+    const tds = statLineTotals(line).tds;
+    if (tds !== 0) parts.push(tds + " TD");
+    return parts.length ? parts.join(", ") : "0 yds, 0 TD";
   }
   const yards = line && line.yards != null ? line.yards : 0;
   const tds = line && line.tds != null ? line.tds : 0;
