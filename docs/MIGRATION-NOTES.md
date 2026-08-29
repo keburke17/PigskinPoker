@@ -795,3 +795,75 @@ Worth noting the mirror image, recorded in OQ-9 the same day: write responses ca
 server-built view, so a manager who submits a scheme currently receives every rival's
 pending scheme in the reply. Server views are too wide going down, and client views too
 narrow coming back up. One boundary, two directions, both unguarded.
+
+---
+
+## Phase 4 stage 1 - the scoring split (2026-08-28)
+
+**The first deliberate change to game behaviour since the port.** Everything above this
+line preserved the artifact's rules; this one changes them, on the designer's decision.
+
+### What changed
+
+Yards and touchdowns were a single number each, converting at one rate for every
+position. They are now three of each - passing, rushing, receiving - with six
+commissioner-editable settings:
+
+| | Yards | Touchdown |
+|---|---|---|
+| Passing | 1 pt per 25 | 4 |
+| Rushing | 1 pt per 10 | 6 |
+| Receiving | 1 pt per 10 | 6 |
+
+Only those three count. Return yards, two-point conversions and fumble-recovery
+touchdowns score nothing, and a starter who does not play scores zero rather than being
+excluded. Coach scoring is untouched.
+
+### Why
+
+OQ-4c. Under one shared rate a 300-yard, 3-TD passing day was worth 45 points against a
+120-yard, 1-TD receiver's 17, so the QB slot decided most weeks and was blocked or stolen
+almost every time. The same day now scores 24 against 18. The designer's words: a
+quarterback "would make the position dominant and protected or stolen almost every time."
+
+This was never a written rule - the rules screen said "1 point per 10 yards" and stopped.
+Manual entry meant the commissioner's fingers were the specification, which only became a
+problem once a feed had to be told what to look up. See `docs/PHASE-4-PLAN.md`.
+
+### How parity survived a rules change
+
+`computeStarterPoints` has two branches. A stat line carrying any per-category value
+scores the new way; one carrying only the artifact's combined `yards` / `tds` scores the
+old way, at the old rates, which are kept in `scoringConfig` for exactly that purpose.
+
+That is not caution for its own sake - it is forced by the data. A combined total does
+not record how much of it was passing, so a row written before the split cannot be
+converted, and any backfill would be inventing numbers.
+
+The payoff is that **`tests/parity.test.js` still passes**, including both full simulated
+seasons through the playoffs to a champion, because the simulation enters combined-shape
+lines and therefore takes the frozen branch. The only recorded difference is the six new
+`scoringConfig` keys, and the test asserts that everything outside them still matches the
+artifact object-for-object. A hard cutover would have meant rewriting the safety net
+around the change instead of keeping it.
+
+`tests/scoring.test.js` (new, 20 tests) covers the per-category math.
+
+### Two consequences worth knowing
+
+**Each category floors on its own.** 15 rushing plus 15 receiving yards is 1 + 1, not 3 -
+yards at different rates cannot be summed before dividing. Under the old single box the
+same day would have been entered as 30 and scored 3. Documented on the rules screen.
+
+**The stat entry screen shows two boxes, not six.** Each position leads with the pair it
+needs (QB: passing, RB: rushing, WR/TE: receiving) and the rest open behind a "+ more"
+toggle, which auto-expands when a line already has values in them. Entering a normal week
+costs the same keystrokes it always did.
+
+### Schema
+
+`supabase/migrations/20260828000000_split_stat_categories.sql` adds six nullable columns
+plus six `feed_*` mirrors to `stat_lines`. Forward-only; nothing is rewritten and the
+legacy columns keep what they hold. No migration for `scoring_config` - the engine and
+both screens fall back to the defaults for any key a stored config predates, so existing
+leagues keep working untouched.

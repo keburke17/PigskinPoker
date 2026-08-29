@@ -99,11 +99,57 @@ describe("parity with the original artifact", () => {
     expect(N.generatePlayerPool()).toEqual(L.generatePlayerPool());
   });
 
-  it("produces an identical default state shape", () => {
+  /* INTENDED DIFFERENCE - the 2026-08-28 scoring split (OQ-4c).
+   *
+   * The designer split yards and touchdowns into passing / rushing / receiving, each
+   * with its own rate, because one shared rate made a quarterback's passing yardage
+   * worth several times any other slot. That adds six keys to scoringConfig, so the
+   * state shape is no longer byte-identical to the artifact's.
+   *
+   * The test is kept and narrowed rather than deleted: everything OUTSIDE those six
+   * keys must still match the artifact exactly, so any other drift still fails here.
+   * See docs/PHASE-4-PLAN.md section 3. */
+  const SPLIT_SCORING_KEYS = [
+    "passYardsPerPoint",
+    "rushYardsPerPoint",
+    "recYardsPerPoint",
+    "pointsPerPassTD",
+    "pointsPerRushTD",
+    "pointsPerRecTD",
+  ];
+
+  /** A state with only the six added config keys removed. Everything else - every score,
+   * every ranking, every cumulative total, the champion - must still match the artifact
+   * exactly, and does. */
+  const withoutSplitKeys = (state) => {
+    const out = { ...state, scoringConfig: { ...state.scoringConfig } };
+    for (const key of SPLIT_SCORING_KEYS) delete out.scoringConfig[key];
+    return out;
+  };
+
+  it("produces a default state shape identical to the artifact, apart from the split-scoring keys", () => {
     const a = L.createDefaultState();
     const b = N.createDefaultState();
-    expect(b).toEqual(a);
+
+    expect(withoutSplitKeys(b)).toEqual(a);
     expect(b.schemaVersion).toBe(1);
+  });
+
+  it("keeps the artifact's own scoring keys untouched, so old stat lines score as they did", () => {
+    const b = N.createDefaultState();
+    const a = L.createDefaultState();
+    expect(b.scoringConfig.yardsPerPoint).toBe(a.scoringConfig.yardsPerPoint);
+    expect(b.scoringConfig.pointsPerTD).toBe(a.scoringConfig.pointsPerTD);
+  });
+
+  it("adds the split keys with the values the designer chose", () => {
+    const cfg = N.createDefaultState().scoringConfig;
+    expect(cfg.passYardsPerPoint).toBe(25);
+    expect(cfg.rushYardsPerPoint).toBe(10);
+    expect(cfg.recYardsPerPoint).toBe(10);
+    expect(cfg.pointsPerPassTD).toBe(4);
+    expect(cfg.pointsPerRushTD).toBe(6);
+    expect(cfg.pointsPerRecTD).toBe(6);
   });
 
   describe("dealRosters", () => {
@@ -216,6 +262,10 @@ describe("parity with the original artifact", () => {
     expect(N.rankTeamsWithTiebreak(rows)).toEqual(L.rankTeamsWithTiebreak(rows));
   });
 
+  /* Still exact, and it must stay that way. These lines carry the artifact's combined
+   * `yards` / `tds` shape, so they take the frozen legacy branch in computeStarterPoints
+   * - which is the whole reason that branch was kept through the 2026-08-28 split.
+   * The new per-category math is covered in tests/scoring.test.js. */
   it("scores starters identically, including coach results and rounding", () => {
     const state = { scoringConfig: { yardsPerPoint: 10, pointsPerTD: 5, coachWin: 2, coachTie: 1, coachLoss: 0 } };
     const cases = [
@@ -328,8 +378,15 @@ describe("parity with the original artifact", () => {
       expect(legacyEnd.playoffConfig.champion).toBeTruthy();
       expect(legacyEnd.weeklyResults.length).toBeGreaterThan(30);
 
-      expect(newEnd).toEqual(legacyEnd);
+      /* The simulation enters the artifact's combined `yards` / `tds` lines throughout,
+       * so every stat line here takes the frozen legacy branch. A full season and a
+       * playoff run to a champion therefore still come out identical, number for number
+       * - the six added scoringConfig keys are the ONLY difference in the end state.
+       * This is the assertion that proves the 2026-08-28 split did not disturb the game
+       * for anything recorded before it. */
+      expect(withoutSplitKeys(newEnd)).toEqual(legacyEnd);
       expect(newEnd.playoffConfig.champion).toBe(legacyEnd.playoffConfig.champion);
+      expect(newEnd.weeklyResults).toEqual(legacyEnd.weeklyResults);
     });
   }
 });

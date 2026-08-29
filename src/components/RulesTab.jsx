@@ -4,7 +4,7 @@
  * declaration. No component body was edited.
  */
 
-import { ARROW, SUIT_CH, currentStandingsPointsArray } from "../engine/index.js";
+import { ARROW, DEFAULT_SCORING, SUIT_CH, currentStandingsPointsArray } from "../engine/index.js";
 
 export function QuickRefTile({ label, value }) {
   return (
@@ -25,7 +25,10 @@ export function RuleCard({ title, children }) {
 }
 
 export function RulesTab({ state }) {
-  const cfg = state.scoringConfig;
+  /* Merged over the defaults so a league whose config predates the 2026-08-28 split
+   * still reads out real numbers rather than blanks - the same fallback the engine
+   * uses when it scores. */
+  const cfg = Object.assign({}, DEFAULT_SCORING, state.scoringConfig);
   const teamCount = state.teams.length || 0;
   const spArr = currentStandingsPointsArray(state, teamCount || 1);
   return (
@@ -33,8 +36,10 @@ export function RulesTab({ state }) {
       <div className="pp-card">
         <h2 className="pp-h2" style={{ marginBottom: 10 }}>Quick Reference</h2>
         <div className="pp-qr-grid">
-          <QuickRefTile label={"pt per " + cfg.yardsPerPoint + " yds"} value={"1 : " + cfg.yardsPerPoint} />
-          <QuickRefTile label="pts per TD" value={cfg.pointsPerTD} />
+          <QuickRefTile label={"pt per " + cfg.passYardsPerPoint + " pass yds"} value={"1 : " + cfg.passYardsPerPoint} />
+          <QuickRefTile label={"pt per " + cfg.rushYardsPerPoint + " rush yds"} value={"1 : " + cfg.rushYardsPerPoint} />
+          <QuickRefTile label={"pt per " + cfg.recYardsPerPoint + " rec yds"} value={"1 : " + cfg.recYardsPerPoint} />
+          <QuickRefTile label="TD: pass / rush / rec" value={cfg.pointsPerPassTD + " / " + cfg.pointsPerRushTD + " / " + cfg.pointsPerRecTD} />
           <QuickRefTile label="Coach W / T / L" value={cfg.coachWin + " / " + cfg.coachTie + " / " + cfg.coachLoss} />
           <QuickRefTile label="Max TEs per team" value="2" />
           <QuickRefTile label={"Std pts (1st " + ARROW + " last)"} value={spArr.join(", ")} />
@@ -64,8 +69,11 @@ export function RulesTab({ state }) {
       </RuleCard>
 
       <RuleCard title={SUIT_CH.diamond + " Scoring"}>
-        <li>1 point per {cfg.yardsPerPoint} yards.</li>
-        <li>{cfg.pointsPerTD} points per TD.</li>
+        <li>Yards count by type, each at its own rate: 1 point per {cfg.passYardsPerPoint} passing yards, 1 per {cfg.rushYardsPerPoint} rushing, 1 per {cfg.recYardsPerPoint} receiving.</li>
+        <li>Each type converts on its own, so 15 rushing and 15 receiving yards is 1 point plus 1 point - not 3.</li>
+        <li>Touchdowns: {cfg.pointsPerPassTD} for passing, {cfg.pointsPerRushTD} for rushing, {cfg.pointsPerRecTD} for receiving.</li>
+        <li>Only passing, rushing and receiving count. Return yards, two-point conversions and fumble-recovery TDs are worth nothing.</li>
+        <li>A starter who doesn't play scores 0 - same as anyone else who puts up nothing.</li>
         <li>Coach: {cfg.coachWin} pts for a Win, {cfg.coachTie} for a Tie, {cfg.coachLoss} for a Loss.</li>
         <li>Only starters score - bench players never score, regardless of stats.</li>
       </RuleCard>

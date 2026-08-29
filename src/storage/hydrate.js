@@ -20,6 +20,7 @@
  */
 
 import { emptyCumulative } from "../engine/index.js";
+import { SPLIT_COLUMN, SPLIT_STAT_FIELDS } from "./statLine.js";
 
 const STARTER_SLOTS = ["Coach", "QB", "WR", "RB", "TE", "FLEX"];
 
@@ -159,6 +160,27 @@ export function hydrateLeague(db, opts = {}) {
   });
 
   /* ---- stats for the current period ---- */
+  /* Yards and TDs split into passing / rushing / receiving on 2026-08-28 (OQ-4c). A row
+   * written before that has only the combined columns and is handed back in the old
+   * shape, which is what makes the engine score it under the old rates. A row written
+   * since carries the six split columns and nothing combined. Either way the values go
+   * back as STRINGS: the inputs are controlled and the scoring coerces with Number(). */
+  const statLineFromRow = (s) => {
+    const split = {};
+    let any = false;
+    SPLIT_STAT_FIELDS.forEach((field) => {
+      const col = SPLIT_COLUMN[field];
+      if (s[col] == null) return;
+      any = true;
+      split[field] = String(s[col]);
+    });
+    if (any) return split;
+    return {
+      yards: s.yards == null ? "" : String(s.yards),
+      tds: s.tds == null ? "" : String(s.tds),
+    };
+  };
+
   const statsEntry = {};
   if (current) {
     db.stat_lines
@@ -170,12 +192,7 @@ export function hydrateLeague(db, opts = {}) {
         statsEntry[teamKey][s.slot] =
           s.slot === "Coach" || s.coach_result != null
             ? { result: s.coach_result ?? null }
-            : {
-                // Back to strings: the inputs are controlled and the artifact's
-                // scoring coerces with Number(). Keeps the UI byte-identical.
-                yards: s.yards == null ? "" : String(s.yards),
-                tds: s.tds == null ? "" : String(s.tds),
-              };
+            : statLineFromRow(s);
       });
   }
 

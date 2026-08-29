@@ -20,6 +20,7 @@
 
 import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
+import { splitColumnsFor } from "../src/storage/statLine.js";
 import {
   dealRosters,
   finalizeCurrentPeriod,
@@ -508,6 +509,12 @@ export async function setStatLine(db, { leagueId, token, teamId, slot, line, exp
     team_id: team.id,
     slot,
     player_id: slotRow?.player_id ?? null,
+    /* The six per-category columns, from the 2026-08-28 split (OQ-4c). The combined
+     * pair below is written as whatever the caller sent, which for anything entered
+     * through the stats screen is null - the entry UI drops the combined keys the
+     * moment a category is typed. Old rows keep the values they were entered with;
+     * nothing here converts them, because a total does not say how much was passing. */
+    ...splitColumnsFor(line),
     yards: num(line.yards),
     tds: num(line.tds),
     coach_result: line.result ?? null,

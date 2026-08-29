@@ -4,7 +4,13 @@ The plan `docs/LIVE-DATA.md` was waiting on. Scott answered OQ-4c and OQ-4b on
 **2026-08-28**, and the answers are larger than "wire a feed": the scoring rule itself
 changes, and the hand-typed player pool is replaced by current NFL starters.
 
-**Nothing here is built yet. No code has changed.** This document is the plan.
+> **Stage 1 is BUILT as of 2026-08-28** - the scoring split, its settings, the stat entry
+> screen and the rules screen, with migration M1 written and waiting for Kyle to apply.
+> `npm test`: 269 passed, 1 skipped, 17 files, with the local stack up. Verified in the
+> running app, including the database round-trip. What it changed is recorded in
+> `docs/MIGRATION-NOTES.md`. **Everything below stage 1 in section 7 is still unbuilt.**
+
+**The rest of this document is the plan.** Sections 4 through 6 describe work not started.
 
 **Read section 2 first if you are Kyle.** The deployed league is test data and resets before
 NFL week 1, which makes three of the four migrations easier than they look - and turns the
@@ -147,8 +153,12 @@ team can take up to four WRs or four RBs.
 > **Confirmed with Scott, 2026-08-28.** Describing the roster from memory he listed the
 > bench without a tight end, which would have made it 11 players rather than 12. Checked
 > against `src/engine/deal.js` and confirmed with him: **the bench does include a TE**, so
-> the roster is a clean six and six and every team needs two of every position. Worth
-> writing into `docs/RULES.md` at stage 0, since it is nowhere in prose today.
+> the roster is a clean six and six and every team needs two of every position.
+>
+> Correction to an earlier draft of this note: it is not undocumented. `RulesTab` already
+> says "6 bench: one more of each (Coach, QB, WR, RB, TE), plus one more FLEX-eligible
+> player", and derives the 2-TE cap from it. The prose was right and the recollection was
+> not.
 
 ### 4.2 What the pool becomes
 
@@ -293,7 +303,7 @@ Ordered so the thing Scott most wants does not wait on the feed.
 | # | What | Migration | Whose | Why here |
 |---|---|---|---|---|
 | **0** | Write the rules down - `docs/RULES.md`, and the rules screen | no | Scott | The answers above are the specification. Recording them is the deliverable OQ-4c was actually asking for. |
-| **1** | **The scoring split.** Engine, settings, stat entry. **No feed at all.** | M1 | Scott builds, Kyle applies M1 | Playable the next week it ships, whatever happens to the feed. This is the change that alters the game. |
+| **1** | **The scoring split.** Engine, settings, stat entry, rules screen. **No feed at all.** **DONE 2026-08-28** - awaiting M1 | M1 written, **not applied** | Built; Kyle applies M1 | Playable the next week it ships, whatever happens to the feed. This is the change that alters the game. |
 | **2** | Player identity reconciliation | M3 | Kyle, with review | Everything downstream needs stable ids. Human in the loop, not fuzzy matching. |
 | **3** | `nfl_week` mapping | M2 | Kyle | An hour, but nothing can be fetched without it. |
 | **4** | **"Refresh pool" button** - current starters, injuries, depth chart | M4 optional | either | Delivers the live-roster half. Independent of stats. |

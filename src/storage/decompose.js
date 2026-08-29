@@ -18,6 +18,7 @@
  */
 
 import { stableUuid } from "./ids.js";
+import { splitColumnsFor } from "./statLine.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -291,6 +292,12 @@ export function decomposeLeague(state, opts) {
         player_id: legacyPid ? playerId(legacyPid) : null,
         // The artifact stored yards/tds as STRINGS straight off the input element.
         // They become real integers here; "" becomes null, not 0.
+        //
+        // Both shapes are carried: the six per-category columns for anything entered
+        // since the 2026-08-28 split, and the combined pair for anything recorded
+        // before it. A line only ever has one or the other - the entry UI drops the
+        // combined keys the moment a category is typed into.
+        ...splitColumnsFor(line),
         yards: num(line.yards),
         tds: num(line.tds),
         coach_result: line.result ?? null,

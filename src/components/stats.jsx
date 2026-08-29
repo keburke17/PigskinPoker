@@ -4,9 +4,75 @@
  * declaration. No component body was edited.
  */
 
-import { computeStarterPoints, getPlayer } from "../engine/index.js";
+import { useState } from "react";
+import {
+  PRIMARY_CATEGORIES,
+  STAT_CATEGORIES,
+  computeStarterPoints,
+  getPlayer,
+  hasSplitStats,
+} from "../engine/index.js";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge } from "./atoms.jsx";
 import { RosterSlotRow } from "./roster.jsx";
+
+/* The stat boxes for one non-Coach starter.
+ *
+ * Yards and touchdowns split into passing / rushing / receiving on 2026-08-28 (OQ-4c),
+ * which is six boxes if they are all shown at once. They are not: each position leads
+ * with the two it actually needs, and the rest open on a toggle - so entering a week is
+ * the same two boxes per player it has always been, and a running quarterback or a
+ * receiving back is one click away rather than impossible.
+ */
+export function StatCategoryInputs({ position, stats, onChange }) {
+  const primary = PRIMARY_CATEGORIES[position] || ["rushYards", "rushTds"];
+  const extras = STAT_CATEGORIES.filter((c) => !primary.includes(c.field));
+  const hasExtra = extras.some((c) => {
+    const v = stats[c.field];
+    return v != null && v !== "" && Number(v) !== 0;
+  });
+  const [open, setOpen] = useState(false);
+  const showExtras = open || hasExtra;
+
+  /* A line recorded before the split cannot be converted - a combined total does not say
+   * how much of it was passing - so it is reported rather than silently dropped. */
+  const legacy = !hasSplitStats(stats) && (stats.yards != null || stats.tds != null)
+    && (stats.yards !== "" || stats.tds !== "");
+
+  const set = (field, value) => {
+    const next = Object.assign({}, stats, { [field]: value });
+    delete next.yards;
+    delete next.tds;
+    onChange(next);
+  };
+
+  const box = (c) => (
+    <input
+      key={c.field}
+      className="pp-input"
+      style={{ width: c.kind === "yards" ? 74 : 58 }}
+      type="number"
+      placeholder={c.label}
+      title={c.label}
+      value={stats[c.field] != null ? stats[c.field] : ""}
+      onChange={(e) => set(c.field, e.target.value)}
+    />
+  );
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+      {STAT_CATEGORIES.filter((c) => primary.includes(c.field)).map(box)}
+      {showExtras ? STAT_CATEGORIES.filter((c) => !primary.includes(c.field)).map(box) : null}
+      {!showExtras ? (
+        <button className="pp-btn pp-btn-sm pp-btn-ghost" title="Show passing, rushing and receiving boxes" onClick={() => setOpen(true)}>+ more</button>
+      ) : null}
+      {legacy ? (
+        <span className="pp-sub" style={{ fontSize: 11 }}>
+          was {stats.yards || 0} yds, {stats.tds || 0} TD before the split
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
   const pid = team.roster.starters[slot];
@@ -36,10 +102,7 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
           <option value="Loss">Loss</option>
         </select>
       ) : (
-        <>
-          <input className="pp-input" style={{ width: 78 }} type="number" placeholder="Yards" value={stats.yards != null ? stats.yards : ""} onChange={(e) => onChange(team.id, slot, Object.assign({}, stats, { yards: e.target.value }))} />
-          <input className="pp-input" style={{ width: 62 }} type="number" placeholder="TDs" value={stats.tds != null ? stats.tds : ""} onChange={(e) => onChange(team.id, slot, Object.assign({}, stats, { tds: e.target.value }))} />
-        </>
+        <StatCategoryInputs position={player.position} stats={stats} onChange={(next) => onChange(team.id, slot, next)} />
       )}
       <span className="pp-roster-slot-pts">{computeStarterPoints(state, stats, player.position)} pts</span>
       <button className={"pp-btn pp-btn-sm " + (locked ? "pp-btn-danger" : "pp-btn-ghost")} onClick={() => onChange(team.id, "__togglelock__", pid)}>

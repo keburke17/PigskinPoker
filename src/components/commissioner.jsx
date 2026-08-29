@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from "react";
-import { POSITIONS, deepClone, defaultAdvancement, periodLabel, standingsPointsArray } from "../engine/index.js";
+import { DEFAULT_SCORING, POSITIONS, deepClone, defaultAdvancement, periodLabel, standingsPointsArray } from "../engine/index.js";
 import { MyTeamTab } from "./MyTeamTab.jsx";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
 
@@ -156,19 +156,46 @@ export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeleteP
 }
 
 export function CommScoringPanel({ state, onSave }) {
-  const [cfg, setCfg] = useState(deepClone(state.scoringConfig));
+  /* Merged over the defaults, because a league whose config was stored before the
+   * 2026-08-28 split has none of the per-category keys - and a missing value would make
+   * its input uncontrolled. The engine falls back the same way when it scores. */
+  const [cfg, setCfg] = useState(
+    Object.assign({}, DEFAULT_SCORING, deepClone(state.scoringConfig))
+  );
   return (
     <div className="pp-card">
       <h3 className="pp-h3">Scoring Settings</h3>
-      <div className="pp-field"><label className="pp-label">Points per N yards (N)</label><input className="pp-input" type="number" value={cfg.yardsPerPoint} onChange={(e) => setCfg(Object.assign({}, cfg, { yardsPerPoint: e.target.value }))} /></div>
-      <div className="pp-field"><label className="pp-label">Points per TD</label><input className="pp-input" type="number" value={cfg.pointsPerTD} onChange={(e) => setCfg(Object.assign({}, cfg, { pointsPerTD: e.target.value }))} /></div>
+      <p className="pp-sub">
+        Yards convert per category - a passing yard and a rushing yard do not have to be
+        worth the same. Each box below is "1 point per N yards", so a bigger number means
+        that category is worth less.
+      </p>
+      <div className="pp-grid-2">
+        <div className="pp-field"><label className="pp-label">1 pt per N passing yards</label><input className="pp-input" type="number" value={cfg.passYardsPerPoint} onChange={(e) => setCfg(Object.assign({}, cfg, { passYardsPerPoint: e.target.value }))} /></div>
+        <div className="pp-field"><label className="pp-label">1 pt per N rushing yards</label><input className="pp-input" type="number" value={cfg.rushYardsPerPoint} onChange={(e) => setCfg(Object.assign({}, cfg, { rushYardsPerPoint: e.target.value }))} /></div>
+        <div className="pp-field"><label className="pp-label">1 pt per N receiving yards</label><input className="pp-input" type="number" value={cfg.recYardsPerPoint} onChange={(e) => setCfg(Object.assign({}, cfg, { recYardsPerPoint: e.target.value }))} /></div>
+      </div>
+      <div className="pp-grid-2">
+        <div className="pp-field"><label className="pp-label">Points per passing TD</label><input className="pp-input" type="number" value={cfg.pointsPerPassTD} onChange={(e) => setCfg(Object.assign({}, cfg, { pointsPerPassTD: e.target.value }))} /></div>
+        <div className="pp-field"><label className="pp-label">Points per rushing TD</label><input className="pp-input" type="number" value={cfg.pointsPerRushTD} onChange={(e) => setCfg(Object.assign({}, cfg, { pointsPerRushTD: e.target.value }))} /></div>
+        <div className="pp-field"><label className="pp-label">Points per receiving TD</label><input className="pp-input" type="number" value={cfg.pointsPerRecTD} onChange={(e) => setCfg(Object.assign({}, cfg, { pointsPerRecTD: e.target.value }))} /></div>
+      </div>
       <div className="pp-grid-2">
         <div className="pp-field"><label className="pp-label">Coach Win</label><input className="pp-input" type="number" value={cfg.coachWin} onChange={(e) => setCfg(Object.assign({}, cfg, { coachWin: e.target.value }))} /></div>
         <div className="pp-field"><label className="pp-label">Coach Tie</label><input className="pp-input" type="number" value={cfg.coachTie} onChange={(e) => setCfg(Object.assign({}, cfg, { coachTie: e.target.value }))} /></div>
         <div className="pp-field"><label className="pp-label">Coach Loss</label><input className="pp-input" type="number" value={cfg.coachLoss} onChange={(e) => setCfg(Object.assign({}, cfg, { coachLoss: e.target.value }))} /></div>
       </div>
       <button className="pp-btn pp-btn-gold" onClick={() => onSave({
-        yardsPerPoint: Number(cfg.yardsPerPoint) || 10, pointsPerTD: Number(cfg.pointsPerTD) || 0,
+        passYardsPerPoint: Number(cfg.passYardsPerPoint) || DEFAULT_SCORING.passYardsPerPoint,
+        rushYardsPerPoint: Number(cfg.rushYardsPerPoint) || DEFAULT_SCORING.rushYardsPerPoint,
+        recYardsPerPoint: Number(cfg.recYardsPerPoint) || DEFAULT_SCORING.recYardsPerPoint,
+        pointsPerPassTD: Number(cfg.pointsPerPassTD) || 0,
+        pointsPerRushTD: Number(cfg.pointsPerRushTD) || 0,
+        pointsPerRecTD: Number(cfg.pointsPerRecTD) || 0,
+        /* Carried, not edited: these score stat lines recorded before the 2026-08-28
+         * split and must keep the values those lines were entered under. */
+        yardsPerPoint: Number(cfg.yardsPerPoint) || DEFAULT_SCORING.yardsPerPoint,
+        pointsPerTD: Number(cfg.pointsPerTD) || 0,
         coachWin: Number(cfg.coachWin) || 0, coachTie: Number(cfg.coachTie) || 0, coachLoss: Number(cfg.coachLoss) || 0,
       })}>Save Scoring</button>
     </div>
