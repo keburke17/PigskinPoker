@@ -167,6 +167,13 @@ before a single stat can be fetched, and it is a migration.
 | **SportsDataIO** | Commercial real-time NFL feed | Paid | Live | None technically; it is a bill |
 | **FantasyPros** | Rankings, projections, news | Freemium | n/a | Projections, not results - wrong shape for this |
 
+> **Correction, 2026-08-28.** The ESPN row above is misleading by omission: **nflverse
+> sources its depth charts from ESPN.** So for the roster half of this, the two are the same
+> data, and nflverse adds cleaning plus its own player ids - the ones the weekly stats file
+> uses. Choosing ESPN directly would buy freshness and cost a second identity space to
+> reconcile. Reasoning in `docs/PHASE-4-PLAN.md` section 5.1. ESPN's depth-chart endpoint is
+> recorded there as a fallback.
+
 ### Recommendation: nflverse
 
 Not close, for this project specifically:
