@@ -505,7 +505,10 @@ gate()("creating a league", () => {
   it("stocks the pool from the player_pool template, not from JavaScript", async () => {
     /* The pool used to be shipped as 223 rows of JSON on every league creation, built
      * from src/data/teamRows.js. It is a table now, copied in one statement - so a
-     * correction made in the database reaches the next league with no deploy. */
+     * correction made in the database reaches the next league with no deploy.
+     *
+     * 224 since 20260829000000 rebuilt the template from the live depth charts: each
+     * NFL team's 1 QB, 2 RB, 2 WR, 1 TE and head coach. */
     const { token: jwt } = await makeAccount("stocker@example.test");
     const r = await ops.createLeague(db, { accountToken: jwt, name: "Stocked League", year: 2032 });
     expect(r.status).toBe(200);
@@ -515,7 +518,7 @@ gate()("creating a league", () => {
     const { count: poolCount } = await db
       .from("player_pool").select("*", { count: "exact", head: true }).eq("active", true);
     expect(count).toBe(poolCount);
-    expect(count).toBe(223);
+    expect(count).toBe(224);
 
     await cleanupLeagues("Stocked League");
   });
