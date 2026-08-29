@@ -1,28 +1,133 @@
 #!/usr/bin/env node
-/* Generates the player_pool seed half of the pool migration from src/data/teamRows.js.
+/* Generates the `player_pool` rows for a migration.
  *
- * WHY GENERATED, not hand-written: `teamRows.js` stays the single source of the pool.
- * `tests/parity.test.js` lifts TEAM_ROWS straight out of the original artifact and
- * compares dealing against it, so that file cannot move - and a second, hand-maintained
- * copy of 223 players in SQL would drift from it the first time anybody edited either.
+ * TWO SOURCES, and which one you want depends on what you are doing.
  *
- *   node scripts/generate-pool-migration.mjs > /tmp/pool.sql
+ *   node scripts/generate-pool-migration.mjs
+ *       The ARTIFACT pool, expanded from src/data/teamRows.js. This is how the template
+ *       was first built (20260820010000) and it is kept because that file is the one
+ *       tests/parity.test.js replays dealing against - it cannot move, and a second
+ *       hand-maintained copy of it in SQL would drift the first time anybody edited
+ *       either. Historical: it produces names that were typed in 2025.
  *
- * The output is pasted into a migration once. Migrations are forward-only: to change the
- * pool later, add a new migration (or update the rows through the app) - never edit an
- * applied one.
+ *   node scripts/generate-pool-migration.mjs --from-feed [--season 2026] > out.sql
+ *       A WHOLE MIGRATION, built from the live nflverse depth charts: each NFL team's
+ *       1 QB, 2 RB, 2 WR, 1 TE and head coach, with the provider ids attached. This is
+ *       what you want when the template has gone stale, because `player_pool` is what
+ *       every new league is copied from - a league created today is born holding
+ *       whatever the template last said.
+ *
+ * WHY A SCRIPT AND NOT A REFRESH AT LEAGUE CREATION. Creating a league would then
+ * depend on a 45MB file being reachable, and would fail in a way the person creating it
+ * could do nothing about. The refresh stays something a commissioner presses; this
+ * keeps the starting point close to correct so he is pressing it to catch up a few
+ * days, not a year.
+ *
+ * Migrations are forward-only. This writes a NEW one - never edit an applied file.
  */
 
 import { generatePlayerPool } from "../src/engine/pool.js";
+import { buildPool, fetchDepthChart, fetchHeadCoaches } from "../server/feed/nflverse.js";
+
+const args = process.argv.slice(2);
+const fromFeed = args.includes("--from-feed");
+const seasonArg = args.indexOf("--season");
+const season = seasonArg >= 0 ? Number(args[seasonArg + 1]) : new Date().getUTCFullYear();
 
 const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
-const pool = generatePlayerPool();
+const jsonb = (o) => q(JSON.stringify(o ?? {})) + "::jsonb";
 
-const values = pool
-  .map((p) => "  (" + [q(p.id), q(p.name), q(p.position), q(p.team), q(p.status)].join(", ") + ")")
+/* ------------------------------------------------------ the artifact pool -- */
+
+if (!fromFeed) {
+  const values = generatePlayerPool()
+    .map((p) => "  (" + [q(p.id), q(p.name), q(p.position), q(p.team), q(p.status)].join(", ") + ")")
+    .join(",\n");
+  process.stdout.write(
+    "insert into player_pool (legacy_id, name, position, nfl_team, status) values\n" +
+    values + "\non conflict (legacy_id) do nothing;\n"
+  );
+  process.exit(0);
+}
+
+/* ----------------------------------------------------------- from the feed -- */
+
+const chart = await fetchDepthChart({ season });
+const { season: coachSeason, coaches } = await fetchHeadCoaches({ season });
+const { players, gaps } = buildPool({ depthPlayers: chart.players, coaches });
+
+/* A hole in the pool is REPORTED, never quietly filled. A template that is silently one
+ * quarterback short deals a broken week in every league created from it. */
+if (gaps.length) {
+  console.error("Refusing to generate: the feed could not fill " + gaps.length + " slot(s).");
+  for (const g of gaps) console.error("  " + g.team + " " + g.position + " #" + g.wantedRank + " - " + g.reason);
+  process.exit(1);
+}
+
+/* `player_pool_gsis_uniq` is a unique index. A player listed by two teams - which
+ * happens for a day or two after a trade - would fail the migration halfway through a
+ * push, so it is caught here where the answer is "look at it", not "retry". */
+const seen = new Map();
+for (const p of players) {
+  const gsis = p.externalIds && p.externalIds.gsis;
+  if (!gsis) continue;
+  if (seen.has(gsis)) {
+    console.error("Refusing to generate: two rows share gsis " + gsis + " - " +
+      seen.get(gsis).name + " (" + seen.get(gsis).team + ") and " + p.name + " (" + p.team + ").");
+    process.exit(1);
+  }
+  seen.set(gsis, p);
+}
+
+/* Ordered the way the artifact's pool was - by team, coach first - so the file reads
+ * the same and `legacy_id` runs p1..pN down the teams rather than jumping about. */
+const ORDER = { Coach: 0, QB: 1, RB: 2, WR: 3, TE: 4 };
+const ordered = players.slice().sort((a, b) =>
+  a.team === b.team
+    ? ORDER[a.position] - ORDER[b.position] || (a.depthRank ?? 0) - (b.depthRank ?? 0)
+    : a.team.localeCompare(b.team)
+);
+
+const counts = ordered.reduce((m, p) => ({ ...m, [p.position]: (m[p.position] || 0) + 1 }), {});
+const values = ordered
+  .map((p, i) => "  (" + [
+    q("p" + (i + 1)), q(p.name), q(p.position), q(p.team), q("Active"), jsonb(p.externalIds),
+  ].join(", ") + ")")
   .join(",\n");
 
 process.stdout.write(
-  "insert into player_pool (legacy_id, name, position, nfl_team, status) values\n" +
-  values + "\non conflict (legacy_id) do nothing;\n"
+`-- ============================================================================
+--  THE TEMPLATE, REBUILT FROM THE LIVE DEPTH CHARTS.
+--
+--  GENERATED by \`node scripts/generate-pool-migration.mjs --from-feed\`. Do not hand-edit:
+--  regenerate it instead, into a NEW migration.
+--
+--  Snapshot:  ${chart.snapshotAt}   (nflverse depth_charts_${season}.csv)
+--  Coaches:   games.csv, season ${coachSeason}
+--  Rows:      ${ordered.length} - ${Object.entries(counts).map(([k, v]) => v + " " + k).join(", ")}
+--
+--  WHY. \`player_pool\` is a TEMPLATE: \`copy_player_pool_into\` copies it into a league's
+--  own \`players\` rows at creation, and nothing has ever written back to it. The pool
+--  refresh (OQ-4b) rewrites ONE LEAGUE, so the template kept the names typed by hand in
+--  2025 - "Derek Henry", "Kalil Shakir", Arizona's coach two coaches ago - and every
+--  league created since was born holding them. This replaces it with each team's current
+--  starters, carrying the provider ids the refresh and the coming stats pull match on.
+--
+--  WHAT THIS DOES NOT TOUCH. Any league that already exists. Their \`players\` rows were
+--  copied at creation and have diverged on purpose - a commissioner marking someone OUT
+--  is a statement about HIS league. They are corrected by pressing Refresh Player Pool,
+--  which is the only thing that may touch them.
+--
+--  STILL A STARTING POINT, not a substitute for that button: this snapshot ages from the
+--  moment it is taken. It changes "born a year stale" into "born a few days stale".
+-- ============================================================================
+
+-- Replaced wholesale rather than merged: the template has no history worth keeping and
+-- nothing references it (no foreign key points at player_pool), so the simple statement
+-- is also the correct one. A league already created is unaffected either way.
+delete from player_pool;
+
+insert into player_pool (legacy_id, name, position, nfl_team, status, external_ids) values
+${values};
+`
 );

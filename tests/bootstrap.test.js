@@ -87,6 +87,11 @@ async function makeAccount(email) {
 
 /* A blank league: one season, week 1 pre-deal, the full 223-player pool, and NO teams.
  *
+ * 223, not the template's 224: this builds from `createDefaultState()`, which expands
+ * src/data/teamRows.js. `createLeague` is the path that copies `player_pool` - see
+ * tests/server.test.js. The two pools are different sizes on purpose since the template
+ * was rebuilt from the depth charts (20260829000000).
+ *
  * `scripts/bootstrap-league.mjs` used to do this, setting a commissioner code so nobody
  * could claim the league by typing one first. Both the script and the code are gone -
  * `createLeague` makes the creator the commissioner, so there is no window to close -
