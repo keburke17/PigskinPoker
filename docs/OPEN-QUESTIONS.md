@@ -479,7 +479,7 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | Question | Needed before | Why it can wait |
 |---|---|---|
 | **OQ-B** blocks validated server-side | **Done (Phase 2c)** | Enforced in `submitScheme`. Provisionally yes; still awaiting the designer's final confirmation. |
-| **OQ-E** reject stat writes while unlocked | **Done (Phase 3a)** | Enforced in `setStatLine`. Same conversation as OQ-B; it is his rule to confirm. |
+| **OQ-E** reject stat writes while unlocked | **Done (Phase 3a)** | Enforced in `setStatLine`, and in `pullStats` since 2026-08-29 for the same reason - a pull is stat entry done quickly, and a lineup change after one would move the numbers to a different player. Same conversation as OQ-B; it is his rule to confirm. |
 | **OQ-6** notifications | Phase 3c | Now nearly free: magic-link sign-in needs the same SMTP provider notifications would. |
 | **league visibility** (new, from OQ-10) | Phase 3d | Members-only or link-public, per league. Recommended: a setting, defaulting to members-only, with the existing league set public so nothing changes for it. |
 | **OQ-4c** what counts as "yards"? | **Done - answered 2026-08-28** | Split into passing / rushing / receiving, each customizable. A rules change; built in `docs/PHASE-4-PLAN.md` stage 1. |

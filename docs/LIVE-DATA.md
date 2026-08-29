@@ -25,6 +25,14 @@ the central question belongs to Scott. See OQ-4c in `docs/OPEN-QUESTIONS.md`.
 
 ## 1. Where this stands today
 
+> **Superseded 2026-08-29 - this section describes the position BEFORE Phase 4, and is
+> kept because the rest of the document argues from it.** The stats pull is built: the
+> commissioner presses **Pull Stats** and every starter's boxes fill in from one NFL week,
+> with anything he typed left exactly as he typed it. `docs/PHASE-4-PLAN.md` and
+> `docs/MIGRATION-NOTES.md` are the authority on what shipped. **The goal stated in this
+> section is the one that was met** - the Sunday-night job is now correcting a couple of
+> numbers rather than entering seventy-two.
+
 Every stat in the league is typed in by hand. The commissioner opens the stats tab after
 the games, fills six slots for each team, and finalizes. That is `setStatLine`
 (`server/operations.js`), gated on being the commissioner and on the roster being locked.
@@ -38,11 +46,11 @@ seventy-two of them.
 
 | Piece | Where | State |
 |---|---|---|
-| Provenance on every stat line | `stat_lines.source` (`'manual'` / `'feed'`) | Shipped, unused |
-| What the feed last reported | `stat_lines.feed_yards`, `feed_tds`, `feed_coach_result` | Shipped, always null |
-| Which provider, and when | `stat_lines.feed_provider`, `feed_updated_at` | Shipped, always null |
-| Stable player identity | `players.external_ids`, `player_pool.external_ids` (jsonb) | Shipped, always `{}` |
-| Identity survives league creation | `copy_player_pool_into` copies `external_ids` | Shipped, copies `{}` |
+| Provenance on every stat line | `stat_lines.source` (`'manual'` / `'feed'`) | Shipped, unused *(in use since 2026-08-29)* |
+| What the feed last reported | `stat_lines.feed_yards`, `feed_tds`, `feed_coach_result` | Shipped, always null *(written since 2026-08-29, alongside six per-category mirrors added by the scoring split)* |
+| Which provider, and when | `stat_lines.feed_provider`, `feed_updated_at` | Shipped, always null *(written since 2026-08-29)* |
+| Stable player identity | `players.external_ids`, `player_pool.external_ids` (jsonb) | Shipped, always `{}` *(carries gsis/espn ids since 2026-08-29)* |
+| Identity survives league creation | `copy_player_pool_into` copies `external_ids` | Shipped, copies `{}` *(copies real ids since the template rebuild)* |
 
 So the expensive half is done. Retrofitting provenance onto live season data would have
 been a migration plus a backfill; adding a feed on top of these columns is application
@@ -50,10 +58,21 @@ code.
 
 ### What is not built
 
-- No mapping from a league week to an NFL week (section 4.2).
-- No player identity resolved against any provider (section 4.1).
-- No definition of what the `yards` number means (section 3 - **the blocker**).
-- No fetch, no operation, no UI.
+**All four of these were built during Phase 4 (2026-08-28 and 2026-08-29).** The list is
+kept because sections 3 and 4 argue against it.
+
+- ~~No mapping from a league week to an NFL week (section 4.2).~~ `periods.nfl_week`,
+  defaulted by `server/schedule.js` and correctable by the commissioner.
+- ~~No player identity resolved against any provider (section 4.1).~~ `gsis` and `espn`
+  ids are attached by the pool refresh and carried into new leagues by the template.
+- ~~No definition of what the `yards` number means (section 3 - **the blocker**).~~
+  Answered as OQ-4c: split into passing / rushing / receiving, each at its own rate.
+- ~~No fetch, no operation, no UI.~~ `server/feed/nflverse.js`, `pullStats` in
+  `server/operations.js`, and the Pull Stats button on the Live Stats screen.
+
+**Still not built:** the persistent disagreement view beside each stat box (the pull
+reports its disagreements, but only in the report it returns), and scheduled polling -
+stages 6 and 7 in `docs/PHASE-4-PLAN.md`.
 
 ---
 

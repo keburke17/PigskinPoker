@@ -168,6 +168,13 @@ Three changes, all merged, none of them in the description above:
 
 ## What is NOT built
 
+> **Out of date as of 2026-08-29, and left standing because this is a handoff written on
+> the 28th.** Stages 3 and 5 were built the next day: every period carries the NFL week it
+> plays, and the "Pull Stats" button fills every starter's boxes from the feed without
+> overwriting anything typed by hand. **Stats no longer have to be typed in.** What
+> remains is stage 6 (the disagreement view beside each box) and stage 7 (scheduled
+> polling). See `PHASE-4-PLAN.md` and `MIGRATION-NOTES.md`.
+
 Stages 5, 6 and 7 in `PHASE-4-PLAN.md`: the "Pull stats" button, the disagreement view for
 stat lines, status sync, and scheduled polling. Stats are still typed in by hand, exactly
 as today - which is fine for week 1 if the calendar gets tight, and is why stage 1 was
