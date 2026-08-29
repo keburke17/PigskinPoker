@@ -378,6 +378,24 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* Rebuild the pool from the live depth charts. Returns the server's report of what it
+   * changed so the screen can show it - the point of the button is not that the pool got
+   * refreshed, it is seeing WHAT moved before dealing. */
+  const [poolReport, setPoolReport] = useState(null);
+  const refreshPlayerPool = useCallback(
+    () =>
+      /* The report is captured INSIDE the queued call, not from what `immediate`
+       * resolves to: the write queue's flush() returns nothing per entry, so reading the
+       * response from the outside always got undefined and the screen stayed blank while
+       * the refresh had in fact worked. Found in the running app on 2026-08-28. */
+      immediate("refreshPool", async () => {
+        const r = await store.refreshPlayerPool(versions());
+        setPoolReport(r && r.ok ? (r.report ?? null) : null);
+        return r;
+      }),
+    [store, immediate]
+  );
+
   /** Commissioner admin: low-frequency, genuinely league-wide. */
   const mutate = useCallback(
     (key, fn) => immediate(key, () => store.mutateLeague(fn)),
@@ -399,6 +417,7 @@ export function useLeague(store) {
   return {
     view: effectiveView,
     submittedTeamIds,
+    poolReport,
     identity,
     setIdentity,
     loading,
@@ -423,6 +442,7 @@ export function useLeague(store) {
       submitScheme,
       toggleRosterLock,
       dealPeriod,
+      refreshPlayerPool,
       processSchemes,
       finalizePeriod,
       startPlayoffs,

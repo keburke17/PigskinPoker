@@ -49,6 +49,7 @@ const ROUTES = {
   startPlayoffs: (db, p) => ops.startPlayoffs(db, p),
 
   replaceLeague: (db, p) => ops.replaceLeague(db, p),
+  refreshPlayerPool: (db, p) => ops.refreshPlayerPool(db, p),
 };
 
 export async function handler(event) {

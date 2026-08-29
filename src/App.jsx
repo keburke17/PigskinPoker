@@ -66,6 +66,7 @@ export default function App() {
   const {
     view: state,
     submittedTeamIds,
+    poolReport,
     identity,
     setIdentity,
     loading,
@@ -267,6 +268,7 @@ export default function App() {
 
   /* ---- commissioner: the weekly cycle ---- */
   const onDeal = () => ops.dealPeriod();
+  const onRefreshPool = () => ops.refreshPlayerPool();
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -630,6 +632,7 @@ export default function App() {
               submittedTeamIds={submittedTeamIds}
               onSwap={onSwap} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}
+              onRefreshPool={onRefreshPool} poolReport={poolReport}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
               onStartPlayoffs={onStartPlayoffs}
               onDownloadBackup={onDownloadBackup} onRestoreBackup={onRestoreBackup} restoreError={restoreError}

@@ -867,3 +867,79 @@ plus six `feed_*` mirrors to `stat_lines`. Forward-only; nothing is rewritten an
 legacy columns keep what they hold. No migration for `scoring_config` - the engine and
 both screens fall back to the defaults for any key a stored config predates, so existing
 leagues keep working untouched.
+
+---
+
+## Phase 4 stage 4 - the pool refresh (2026-08-28)
+
+The other half of OQ-4b: the hand-typed pool is rebuilt from each NFL team's current
+starters, so it tracks depth-chart moves and injuries instead of going stale.
+
+### What it does
+
+A commissioner-pressed button, **pre-deal only**, that reads the live depth charts and
+makes the pool 1 QB, 2 RB, 2 WR, 1 TE and 1 head coach per team - 224 rows. Then it
+reports what it changed, because the value is not that the pool refreshed, it is seeing
+what moved before dealing.
+
+The first run against the real feed corrected, among others: "Derek Henry" to Derrick
+Henry, "Kalil Shakir" to Khalil Shakir, "Tet McMillan" to Tetairoa McMillan, "Jaxson
+Smith-Njigba" to Jaxon, "Chubba Hubbard" to Chuba, and Arizona's head coach from Mike
+LaFleur to Jonathan Gannon.
+
+### Why pre-deal only
+
+In pre-deal no rosters exist - finalize deletes them - so a refresh cannot move a player
+who is on somebody's team. It is also the designer's rule: a player who stops being a
+starter finishes his week and is simply absent from the next deal. Nothing is automatic
+and nothing runs mid-week.
+
+### The rule, and where it lives
+
+**A refresh may correct its own work and nothing a person decided.** `players.source`
+records where a row came from (`seed` / `feed` / `manual`) and `players.status_source`
+records who last set its status. A player the commissioner added is never touched; a
+status he set is never overwritten, and the feed's opinion is recorded in `feed_status`
+beside it and shown as a disagreement.
+
+The decision logic is `server/pool.js`, deliberately free of I/O so it is tested directly
+(`tests/pool.test.js`, 26 tests). Retiring means status OUT, never deletion - a deleted
+player would break the rosters, stat lines and results that reference him.
+
+### Two bugs this turned up, both found in the running app
+
+**Manual status changes were not recorded as manual.** Pool edits go through the blob
+path (`replaceLeague` -> `decompose`), which wrote no provenance, so setting a player OUT
+left `status_source` at `default` and the next refresh would have silently put him back -
+defeating the entire rule above. `decompose.js` now marks a status that differs from the
+stored row as `manual`, which is sound because that path is only ever driven by the
+commissioner's own screens. `newPlayerSource` distinguishes the seed generator from a
+person adding a player.
+
+**`decompose` reset `external_ids` to `{}` on every blob write.** The app-state shape has
+no field for provider ids, so an ordinary pool edit silently cleared them and the next
+stats pull would have had nothing to match on. They are now carried forward from the row
+already in the database.
+
+Neither was reachable before this stage, and neither would have failed a test - both were
+found by driving the real UI and reading the table afterwards.
+
+### Not downloading 45MB
+
+`depth_charts_<season>.csv` is the whole season's snapshots in one file, ~45MB, written
+newest first with a `dt` column per snapshot. `readLatestSnapshot` reads until `dt`
+changes and aborts the request - a few hundred KB, about 700ms, which is why the refresh
+can live in an ordinary request handler with no scheduler and no new deploy surface. If
+nflverse ever reorders the file it still returns the right answer, just reads further.
+
+Head coaches come from `games.csv` (`home_coach` / `away_coach`), since depth charts do
+not carry coaches. That is the same file the Coach slot's Win/Tie/Loss will come from.
+
+### Schema
+
+`supabase/migrations/20260828010000_pool_feed_sync.sql` adds `depth_rank`, `source`,
+`status_source`, `feed_status` and `feed_updated_at` to `players`; the unique index on
+`external_ids->>'gsis'` the initial schema anticipated, for both `players` and
+`player_pool`; and `periods.nfl_week`, which a stats pull cannot fetch without. Existing
+non-Active statuses are marked `manual` so the first refresh cannot overrule a decision
+made before the column existed. Forward-only; no row deleted, no status changed.

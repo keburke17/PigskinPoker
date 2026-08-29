@@ -77,6 +77,7 @@ export async function persistBlob(db, previous, blob, opts) {
   const next = decomposeLeague(blob, {
     leagueKey: opts.leagueKey,
     year: opts.year,
+    newPlayerSource: opts.newPlayerSource,
     hashCode: () => "unused-secrets-are-not-rewritten",
     // Identity comes from what is already in the database, not from leagueKey. See the
     // long comment in decompose.js - getting this wrong deletes the league.

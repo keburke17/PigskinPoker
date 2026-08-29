@@ -109,13 +109,111 @@ export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
   );
 }
 
-export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeletePlayer }) {
+/* What the last refresh did.
+ *
+ * The button's value is not that the pool got refreshed - it is seeing WHAT moved before
+ * dealing. Corrections are named, not counted, because "3 renamed" tells the commissioner
+ * nothing and "Kalil Shakir is Khalil Shakir" tells him the pool was wrong. */
+export function PoolRefreshReport({ report }) {
+  if (!report) return null;
+  const { added = [], renamed = [], retired = 0, updated = 0, untouched = [], gaps = [] } = report;
+  const when = report.at ? String(report.at).replace("T", " ").replace("Z", " UTC") : "just now";
+  return (
+    <div className="pp-card pp-card-tight">
+      <h3 className="pp-h3">What the refresh changed</h3>
+      <p className="pp-sub">Depth charts as of {when}.</p>
+      <ul className="pp-rule-list">
+        <li>{updated} player{updated === 1 ? "" : "s"} confirmed or corrected.</li>
+        <li>{added.length} added, {retired} retired from the deal.</li>
+      </ul>
+      {renamed.length > 0 && (
+        <>
+          <p className="pp-sub" style={{ marginBottom: 4 }}><strong>Names corrected</strong></p>
+          <ul className="pp-rule-list">
+            {renamed.slice(0, 12).map((r, i) => (
+              <li key={i}>{r.from} {ARROW_R} {r.to} <span style={{ color: "var(--text-faint)" }}>({r.position}, {r.team})</span></li>
+            ))}
+            {renamed.length > 12 ? <li>...and {renamed.length - 12} more.</li> : null}
+          </ul>
+        </>
+      )}
+      {added.length > 0 && (
+        <>
+          <p className="pp-sub" style={{ marginBottom: 4 }}><strong>New to the pool</strong></p>
+          <ul className="pp-rule-list">
+            {added.slice(0, 12).map((r, i) => <li key={i}>{r.name} - {r.position}, {r.team}</li>)}
+            {added.length > 12 ? <li>...and {added.length - 12} more.</li> : null}
+          </ul>
+        </>
+      )}
+      {untouched.length > 0 && (
+        <>
+          <p className="pp-sub" style={{ marginBottom: 4 }}><strong>Left alone - yours, not the feed's</strong></p>
+          <ul className="pp-rule-list">
+            {untouched.slice(0, 12).map((r, i) => <li key={i}>{r.name} ({r.position}) - {r.why}.</li>)}
+            {untouched.length > 12 ? <li>...and {untouched.length - 12} more.</li> : null}
+          </ul>
+        </>
+      )}
+      {gaps.length > 0 && (
+        <>
+          <p className="pp-sub" style={{ marginBottom: 4 }}><strong>The feed could not fill these</strong></p>
+          <ul className="pp-rule-list">
+            {gaps.slice(0, 12).map((g, i) => (
+              <li key={i}>{g.team} - {g.position} #{g.wantedRank}: {g.reason}. Add someone by hand if you want the slot covered.</li>
+            ))}
+            {gaps.length > 12 ? <li>...and {gaps.length - 12} more.</li> : null}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+const ARROW_R = String.fromCodePoint(0x2192);
+
+export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeletePlayer, onRefreshPool, poolReport, phase }) {
   const [name, setName] = useState("");
   const [position, setPosition] = useState("QB");
   const [team, setTeam] = useState("");
+  const [busy, setBusy] = useState(false);
+  const canRefresh = phase === "pre-deal";
   const grouped = POSITIONS.reduce((acc, pos) => { acc[pos] = state.playerPool.filter((p) => p.position === pos).sort((a, b) => a.name.localeCompare(b.name)); return acc; }, {});
   return (
     <div>
+      <div className="pp-card">
+        <h3 className="pp-h3">Refresh From Live Rosters</h3>
+        <p className="pp-sub">
+          Pulls every team's current starters - 1 QB, 2 RB, 2 WR, 1 TE and the head coach -
+          from the live depth charts, so injuries and depth-chart moves are in before you
+          deal. It never changes a player you added or a status you set by hand, and it
+          never touches a roster that has already been dealt.
+        </p>
+        {!canRefresh ? (
+          <p className="pp-sub">
+            <strong>Available before you deal.</strong> This week is already under way
+            ({String(phase).replace("-", " ")}), so the pool stays as it is - rosters are
+            out and a player who stops being a starter finishes his week. Refresh once
+            this week is finalized and before you deal the next one.
+          </p>
+        ) : null}
+        <button
+          className="pp-btn pp-btn-gold"
+          disabled={!canRefresh || busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onRefreshPool();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Reading depth charts..." : "Refresh Player Pool"}
+        </button>
+      </div>
+      <PoolRefreshReport report={poolReport} />
+
       <div className="pp-card">
         <h3 className="pp-h3">Add Custom Player</h3>
         <div className="pp-grid-2">
@@ -402,7 +500,7 @@ export function CommissionerTab(props) {
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
       {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
-      {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} />}
+      {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
       {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
       {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onStart={props.onStartPlayoffs} />}

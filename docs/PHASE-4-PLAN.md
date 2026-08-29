@@ -4,13 +4,20 @@ The plan `docs/LIVE-DATA.md` was waiting on. Scott answered OQ-4c and OQ-4b on
 **2026-08-28**, and the answers are larger than "wire a feed": the scoring rule itself
 changes, and the hand-typed player pool is replaced by current NFL starters.
 
-> **Stage 1 is BUILT as of 2026-08-28** - the scoring split, its settings, the stat entry
-> screen and the rules screen, with migration M1 written and waiting for Kyle to apply.
-> `npm test`: 269 passed, 1 skipped, 17 files, with the local stack up. Verified in the
-> running app, including the database round-trip. What it changed is recorded in
-> `docs/MIGRATION-NOTES.md`. **Everything below stage 1 in section 7 is still unbuilt.**
+> **Stages 1 and 4 are BUILT as of 2026-08-28** - the scoring split (engine, settings,
+> stat entry, rules screen) and the pool refresh (nflverse feed, the "Refresh Player
+> Pool" button and its report), with migrations M1-M4 written and waiting for Kyle.
+> `npm test`: 295 passed, 1 skipped, 18 files, with the local stack up. Both verified in
+> the running app against the live nflverse feed, including the database round-trip. What
+> they changed - and the two bugs they turned up - is recorded in
+> `docs/MIGRATION-NOTES.md`.
+>
+> **Still unbuilt: stages 5, 6 and 7** - the stats pull, the disagreement view for stat
+> lines, status sync and scheduled polling. Stage 2's identity reconciliation is partly
+> done: the refresh attaches `gsis` and `espn` ids as it matches, so there is no separate
+> reconciliation pass to run.
 
-**The rest of this document is the plan.** Sections 4 through 6 describe work not started.
+**Sections 5.2 onward describe work not started.** Everything above is built.
 
 **Read section 2 first if you are Kyle.** The deployed league is test data and resets before
 NFL week 1, which makes three of the four migrations easier than they look - and turns the
@@ -304,9 +311,9 @@ Ordered so the thing Scott most wants does not wait on the feed.
 |---|---|---|---|---|
 | **0** | Write the rules down - `docs/RULES.md`, and the rules screen | no | Scott | The answers above are the specification. Recording them is the deliverable OQ-4c was actually asking for. |
 | **1** | **The scoring split.** Engine, settings, stat entry, rules screen. **No feed at all.** **DONE 2026-08-28** - awaiting M1 | M1 written, **not applied** | Built; Kyle applies M1 | Playable the next week it ships, whatever happens to the feed. This is the change that alters the game. |
-| **2** | Player identity reconciliation | M3 | Kyle, with review | Everything downstream needs stable ids. Human in the loop, not fuzzy matching. |
+| **2** | Player identity reconciliation | M3 | **Mostly folded into stage 4** | The refresh attaches gsis/espn ids as it matches, and refuses to fuzzy-match a misspelling - it replaces the row instead. No separate pass to run. |
 | **3** | `nfl_week` mapping | M2 | Kyle | An hour, but nothing can be fetched without it. |
-| **4** | **"Refresh pool" button** - current starters, injuries, depth chart | M4 optional | either | Delivers the live-roster half. Independent of stats. |
+| **4** | **"Refresh pool" button** - current starters and head coaches from the live depth charts. **DONE 2026-08-28** - awaiting M2-M4 | M2-M4 written, **not applied** | Built; Kyle applies | Delivers the live-roster half. Independent of stats. |
 | **5** | **"Pull stats" button** - fills the boxes, manual lines protected | no | either | The Sunday-night payoff. |
 | **6** | Show the disagreement - "the feed says 91, you set 84", one-click revert | no | Scott | What makes stage 5 trustworthy. Should not lag far behind it. |
 | **7** | Scheduled polling, or a live provider | no, but new infra | **Kyle** | Optional once 5 exists. First piece that can fail silently at 3am. |
