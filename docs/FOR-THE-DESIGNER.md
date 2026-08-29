@@ -239,11 +239,26 @@ what you intended.
 
 None are changed. Each is a small yes/no.
 
-### OQ-4b - is the player pool hand-curated on purpose?
+### OQ-4b and OQ-4c *(answered 2026-08-28 - both built and live)*
 
-The 32-team player list was typed out by hand. Was that because you wanted to control
-exactly who is in the game, or just because the Artifact could not fetch a roster? The
-answer decides whether a future stats feed *adds to* your list or *replaces* it.
+You answered these in a session on 28 August, and they are here so the record is in one
+place rather than only in the commit log.
+
+**The player pool was typed out of necessity, so it is rebuilt from real rosters.** Each
+NFL team's 1 QB, 2 RB, 2 WR, 1 TE and head coach - 224 players - read off the live depth
+charts. **Refresh Player Pool** on your commissioner screen brings it up to date, and it
+only ever runs before a week is dealt: a player who stops being a starter finishes his
+week and is simply not in the next deal. Anything you set by hand is never overwritten -
+if you have someone OUT and the feed thinks he is starting, it tells you the two of you
+disagree rather than quietly changing it.
+
+**Yards and touchdowns now count in three categories.** Passing 1 point per 25 yards and
+4 per touchdown; rushing and receiving 1 per 10 and 6 per touchdown - all six editable in
+Scoring Settings. This was a real rules change and it is the reason a quarterback no
+longer decides the week on his own.
+
+**Still typed in by hand: the weekly stats themselves.** Pulling them from the feed is the
+next piece of work; nothing about it changes how a week is played.
 
 ### OQ-8 - the phone question
 
@@ -335,8 +350,8 @@ limits its own sign-in.
 
 ## About the test suite
 
-There are 245 tests. Three of the sixteen files need the local database and **skip
-themselves silently when it is not running** - 108 of them, getting on for half. They are
+There are 317 tests. Three of the nineteen files need the local database and **skip
+themselves silently when it is not running** - 114 of them, getting on for half. They are
 not incidental:
 
 - every Row Level Security assertion (what a visitor's browser can read, and that it can

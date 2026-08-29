@@ -166,7 +166,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          18 suites
+tests/          19 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -356,7 +356,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | | |
 |---|---|
 | **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
-| **Live stats feed** | The seam exists (`stat_lines` carries provenance); no provider is wired. **Planned in `docs/LIVE-DATA.md`, deliberately not started** - it blocks on OQ-4c, which is Scott's. |
+| **Live stats feed** | **Half done.** The pool refreshes from nflverse depth charts and scoring splits into passing / rushing / receiving (Phase 4 stages 1 and 4, live since 2026-08-29). **The weekly stats pull is not built** - stats are still typed in. Stages 5-7 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |
 

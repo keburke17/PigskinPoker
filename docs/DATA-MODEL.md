@@ -137,6 +137,14 @@ Becomes native Postgres arrays (not `jsonb`):
 
 ## 3. Schema
 
+> **This is the schema as PROPOSED in Phase 0, and it is not the whole schema now.**
+> Migrations are forward-only and the live shape is the sum of `supabase/migrations/`.
+> What is not below: accounts, `league_members` and `invites` (Phase 3); the six split
+> stat columns and their `feed_*` mirrors, `players.depth_rank` / `.source` /
+> `.status_source` / `.feed_status` / `.feed_updated_at`, the `gsis` unique indexes and
+> `periods.nfl_week` (Phase 4, `20260828*`); and `player_pool`, rebuilt from live depth
+> charts in `20260829000000`. `docs/MIGRATION-NOTES.md` explains each of them.
+
 Proposed as a single migration. Every table has its policies in the same migration, per
 the ground rules. `enable row level security` is written explicitly on every table even
 though the auto-RLS event trigger would do it - the migration must be self-contained so
