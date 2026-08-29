@@ -199,16 +199,43 @@ async function ensureSeeded(managed) {
  */
 function applyPendingMigrations() {
   const r = sh("npx", ["supabase", "migration", "list", "--local"], { capture: true });
-  if (r.status !== 0) return; // not fatal: the reset path and `db:reset` still work
+
+  /* EVERY path below says what it decided, including the boring one.
+   *
+   * This used to return silently in three places, which meant "there was nothing to
+   * apply" and "the check itself failed" looked identical from the outside - both were
+   * a blank line between "demo league present" and "accounts ready". That ambiguity is
+   * expensive exactly when it matters: a run that skipped a pending migration is
+   * indistinguishable from a run that was up to date, the app then fails against a
+   * schema a version behind, and the failure surfaces somewhere else entirely as
+   * confusing test failures or 500s. Neither of the two swallowed cases is fatal - the
+   * reset path and `db:reset` still work - so this reports and carries on rather than
+   * dying. It just refuses to be silent about it. */
+
+  if (r.status !== 0) {
+    const how = r.error ? r.error.code : "exit " + r.status;
+    say("  migrations: could not read the list (" + how + ") - skipping the check");
+    const why = (r.stderr || "").trim().split("\n").pop();
+    if (why) say("              " + why);
+    say("              if the app misbehaves, `npm run dev -- --reset` starts clean");
+    return;
+  }
 
   let pending = [];
   try {
     const line = r.stdout.split("\n").find((l) => l.trim().startsWith("{"));
     pending = (JSON.parse(line).migrations ?? []).filter((m) => m.local && !m.remote);
-  } catch {
-    return; // an output format we do not recognise is not worth guessing at
+  } catch (err) {
+    /* An output format we do not recognise is not worth guessing at - but it is worth
+     * naming, because it means this check has quietly stopped working. */
+    say("  migrations: could not parse the list - skipping the check (" + err.message + ")");
+    say("              if the app misbehaves, `npm run dev -- --reset` starts clean");
+    return;
   }
-  if (!pending.length) return;
+  if (!pending.length) {
+    say("  migrations: up to date");
+    return;
+  }
 
   step("Applying " + pending.length + " new migration(s) from the repo");
   for (const m of pending) say("    " + m.local);
