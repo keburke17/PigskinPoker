@@ -210,6 +210,26 @@ protection is not there.
 These are yours, not ours. They are written up in full in `docs/OPEN-QUESTIONS.md`; here
 is what they are and why they matter.
 
+### OQ-11 - when lineups lock *(built 2026-09-05; the choice is yours)*
+
+Your league now has a switch on the **Commissioner -> Weeks** screen, and it is worth two
+minutes of your time because the two settings play like different games:
+
+- **Each player at his own kickoff** *(what your league is set to, and what it has always
+  done)*. You can keep changing your lineup all Sunday, as long as the player coming in
+  has not kicked off yet. Watching the injury news at 11:30 is worth something.
+- **Everyone at the week's first kickoff**. Thursday night, usually. Whatever is in your
+  lineup then is what plays, inactives and all - the way most fantasy leagues run.
+
+Nothing changed for you unless you change it: the first one is the default and it is the
+rule your Rules page has always described. What is new is that **the computer enforces
+it now** - it reads the real NFL kickoff times, so you no longer have to sit there
+pressing Lock on twelve players through the afternoon. You still can, for a late scratch,
+and your own lock always wins.
+
+**If you switch it, tell the league before the week starts.** Someone who thinks he has
+until Sunday, in a league that locked on Thursday, finds out by losing a week.
+
 ### OQ-A - a real bug in the tiebreakers *(most important)*
 
 The Rules page lists six tiebreakers. The code only ever applies **five**. The sixth -

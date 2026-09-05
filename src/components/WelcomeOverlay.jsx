@@ -13,22 +13,26 @@
  * ---------------------------------------------------------------------------
  * LOCK COPY - read before editing those two sentences.
  * ---------------------------------------------------------------------------
- * There is NO automatic roster freeze in this game. No Thursday cutoff, no kickoff
- * timer, no scheme deadline on a clock. Both locks are things the commissioner presses:
+ * There are two locks here and they are NOT the same thing:
  *
- *   - "Lock Rosters for the Weekend" (one switch, whole league) closes SCHEME
- *     submission - src/components/MyTeamTab.jsx reads state.rosterLocked for exactly
- *     that, and src/components/stats.jsx:238 is the button.
- *   - A per-player lock, pressed as each real game kicks off, is what freezes an
- *     individual starter - src/components/lineup.jsx disables the swap for a locked
- *     player only.
+ *   - THE SCHEME DEADLINE is somebody's decision, not a time. "Lock Rosters for the
+ *     Weekend" (one switch, whole league) closes SCHEME submission - MyTeamTab.jsx reads
+ *     state.rosterLocked for exactly that, and stats.jsx is the button. Nothing in the
+ *     app closes schemes on a clock, so this half must never promise a weekday.
+ *   - THE LINEUP LOCK does fire on a clock, since 2026-09-05, and WHICH clock is a
+ *     league option (OQ-11, src/engine/lineupLock.js): `gametime` freezes each player at
+ *     his own kickoff, `weekly` freezes every lineup at the week's first one. The
+ *     commissioner can still freeze a player by hand, and that always wins.
  *
- * So lineup swaps outlive the scheme deadline, and both are somebody's decision rather
- * than a time. The Rules tab already says this correctly under "Lineup Lock & Injury
- * Swaps"; this card must not drift from it, and must not invent a weekday.
+ * So lineup swaps outlive the scheme deadline, and the words below have to say which
+ * lineup rule THIS league plays rather than picking one. The Rules tab does the same
+ * thing under "Lineup Lock & Injury Swaps"; this card must not drift from it, and must
+ * not invent a weekday of its own - `weekly` names the week's first kickoff, whatever
+ * day that turns out to be.
  */
 
 import { useState } from "react";
+import { LINEUP_LOCK, lineupLockMode } from "../engine/index.js";
 import { nextStep } from "./guidance.js";
 
 export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, onDismiss, onGoTo }) {
@@ -65,7 +69,7 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
           <p className="pp-sub" style={{ marginBottom: 0 }}>{step.detail}</p>
         </div>
 
-        {isCommissioner ? <CommissionerBasics /> : <ManagerBasics />}
+        {isCommissioner ? <CommissionerBasics state={state} /> : <ManagerBasics state={state} />}
 
         <div className="pp-overlay-actions">
           {step.tab ? (
@@ -83,23 +87,29 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
 
 /* Three bullets, not thirty. Each one is something people get wrong on their first week
  * and cannot discover from the screen they are looking at. */
-function ManagerBasics() {
+function ManagerBasics({ state }) {
+  const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
   return (
     <ul className="pp-rule-list pp-overlay-list">
       <li><strong>Fresh roster every week.</strong> 12 random players - 6 starters (Coach, QB, WR, RB, TE, FLEX) and 6 bench. Nothing carries over, so a bad week is only a week.</li>
       <li><strong>One scheme per week.</strong> Block protects a starter, Steal takes an unprotected starter off another team, Redraw swaps a player for a random free agent. No Action is a real choice, and it is what you get if you submit nothing.</li>
-      <li><strong>Nothing locks on a clock.</strong> Your commissioner closes schemes when they process the week, and freezes each player as their real game kicks off. Until then you can keep changing both.</li>
+      {weekly ? (
+        <li><strong>Your lineup closes at the week's first kickoff.</strong> Usually Thursday night. Schemes close earlier, when your commissioner processes the week - so do both while you are thinking about it.</li>
+      ) : (
+        <li><strong>Each player locks when his own game starts.</strong> So you can keep changing your lineup all Sunday, using anyone who has not kicked off yet. Schemes close separately, when your commissioner processes the week.</li>
+      )}
       <li><strong>Only starters score.</strong> Bench players never score, whatever they do on Sunday.</li>
     </ul>
   );
 }
 
-function CommissionerBasics() {
+function CommissionerBasics({ state }) {
+  const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
   return (
     <ul className="pp-rule-list pp-overlay-list">
       <li><strong>The week is a cycle you drive.</strong> Deal rosters, let managers submit schemes, process the schemes, lock the rosters, enter stats, finalize. Nothing advances on its own.</li>
       <li><strong>Set up once.</strong> Teams, then invites, then - if you want them - the player pool, the scoring rates and the NFL week. All of it lives under Commissioner.</li>
-      <li><strong>Locking is yours to press.</strong> There is no automatic freeze. "Lock Rosters for the Weekend" closes scheme submission; locking a player individually is how you stop lineup changes once their game starts.</li>
+      <li><strong>The scheme deadline is yours to press.</strong> "Lock Rosters for the Weekend" closes scheme submission, and nothing does that on a clock. {weekly ? "Lineups close on their own at the week's first kickoff, because that is the rule your league is set to." : "Lineups close on their own too - each player when his own game starts."} You can freeze any player by hand as well, and that always wins.</li>
       <li><strong>Finalize ends the week.</strong> It scores everyone, awards standings points and opens the next week. Do it once the stats are right.</li>
     </ul>
   );

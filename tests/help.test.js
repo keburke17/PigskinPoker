@@ -79,43 +79,34 @@ describe("Help names every screen the app actually has", () => {
   });
 });
 
-describe("the Help prose tells the truth", () => {
-  it("never promises a weekday or a kickoff deadline", () => {
-    /* THE SAME REGRESSION GUARD tests/guidance.test.js carries, pointed at the other
-     * half of the copy. Nothing in this app freezes on a clock - both locks are buttons
-     * the commissioner presses - and guidance.test.js can only see nextStep()'s output.
-     * The "When something locks" card is hand-written here and is precisely where a
-     * plausible-sounding "by Thursday" would get typed in.
-     *
-     * DENYING a clock is the correct thing to say, and the shipped copy does exactly
-     * that ("There is no Thursday cutoff and no kickoff timer"). So this cannot be a
-     * substring ban - it checks per sentence, and a deadline word is only a failure in
-     * a sentence that does not negate it. Crude, and deliberately so: the failure it is
-     * built for is somebody adding a sentence that PROMISES a deadline, which will not
-     * be phrased as a denial. */
-    const prose = HELP.replace(/\/\*[\s\S]*?\*\//g, ""); // comments may discuss it freely
-    const DEADLINE = /thursday|sunday night|by kickoff|deadline of|midnight|automatically lock/i;
-    const NEGATED = /\b(no|not|never|nothing|neither|nor)\b/i;
+describe("the Help prose tells the truth about locking", () => {
+  /* THE CARD THIS GUARDS WAS ALREADY WRONG when this test was written. #34 made lineup
+   * lock a league option fired by real kickoffs (OQ-11) and updated RulesTab and
+   * guidance.js; HelpTab was missed, and went on telling every manager "Nothing locks
+   * automatically. There is no Thursday cutoff and no kickoff timer in this app." That
+   * is the one fact a manager most needs right, and it was false in both modes.
+   *
+   * So this is not "never mention a kickoff" any more - the same correction #34 made to
+   * tests/guidance.test.js. It is: never describe a rule this league is not playing,
+   * and never claim the clock does not exist. */
+  const prose = HELP.replace(/\/\*[\s\S]*?\*\//g, ""); // comments may discuss it freely
 
-    const offenders = prose
-      .split(/(?<=[.!?])\s+/)
-      .filter((sentence) => DEADLINE.test(sentence) && !NEGATED.test(sentence));
-    expect(offenders).toEqual([]);
+  it("never claims that nothing locks on a clock", () => {
+    expect(prose).not.toMatch(/nothing locks automatically/i);
+    expect(prose).not.toMatch(/no kickoff timer/i);
+    expect(prose).not.toMatch(/both locks are buttons/i);
   });
 
-  it("still says out loud that nothing locks on a clock", () => {
-    /* The other direction, and the one that actually matters to a manager: the denial
-     * has to BE there. Deleting the sentence would pass the check above trivially. */
-    expect(HELP).toMatch(/Nothing locks automatically/i);
-    expect(HELP).toMatch(/no kickoff timer/i);
+  it("never invents a weekday or a clock of its own", () => {
+    /* "Thursday" stays banned outright, for the reason #34 gives: `weekly` locks on the
+     * week's FIRST kickoff, whatever weekday that lands on - the 2026 season opens on a
+     * Wednesday. A named weekday in static prose is a rule nobody implemented. */
+    expect(prose).not.toMatch(/thursday|sunday night|deadline of|midnight/i);
   });
 
-  it("is ASCII only, like the rest of the source", () => {
-    // CLAUDE.md, Conventions. A smart quote pasted in from a document is how this breaks.
-    const offenders = HELP.split("\n")
-      .map((line, i) => [i + 1, line])
-      .filter(([, line]) => /[^\x00-\x7F]/.test(line)); // eslint-disable-line no-control-regex
-    expect(offenders).toEqual([]);
+  it("points at Rules for the full statement rather than restating it", () => {
+    // Two screens describing the same option is two places to get it wrong.
+    expect(prose).toMatch(/Lineup Lock/i);
   });
 });
 
@@ -129,8 +120,10 @@ describe("the tab renders", () => {
     schemes: over.schemes ?? {},
     rosterLocked: over.rosterLocked ?? false,
     currentPeriod: over.currentPeriod ?? { type: "week", number: 1, phase: "pre-deal" },
-    _meta: {},
+    _meta: over._meta ?? {},
   });
+  const render = (state, role, t) =>
+    renderToStaticMarkup(React.createElement(HelpTab, { state, role, team: t, onGoTo: () => {} }));
   const team = { id: "t1", name: "Burke", roster: { starters: {}, bench: [] } };
 
   const phases = ["pre-deal", "dealt", "schemes-processed"];
@@ -151,6 +144,50 @@ describe("the tab renders", () => {
       });
     }
   }
+
+  /* The mode-aware half, and the one that would actually have caught #34's miss: the
+   * source can hold both branches and still render the wrong one. A league on
+   * `gametime` must never be told its lineup closes at the first kickoff, and a league
+   * on `weekly` must never be told it can keep swapping. */
+  const KICKOFFS = {
+    "Buffalo Bills": "2026-09-18T00:15:00.000Z",
+    "Kansas City Chiefs": "2026-09-20T17:00:00.000Z",
+  };
+
+  it("tells a gametime league its own rule, and not the other one", () => {
+    const state = stateWith({ _meta: { lineupLock: "gametime", kickoffs: KICKOFFS } });
+    for (const [role, t] of [["commissioner", null], ["manager", team]]) {
+      const html = render(state, role, t);
+      expect(html).toMatch(/freezes when his own game kicks off/i);
+      expect(html).not.toMatch(/whole lineup closes/i);
+    }
+  });
+
+  it("tells a weekly league its own rule, and not the other one", () => {
+    const state = stateWith({ _meta: { lineupLock: "weekly", kickoffs: KICKOFFS } });
+    for (const [role, t] of [["commissioner", null], ["manager", team]]) {
+      const html = render(state, role, t);
+      expect(html).toMatch(/whole lineup closes/i);
+      expect(html).not.toMatch(/freezes when his own game kicks off/i);
+    }
+  });
+
+  it("defaults an unset league to gametime, the way the engine does", () => {
+    // normalizeLineupLock() sends anything unrecognised to the default; the copy must
+    // follow it rather than fall through to a blank card.
+    for (const meta of [{}, { lineupLock: null }, { lineupLock: "nonsense" }]) {
+      const html = render(stateWith({ _meta: meta }), "manager", team);
+      expect(html).toMatch(/freezes when his own game kicks off/i);
+    }
+  });
+
+  it("says so plainly when the kickoff times are not known yet", () => {
+    /* A real state - a week whose schedule has not been fetched. Naming a deadline that
+     * is not there would be worse than saying nothing. */
+    const html = render(stateWith({ _meta: { lineupLock: "weekly" } }), "manager", team);
+    expect(html).toMatch(/kickoff times have not been read/i);
+    expect(html).not.toMatch(/which is .* this week/i);
+  });
 
   it("shows the commissioner walkthrough only to the commissioner", () => {
     const state = stateWith();

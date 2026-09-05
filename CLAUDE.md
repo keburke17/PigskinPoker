@@ -65,7 +65,7 @@ be able to say "save this" or "put it live" and have it happen.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **403 passed, 1 skipped, 24 files**. If the output says
+2. `npm test` before committing: **443 passed, 1 skipped, 25 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -153,6 +153,20 @@ in a league that is actually being played is worse than a bug everyone has adapt
   pass so freed players can flow between actions (`src/engine/schemes.js`). The ordering
   is load-bearing.
 
+### One rule IS an option now, and it is the only one
+
+**When lineups lock** (`src/engine/lineupLock.js`, added 2026-09-05). A league plays
+either `gametime` - each player locks when his own NFL team kicks off - or `weekly`,
+where every lineup locks at the week's first kickoff. **`gametime` is the default and is
+exactly what the app already did**, so no league's rules moved; what changed is that the
+clock enforces it instead of the commissioner pressing Lock on each player.
+
+Two things follow for anyone reading lock state: `state.lockedPlayerIds` is now only the
+MANUAL half, so ask `isPlayerLocked(state, playerId, now)` rather than indexing it; and
+`periods.kickoffs` is server-owned like `nfl_week`, deliberately absent from
+`decompose.js`. The manual lock always outranks the clock. See OQ-11 in
+`docs/OPEN-QUESTIONS.md` for why it became an option at all.
+
 ---
 
 ## Layout
@@ -169,7 +183,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          24 suites
+tests/          25 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -274,7 +288,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-404 tests. Three groups worth knowing about:
+444 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -283,7 +297,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 128 of the 404
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 142 of the 444
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -359,6 +373,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | | |
 |---|---|
 | **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
+| **Lineup lock** | **Done.** Per-league: each player at his own kickoff, or every lineup at the week's first one (`seasons.lineup_lock`). Times come from the schedule and are re-readable, because flex scheduling moves games. |
 | **Live stats feed** | **Mostly done.** The pool refreshes from nflverse depth charts, scoring splits into passing / rushing / receiving (stages 1 and 4, live since 2026-08-29), each period carries the NFL week it plays (stage 3, `server/schedule.js`), and **the weekly stats pull is built** - "Pull Stats" fills every starter's boxes from one NFL week and never overwrites a line the commissioner typed (stage 5, `server/stats.js`). **Not built: the persistent disagreement view beside each box, and scheduled polling** - stages 6 and 7 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **A phone-first shell** | The Scoreboard, roster and standings screens were rebuilt around the week in progress (issues #29, #30, OQ-G). What was NOT done: the sticky header is 217px of an 812px phone - title, role badge, save bar, account bar and a now two-row nav - and OQ-8's finding stands that every touch target is under the 44px minimum. Both are look-and-feel calls for the designer. |

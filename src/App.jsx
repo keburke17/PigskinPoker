@@ -72,6 +72,7 @@ export default function App() {
     submittedTeamIds,
     poolReport,
     statsReport,
+    kickoffReport,
     identity,
     setIdentity,
     loading,
@@ -294,6 +295,8 @@ export default function App() {
   const onRefreshPool = () => ops.refreshPlayerPool();
   const onPullStats = () => ops.pullStats();
   const onSetNflWeek = (week) => ops.setNflWeek(week);
+  const onSetLineupLock = (mode) => ops.setLineupLock(mode);
+  const onRefreshKickoffs = () => ops.refreshKickoffs();
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -698,6 +701,8 @@ export default function App() {
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}
               onRefreshPool={onRefreshPool} poolReport={poolReport}
               onSetNflWeek={onSetNflWeek}
+              onSetLineupLock={onSetLineupLock} onRefreshKickoffs={onRefreshKickoffs}
+              kickoffReport={kickoffReport}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
               onStartPlayoffs={onStartPlayoffs}
               onDownloadBackup={onDownloadBackup} onRestoreBackup={onRestoreBackup} restoreError={restoreError}

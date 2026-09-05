@@ -357,6 +357,47 @@ league, and nothing in it blocks the multi-league path later.
 
 ---
 
+### OQ-11. When do lineups lock? **[ANSWERED 2026-09-05: it is a league option, defaulting to today's behaviour]**
+
+Another constraint that has just stopped existing. The artifact had no schedule and no
+clock it could trust, so "locked once his game starts" could only ever mean *the
+commissioner presses Lock on that player*. The rules screen has described the rule since
+day one (legacy line 1786: "right up until that player's game begins"); nothing has ever
+enforced it except somebody sitting with the app open on a Sunday afternoon.
+
+Now that the feed carries the NFL schedule, the honest question is which rule the league
+wants - and the two answers are genuinely different games:
+
+| | What it feels like to play |
+|---|---|
+| **`gametime`** | Keep tinkering all Sunday, using anyone who has not kicked off. Rewards watching the inactives at 11:30. |
+| **`weekly`** | Thursday night is the deadline. What you have then is what plays, injuries included. |
+
+**Answer: build both, per league, defaulting to `gametime`.** So no existing league's
+rules move - `gametime` IS what they are already playing, only now enforced by the clock
+instead of by hand - and a commissioner who wants the Thursday deadline chooses it on
+the Weeks screen.
+
+What that changed, 2026-09-05:
+
+- `seasons.lineup_lock` holds the choice; `periods.kickoffs` holds this week's times,
+  read from nflverse's `games.csv` (`gameday` + `gametime`, Eastern, converted properly -
+  a hardcoded offset would lock a December league an hour late and a September one four
+  hours early).
+- The rule is `src/engine/lineupLock.js`, and the server enforces it in `swapLineupSlot`
+  rather than only greying out a select box.
+- **The commissioner's manual Lock still wins**, and is still there for late scratches.
+  Nothing about the weekly flow is automated away: he deals, he processes, he finalizes.
+- The times are read when a week is dealt and re-readable on demand, because flex
+  scheduling moves Sunday games.
+
+**Still his to decide, and deliberately not decided here: which one his own league
+plays.** It is a per-league setting a commissioner changes in two clicks, and switching
+mid-season is legitimate - it just wants saying out loud in the group chat first, because
+a manager who thinks he has until Sunday finds out otherwise by losing a week.
+
+---
+
 ## Part 2 - Code that disagrees with the rules
 
 I have not changed any of these.
@@ -488,6 +529,13 @@ the roster slot. Equivalent in practice, since a player occupies exactly one slo
 and simpler to enforce. Flagging it as a deliberate, behaviour-preserving change rather than
 letting you discover it later. **Recommendation: proceed.** No action needed unless you see
 a case I have missed.
+
+> **Since 2026-09-05 (OQ-11), that column is only half the answer.** `roster_slots.locked`
+> is now specifically the MANUAL lock - the one the commissioner presses. The other half
+> is computed from the league's lineup-lock policy and this week's kickoff times, and is
+> never stored, because a lock that fires at one o'clock is a fact about the clock rather
+> than something to write down. Anything asking "can this player be moved?" asks
+> `isPlayerLocked()`; the manual lock still wins over the schedule.
 
 ### OQ-G. The scoreboard-first layout. **[BUILT 2026-09-04 - three parts to confirm or send back]**
 
@@ -653,3 +701,8 @@ pool is rebuilt from current NFL starters. Both are recorded above and planned i
 Five smaller questions came out of answering those two, and are listed in
 `PHASE-4-PLAN.md` section 8 - the biggest is how the "top 150-200" filter should rank
 players.
+
+**OQ-11 was answered on 2026-09-05: lineup lock timing is a league option**, `gametime`
+(each player at his own kickoff) or `weekly` (everyone at the week's first one), and it
+defaults to `gametime` so no league's rules moved. What is left for the designer is not a
+question about the code - it is choosing which one his own league plays.

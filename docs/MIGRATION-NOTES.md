@@ -1300,3 +1300,72 @@ whether the projected Std Pts column should be there at all, and whether Rosters
 start collapsed.
 
 `npm test`: **379 passed, 1 skipped, 22 files** with the local stack up.
+
+---
+
+## Lineup lock timing becomes a league option (2026-09-05)
+
+**What was asked for:** a league can play either "change your lineup up until each
+player's game" or "everything locks Thursday", chosen per league, with each league
+behaving accordingly.
+
+**Why it is not a rules change for anybody.** The first of those is what the rules screen
+has always described - legacy line 1786, *"right up until that player's game begins"* -
+and it is the default, so no existing league's rules moved. What changed for a `gametime`
+league is only WHO enforces it: the clock now does, instead of the commissioner pressing
+Lock on twelve players through a Sunday afternoon. His manual lock is untouched and still
+outranks everything, because a late scratch is a fact about a player, not about a
+kickoff. The choice itself is recorded as **OQ-11** in `docs/OPEN-QUESTIONS.md`.
+
+**The two policies** (`src/engine/lineupLock.js`):
+
+| | Locks | Feels like |
+|---|---|---|
+| `gametime` (default) | each player at his own team's kickoff | keep tinkering all Sunday with whoever has not played |
+| `weekly` | every lineup at the week's FIRST kickoff | Thursday night is the deadline |
+
+`weekly` deliberately says "the week's first kickoff" rather than "Thursday": the 2026
+season opens on a **Wednesday**, and a rule that hardcoded the weekday would have been
+wrong in week 1 of the season it shipped in.
+
+**Where the clock comes from.** `games.csv` - already the source of the head coaches and
+the Coach slot's results - carries `gameday` and `gametime` for every game from the day
+the schedule is published. `kickoffsFromGames` reads one week of it into
+`periods.kickoffs`, keyed by the full team names the pool uses so a lock can be decided
+from a player row alone.
+
+**Those times are Eastern wall clock with no offset written down**, and the offset is not
+constant: the same "13:00" is 17:00Z in September and 18:00Z in December. `kickoffIso`
+asks `Intl` what America/New_York was doing at that instant rather than hardcoding -4 or
+-5. Read as UTC it would have locked every league four hours early; with a fixed -5,
+every September game an hour late. `tests/lineupLock.test.js` pins all three cases.
+
+**Server-owned, like `nfl_week`.** `periods.kickoffs` is written by direct update and
+kept out of `decompose.js`, so an ordinary blob write cannot put null over a week's
+times - the same rule, and the same regression test, as the `external_ids` and `nfl_week`
+cases above. Read when a week is dealt, re-readable on demand because flex scheduling
+moves Sunday games as late as twelve days out.
+
+**Enforced on the server, not only on screen.** `swapLineupSlot` refuses a swap whose
+starter OR bench player is locked - the bench half matters as much, since promoting a
+receiver whose game has finished is exactly the move the lock exists to prevent. The
+browser reaches the same verdict from the same times, so a row greys out at kickoff
+without a round trip, and `src/hooks/useNow.js` ticks so it happens without a reload.
+
+**A player with no kickoff never locks on the clock.** A bye, a team the schedule did not
+name, a week whose times were never read: the honest answer is "no game time known", and
+locking on a guess takes a team off a manager for a game nobody is playing.
+
+**The recorded fixture grew three columns.** `games.csv` in `server/feed/fixture/` now
+carries `gameday`, `weekday` and `gametime`, taken from the same live file the rest of it
+came from, so the lock can be exercised locally. `scripts/test.mjs` also asks for the
+fixture feed, because dealing a week now reads the schedule and a unit test must not
+download nflverse's games file to do it.
+
+`npm test`: **284 passed, 143 skipped, 24 files** on the machine this was written on,
+which had no Docker and therefore no local stack. With the stack up that should read
+**426 passed, 1 skipped** - 390 as of the section above, plus 21 engine and feed tests
+and a second lock-copy case that run anywhere, and 14 database-backed ones that do not.
+**Those 14 have not been run**: the environment could not pull the Supabase images. They
+want a green run before this is trusted against a live league.
+

@@ -13,11 +13,29 @@
  * that is meant to be nothing but rules.
  */
 
+import {
+  LINEUP_LOCK,
+  firstKickoff,
+  formatKickoff,
+  kickoffsFor,
+  lineupLockMode,
+} from "../engine/index.js";
+
 /* The weekly cycle, named once. CLAUDE.md writes it as
  * pre-deal -> dealt -> schemes-processed -> stats -> finalized; the three below are the
  * phases a live league actually sits in, because finalizing rolls straight to the next
  * period at pre-deal (src/engine/standings.js). */
 export const PHASES = ["pre-deal", "dealt", "schemes-processed"];
+
+
+/* "at the week's first kickoff", and the time itself when the schedule has been read -
+ * a deadline nobody can name is only half a deadline. */
+function weeklyDeadline(state) {
+  const at = firstKickoff(kickoffsFor(state));
+  return at ? "the week's first kickoff (" + formatKickoff(at) + ")" : "the week's first kickoff";
+}
+
+const isWeekly = (state) => lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
 
 /**
  * The one thing this person should do next, or the one thing they are waiting on.
@@ -67,7 +85,9 @@ function commissionerStep(state) {
   if (phase === "schemes-processed") {
     return {
       headline: "Lock the rosters, then enter stats.",
-      detail: "Schemes are resolved. Locking closes scheme submission for the weekend; managers can still swap a bench player in until you lock that player individually.",
+      detail: isWeekly(state)
+        ? "Schemes are resolved. Locking closes scheme submission for the weekend; lineups close on their own at " + weeklyDeadline(state) + ", so nothing is left for you to press there."
+        : "Schemes are resolved. Locking closes scheme submission for the weekend; managers can still swap a bench player in until that player's own game kicks off. You can freeze one earlier by hand.",
       tab: "comm",
     };
   }
@@ -89,7 +109,9 @@ function managerStep(state, team) {
   if (state.rosterLocked) {
     return {
       headline: "Rosters are locked.",
-      detail: "Scheme submission is closed for " + period + ". You can still swap any player whose real game has not started - once the commissioner locks a player, that slot is final. Results land when the week is finalized.",
+      detail: isWeekly(state)
+        ? "Scheme submission is closed for " + period + ". Your lineup closes at " + weeklyDeadline(state) + " - after that it is final, whatever the injury news says. Results land when the week is finalized."
+        : "Scheme submission is closed for " + period + ". You can still swap any player whose real game has not started - once his game kicks off, or the commissioner locks him, that slot is final. Results land when the week is finalized.",
       tab: "myteam",
     };
   }
@@ -105,7 +127,10 @@ function managerStep(state, team) {
 
   return {
     headline: "You are in. " + schemeWord(scheme) + " is on file.",
-    detail: "You can change it right up until the commissioner processes " + period + ". Keep an eye on your lineup too - bench swaps stay open until a player's game kicks off.",
+    detail: "You can change it right up until the commissioner processes " + period + "." +
+      (isWeekly(state)
+        ? " Keep an eye on your lineup too - every lineup closes at " + weeklyDeadline(state) + "."
+        : " Keep an eye on your lineup too - bench swaps stay open until each player's own game kicks off."),
     tab: "myteam",
   };
 }
