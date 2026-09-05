@@ -68,11 +68,12 @@ kept because sections 3 and 4 argue against it.
 - ~~No definition of what the `yards` number means (section 3 - **the blocker**).~~
   Answered as OQ-4c: split into passing / rushing / receiving, each at its own rate.
 - ~~No fetch, no operation, no UI.~~ `server/feed/nflverse.js`, `pullStats` in
-  `server/operations.js`, and the Pull Stats button on the Live Stats screen.
+  `server/operations.js`, and the Pull Stats button under Commissioner -> Enter Stats.
 
-**Still not built:** the persistent disagreement view beside each stat box (the pull
-reports its disagreements, but only in the report it returns), and scheduled polling -
-stages 6 and 7 in `docs/PHASE-4-PLAN.md`.
+**Still not built:** the persistent disagreement view beside each stat box - the pull
+reports its disagreements, but only in the report it returns. Stage 6 in
+`docs/PHASE-4-PLAN.md`, and the last of them: scheduled polling (stage 7) shipped
+2026-09-05.
 
 ---
 
@@ -205,12 +206,16 @@ Not close, for this project specifically:
 - **It adds no dependency.** No SDK, no client library. That keeps the promise in
   `CLAUDE.md` about dependencies staying boring.
 - **It has both halves**: weekly per-player stats, and schedule results for the Coach slot,
-  from one source with one identity space.
+  from one source with one identity space. `games.csv` turned out to carry a third thing
+  nobody was looking for at the time - `gameday` and `gametime` for every game from the
+  day the schedule is published, which is what the lineup lock fires on (OQ-11).
 - **It is auditable.** The same file can be fetched by hand and diffed when a number looks
   wrong, which is what actually happens the first time somebody disputes a score.
 
-**What it costs us:** it publishes after games finish, not during them. The `LiveScoresBar`
-stays a post-game thing rather than a live one.
+**What it costs us:** it publishes after games finish, not during them. The Scoreboard tab
+stays a post-game thing rather than a live one. (It was `LiveScoresBar` when this was
+written - a strip buried under the commissioner's stat entry. Issue #30 made it a screen
+of its own; the limitation is unchanged.)
 
 **But "after games finish" is NOT once a week, and this document used to imply it was.**
 Corrected 2026-09-05, because the wrong reading set an expectation that made the whole

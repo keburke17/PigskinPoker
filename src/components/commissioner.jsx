@@ -186,8 +186,8 @@ export function CommLineupLockPanel({ state, onSetLineupLock, onRefreshKickoffs,
       />
 
       <p className="pp-sub" style={{ marginTop: 10 }}>
-        Either way you can still lock a single player by hand on the Live Stats screen,
-        and a manual lock always wins.
+        Either way you can still lock a single player by hand under Enter Stats, and a
+        manual lock always wins.
       </p>
 
       <h3 className="pp-h3" style={{ marginTop: 12 }}>Kickoff times</h3>

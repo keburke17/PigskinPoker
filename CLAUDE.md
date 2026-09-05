@@ -183,7 +183,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          25 suites
+tests/          26 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -348,6 +348,15 @@ artifact's hand-typed pool, and since Phase 4 the two have different jobs.
 Migrations are **forward-only**. Never edit one that has been applied - add a new one.
 Every table ships with its RLS policies in the same migration; a table without them is
 unreachable.
+
+**There are two databases, and `db:push` only touches one of them.** It applies
+migrations to the HOSTED project and does nothing to your local stack. So a stack that
+was running when you pulled a migration has never seen it, and every query touching the
+new columns comes back "column does not exist" - which surfaces as a pile of failing
+assertions rather than one clear error. `npm run dev` applies whatever the local database
+is missing; `npm run db:reset` rebuilds it. **Run one of them after pulling a branch that
+adds a migration, before trusting `npm test`.** This has already cost one confusing test
+run (2026-09-05).
 
 **Push with `npm run db:push`, never with `npx supabase db push` directly.**
 

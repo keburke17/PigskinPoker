@@ -277,8 +277,8 @@ disagree rather than quietly changing it.
 Scoring Settings. This was a real rules change and it is the reason a quarterback no
 longer decides the week on his own.
 
-**The weekly stats now fill themselves in.** On the Live Stats screen there is a **Pull
-Stats** button beside Lock Rosters. Press it after the games and every starter's boxes
+**The weekly stats now fill themselves in.** Under **Commissioner -> Enter Stats**
+there is a **Pull Stats** button beside Lock Rosters. Press it after the games and every starter's boxes
 fill in from that week's real NFL numbers - including each coach's Win or Loss, read off
 his team's game.
 
@@ -389,8 +389,8 @@ limits its own sign-in.
 
 ## About the test suite
 
-There are 317 tests. Three of the nineteen files need the local database and **skip
-themselves silently when it is not running** - 114 of them, getting on for half. They are
+There are 462 tests. Three of the twenty-six files need the local database and **skip
+themselves silently when it is not running** - 148 of them, a third of the suite. They are
 not incidental:
 
 - every Row Level Security assertion (what a visitor's browser can read, and that it can
@@ -421,7 +421,7 @@ permissions at all. One mode, and it is the real one.
 | **Node.js** | Running the app at all | Yes |
 | **Git** | Getting the code, and keeping it up to date | Yes |
 | **Claude Code** | Working on it with Claude | Yes, in practice |
-| **Docker Desktop** | The database, and the 108 tests that need one | Yes - the app does not start without it |
+| **Docker Desktop** | The database, and the 148 tests that need one | Yes - the app does not start without it |
 | **GitHub CLI** (`gh`) | Letting Claude save and publish for you | Recommended |
 
 ### About Git and GitHub

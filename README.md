@@ -115,10 +115,15 @@ Deployment commands, all documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md
 ```
 src/
   engine/       pure game logic - no React, no I/O, fully unit tested
+  routing/      hand-written URL routing, no dependency
   storage/      ALL persistence, behind one interface
+  hooks/        the read/write lifecycle
   components/   the UI, extracted from the original single file
   styles/       global.css (was an injected <style> template literal)
   data/         teamRows.js - the artifact's player pool, now a test fixture
+server/         privileged operations - never imported from src/
+netlify/        the one HTTP endpoint, a thin wrapper over server/
+supabase/       migrations (forward-only) and the local demo seed
 tests/          Vitest suites, including parity against the original artifact
 docs/           data model, open questions, and design decisions
 LegacyProject/  the original Artifact version, untouched, for reference
@@ -141,7 +146,7 @@ a second, in-memory one that let the app boot with no configuration; it is gone,
 npm test
 ```
 
-317 tests. Several kinds:
+462 tests. Several kinds:
 
 - **Behaviour tests** for dealing, schemes, scoring, the tiebreak chain, finalization
   and playoff advancement - including the awkward paths: an exhausted player pool at
@@ -160,10 +165,12 @@ npm test
   nothing, anywhere**, that secrets are unreachable, and that a manager cannot enter
   stats, finalize a week, or touch another team's lineup.
 
-  **They skip themselves silently when the local stack is not running - 114 of the 317.**
+  **They skip themselves silently when the local stack is not running - 148 of the 462.**
   Since `npm run dev` now starts that stack for you, the ordinary case is that they run.
   Check the skip count before believing a pass on anything touching storage, auth or the
-  schema.
+  schema. A stack that was already running when you pulled a migration is a different
+  trap: it has never seen that migration, and the failures say "column does not exist".
+  `npm run dev` applies whatever the local database is missing.
 
   `server.test.js` resets the demo league between tests by piping `supabase/seed.sql`
   into psql, which deletes and rebuilds the league row - and `league_members` cascades
@@ -191,7 +198,7 @@ Not done yet:
 
 | | |
 |---|---|
-| **Phase 4** | Live NFL data. The pool refreshes from nflverse depth charts, scoring splits by category, and the weekly stats pull fills the boxes in (done); the disagreement view beside each box and scheduled polling are not built yet |
+| **Phase 4** | Live NFL data. The pool refreshes from nflverse depth charts, scoring splits by category, the weekly stats pull fills the boxes in, lineups lock on the real kickoff times, and the pull runs on a schedule for leagues that opt in (done); the disagreement view beside each box is not built yet |
 | **Phase 6** | `docs/RULES.md` - the game rules written down outside the code |
 
 Phase 3 is done. Accounts and magic links are the only way in; join codes, the hand-rolled
