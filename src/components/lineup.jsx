@@ -1,11 +1,12 @@
-/* Pigskin Poker UI - extracted from
- * LegacyProject/PigskinPokerCode.jsx lines 1358-1418.
+/* Pigskin Poker UI - the starting lineup and its bench swaps.
  *
- * Edited since: the lock a swap obeys is no longer only the commissioner's per-player
- * one. A league plays either `gametime` (each player locks when his own team kicks off)
- * or `weekly` (every lineup locks at the week's first kickoff), and this asks
- * src/engine/lineupLock.js rather than reading `lockedPlayerIds` directly. The swap
- * itself is untouched - it is still one starter for one bench player.
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1358-1418. Changed twice since:
+ * the rows can carry points once the week is dealt (issue #29), and the lock a swap obeys
+ * is no longer only the commissioner's per-player one - a league plays either `gametime`
+ * (each player locks when his own team kicks off) or `weekly` (every lineup locks at the
+ * week's first kickoff), which this asks src/engine/lineupLock.js about rather than
+ * reading `lockedPlayerIds` directly. The swap itself is untouched: still one starter for
+ * one bench player.
  */
 
 import {
@@ -22,11 +23,16 @@ import { useNow } from "../hooks/useNow.js";
 import { RosterSlotRow } from "./roster.jsx";
 import { eligibleBenchForSlot } from "./scheme.jsx";
 
-export function LineupEditor({ state, team, onSwap }) {
+/* `showStats` arrives once the week is dealt. Without it this screen showed you your own
+ * lineup with no points on it anywhere - the one place in the app you would most expect to
+ * find them (issue #29). The swap controls are unaffected: they disappear on their own
+ * once the rosters lock. */
+export function LineupEditor({ state, team, onSwap, showStats }) {
   /* The deadline arrives on its own, so the screen has to notice it on its own too. */
   const now = useNow();
   const mode = lineupLockMode(state);
   const kickoffs = kickoffsFor(state);
+  const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
   if (!team.roster) {
     return (
       <div>
@@ -51,7 +57,7 @@ export function LineupEditor({ state, team, onSwap }) {
         const open = options.filter((o) => !isPlayerLocked(state, o.player.id, now));
         return (
           <div key={slot} style={{ marginBottom: 8 }}>
-            <RosterSlotRow slot={slot} player={player} state={state} statLine={null} locked={starterLocked} showStats={false} />
+            <RosterSlotRow slot={slot} player={player} state={state} statLine={stats[slot]} locked={starterLocked} showStats={!!showStats} />
             {mode === LINEUP_LOCK.GAMETIME && player && !starterLocked ? (
               <SlotLockHint at={lockTimeFor(mode, kickoffs, player.team)} team={player.team} />
             ) : null}

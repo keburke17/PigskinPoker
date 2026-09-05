@@ -19,6 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
 import { useRoute } from "./routing/useRoute.js";
+import { DEFAULT_TAB } from "./routing/index.js";
 import { LandingScreen } from "./components/LandingScreen.jsx";
 import { useLeague } from "./hooks/useLeague.js";
 import { validateBackup } from "./storage/backup.js";
@@ -35,8 +36,11 @@ import { LoginScreen } from "./components/LoginScreen.jsx";
 import { LeagueHomeTab } from "./components/LeagueHomeTab.jsx";
 import { MyTeamTab } from "./components/MyTeamTab.jsx";
 import { RosterHubTab } from "./components/RosterHubTab.jsx";
-import { WeeklyResultsTab } from "./components/WeeklyResultsTab.jsx";
+import { ScoreboardTab } from "./components/ScoreboardTab.jsx";
 import { RulesTab } from "./components/RulesTab.jsx";
+import { HelpTab } from "./components/HelpTab.jsx";
+import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
+import { hasBeenWelcomed, markWelcomed } from "./storage/firstRun.js";
 import { CommissionerTab } from "./components/commissioner.jsx";
 
 function errText(e) {
@@ -93,7 +97,7 @@ export default function App() {
   /* The tab lives in the URL now, so it is shareable and the back button works - which
    * is the whole of what P6 was about. Local state would immediately disagree with the
    * address bar the first time someone pressed back. */
-  const tab = route.name === "league" ? route.tab : "home";
+  const tab = route.name === "league" ? route.tab : DEFAULT_TAB;
   const setTab = (next) => go({ name: "league", leagueId: routeLeagueId ?? store.getLeagueId?.(), tab: next });
   /* The signed-in ACCOUNT, if there is one. Separate from `identity` on purpose:
    * identity is "what may this device do here", which a join code can answer on its
@@ -173,10 +177,21 @@ export default function App() {
     return () => { cancelled = true; };
   }, [route.name, account, store]);
 
-  const onOpenLeague = (id) => go({ name: "league", leagueId: id, tab: "home" });
+  const onOpenLeague = (id) => go({ name: "league", leagueId: id, tab: DEFAULT_TAB });
 
   /* Invites, for the commissioner panel. Loaded only when that tab is open - it is an
    * administrative list, not something the weekly flow needs. */
+  /* Dismissed in THIS session. The durable half of the answer lives in
+   * src/storage/firstRun.js; this is what makes the card disappear the instant someone
+   * presses the x, without waiting on a re-read. Declared up here with the other state
+   * because the render below has early returns and hooks cannot sit after them. */
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+
+  /* Set by a successful redeem so the welcome card can say "you are already in" rather
+   * than "you are in" (issue #26). Session-only on purpose: it describes what just
+   * happened in this tab, not a fact about the account. */
+  const [justJoined, setJustJoined] = useState(null);
+
   const [invites, setInvites] = useState([]);
   const refreshInvites = async () => {
     if (!store.listInvites) return;
@@ -206,9 +221,16 @@ export default function App() {
       setLoginError(r?.message || "Could not redeem that code.");
       return;
     }
-    /* REPLACE rather than push. Pressing back from a league should not land someone
+    /* `role` and `alreadyMember` used to be dropped on the floor here, which is half of
+     * issue #26: re-spending a code you had already used looked exactly like a fresh
+     * join, and nothing ever confirmed the join at all. The welcome card reads both. */
+    setJustJoined({ alreadyMember: !!r.alreadyMember });
+    /* A manager's own roster is their business; the league's standings are not, one tap
+     * after joining. Land a manager on My Team and anyone else on the default tab.
+     * REPLACE rather than push - pressing back from a league should not land someone
      * back on a code they have already spent. */
-    go({ name: "league", leagueId: r.leagueId, tab: "home" }, { replace: true });
+    const landing = r.role === "manager" ? "myteam" : DEFAULT_TAB;
+    go({ name: "league", leagueId: r.leagueId, tab: landing }, { replace: true });
   };
 
   const onCreateLeague = async (name) => {
@@ -570,18 +592,57 @@ export default function App() {
   const isCommissioner = identity.role === "commissioner";
   const myTeam = identity.role === "manager" ? state.teams.find((t) => t.id === identity.teamId) : null;
 
+  /* The welcome card - issue #24 from the commissioner's side, #26 from a manager's.
+   * Shown once per person per league; `hasBeenWelcomed` is the durable half and reads
+   * localStorage, so a new device sees it again. That is a deliberate trade recorded in
+   * src/storage/firstRun.js: the alternative is a column on league_members, which is a
+   * migration against a season people are playing. */
+  const leagueId = route.name === "league" ? route.leagueId : null;
+  const accountId = account ? account.userId : null;
+  const showWelcome = !welcomeDismissed && !!leagueId && !hasBeenWelcomed(accountId, leagueId);
+  const dismissWelcome = () => {
+    markWelcomed(accountId, leagueId);
+    setWelcomeDismissed(true);
+  };
+
+  /* ORDER AND LABELS, both deliberate (issue #30).
+   *
+   * The week comes first because the week is what people open the app for; `results` is
+   * also the DEFAULT tab now, so a bare /l/<id> lands on the scoreboard - see DEFAULT_TAB
+   * in src/routing/index.js, which is the one place that decision is written down.
+   *
+   * The labels are short because the nav clips rather than wraps - "Weekly Results"
+   * rendered as "Weekly R" on a phone, on the tab this change is making the primary one.
+   * Short labels alone did not fix that (five manager pills still want 410px of a 347px
+   * row at 375px), so the nav also wraps on narrow screens - see .pp-nav in global.css.
+   * Keep new labels short anyway: two rows of pills is fine, three is a menu. */
   const NAV = [
-    { key: "home", label: "League Home" },
+    { key: "results", label: "Scoreboard" },
     ...(identity.role === "manager" ? [{ key: "myteam", label: "My Team" }] : []),
+    { key: "home", label: "League" },
     { key: "hub", label: "Rosters" },
-    { key: "results", label: "Weekly Results" },
     { key: "rules", label: "Rules" },
-    ...(isCommissioner ? [{ key: "comm", label: "Commissioner" }] : []),
+    /* Beside Rules, not merged into it (issue #25): Rules reads out the league's live
+     * scoring config and is reference; Help is a walkthrough. The cost is honest - this
+     * is a seventh pill for a commissioner on a phone, and the nav wraps rather than
+     * clips, so it can reach a third row at 375px. Recorded as OQ-H for Scott. */
+    { key: "help", label: "Help" },
+    ...(isCommissioner ? [{ key: "comm", label: "Commish" }] : []),
   ];
 
   return (
     <div className="pp-root">
-      
+      {showWelcome ? (
+        <WelcomeOverlay
+          state={state}
+          role={identity.role}
+          team={myTeam}
+          leagueName={state.leagueName}
+          alreadyMember={!!(justJoined && justJoined.alreadyMember)}
+          onDismiss={dismissWelcome}
+          onGoTo={setTab}
+        />
+      ) : null}
       <div className="pp-container">
         <div className="pp-header">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -607,32 +668,31 @@ export default function App() {
           ) : null}
           {opError ? <ErrorBanner message={opError} onDismiss={dismissOpError} /> : null}
           {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically. You can also tap Save Now.", detail: saveErrorDetail }} /> : null}
-          <nav className="pp-nav">
-            {NAV.map((n) => (
-              <button key={n.key} className={"pp-nav-btn" + (tab === n.key ? " active" : "")} onClick={() => setTab(n.key)}>{n.label}</button>
-            ))}
-          </nav>
+          <div className="pp-nav-wrap">
+            <nav className="pp-nav">
+              {NAV.map((n) => (
+                <button key={n.key} className={"pp-nav-btn" + (tab === n.key ? " active" : "")} onClick={() => setTab(n.key)}>{n.label}</button>
+              ))}
+            </nav>
+          </div>
         </div>
 
         <div style={{ paddingTop: 14 }}>
           {tab === "home" && <LeagueHomeTab state={state} />}
           {tab === "myteam" && myTeam && (
-            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} />
+            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
-          {tab === "hub" && (
-            <RosterHubTab
-              state={state} isCommissioner={isCommissioner}
-              onStatChange={onStatChange} onToggleRosterLock={onToggleRosterLock}
-              onFinalize={onFinalize} finalizeError={finalizeError}
-              onPullStats={onPullStats} statsReport={statsReport}
-            />
-          )}
-          {tab === "results" && <WeeklyResultsTab state={state} />}
+          {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}
+          {tab === "results" && <ScoreboardTab state={state} myTeam={myTeam} />}
           {tab === "rules" && <RulesTab state={state} />}
+          {tab === "help" && <HelpTab state={state} role={identity.role} team={myTeam} onGoTo={setTab} />}
           {tab === "comm" && isCommissioner && (
             <CommissionerTab
               state={state}
+              onStatChange={onStatChange} onToggleRosterLock={onToggleRosterLock}
+              onFinalize={onFinalize} finalizeError={finalizeError}
+              onPullStats={onPullStats} statsReport={statsReport}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}

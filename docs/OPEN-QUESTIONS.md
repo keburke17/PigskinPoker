@@ -4,7 +4,7 @@ Decisions that are **yours**, not mine. Two kinds:
 
 - **OQ-1 .. OQ-9** - things the artifact sandbox forced, which are now genuinely open for
   the first time. The code cannot tell us whether these were choices or workarounds.
-- **OQ-A .. OQ-F** - places where the code and the written rules disagree, or where the
+- **OQ-A .. OQ-G** - places where the code and the written rules disagree, or where the
   behaviour is surprising. Per the ground rules I have **changed none of these**. They are
   written down and waiting on you.
 
@@ -447,6 +447,25 @@ Worth raising with him directly rather than letting him find it here: it is rare
 it fires it silently moves standings points, and the beneficiary is whichever team was
 created first.
 
+**Addendum, 2026-09-04 - "created first" is now actually true.** That last sentence was
+describing an intent, not a guarantee. Input order is `state.teams` order, and the teams
+query carried no `ORDER BY` (`src/storage/supabase.js`), so it was whatever PostgREST
+happened to return and was not promised to be stable between two reads of the same league.
+Two screenshots on issue #29 showed different teams first. An OQ-A tie was therefore being
+awarded to an *arbitrary* team, not to the earliest one.
+
+The query now orders by `created_at`, then `id`. **This does not touch OQ-A** - the loop
+bound is unchanged and the skipped test is still skipped - it only makes the documented
+tiebreak deterministic instead of database-dependent. If a tie of this kind ever fired
+before now, the winner may not have been the team this section says it was.
+
+**Also 2026-09-04:** the live scoreboard added for issues #29 and #30 ranks the week in
+progress with `rankTeamsWithTiebreak`, so OQ-A is now visible on a screen people look at
+mid-week rather than only in the finalized table. That was the point of routing the
+projection through the same function finalize uses - a dashboard that ranked its own way
+could show an order the week would not actually award. **The loop bound does not get
+"fixed" to make the scoreboard look right.**
+
 ### OQ-B. Blocks are not validated engine-side. **[PROVISIONAL: yes - confirm with the original designer]**
 
 `SchemeForm` (line 1295) only offers your own **starters** when the scheme type is `block`.
@@ -511,6 +530,136 @@ and simpler to enforce. Flagging it as a deliberate, behaviour-preserving change
 letting you discover it later. **Recommendation: proceed.** No action needed unless you see
 a case I have missed.
 
+> **Since 2026-09-05 (OQ-11), that column is only half the answer.** `roster_slots.locked`
+> is now specifically the MANUAL lock - the one the commissioner presses. The other half
+> is computed from the league's lineup-lock policy and this week's kickoff times, and is
+> never stored, because a lock that fires at one o'clock is a fact about the clock rather
+> than something to write down. Anything asking "can this player be moved?" asks
+> `isPlayerLocked()`; the manual lock still wins over the schedule.
+
+### OQ-G. The scoreboard-first layout. **[BUILT 2026-09-04 - three parts to confirm or send back]**
+
+Issues #29 and #30 said the same thing from two ends: through the whole week the app is
+actually being played, nothing on League Home, My Team or Weekly Results answered "how is
+the league doing", and the running scoreboard that already existed was the third sub-tab of
+Rosters, underneath the commissioner's stat-entry wall.
+
+That is presentation, not rules - no engine behaviour changed and `parity.test.js` is
+untouched - so it was built rather than deferred. But three of the calls inside it are
+Scott's to redirect, and each is deliberately cheap to reverse:
+
+1. **A bare league link now opens the Scoreboard, not the standings.** `/l/<id>` used to
+   mean League Home. It means the week in progress now, and the standings are
+   `/l/<id>/home`. Nothing breaks - every deep link that names its tab is unaffected - but
+   an existing bookmark to a bare league URL opens somewhere different. **Reverse:** set
+   `DEFAULT_TAB` back to `"home"` in `src/routing/index.js`. One line, one test.
+
+2. **The live table shows a projected Std Pts column.** It says what the week would award
+   if it finalized right now, and it is computed by the same three engine calls finalize
+   makes, so it cannot disagree with the real thing. Two consequences worth saying out
+   loud: it is a projection and moves as stats arrive, and because it ranks through
+   `rankTeamsWithTiebreak` it puts **OQ-A** on a screen people read mid-week. **Reverse:**
+   pass `showProjection={false}` in `src/components/scoreboard.jsx`.
+
+3. **Rosters collapsed.** Each team is one line - name and total - and opens on a tap; your
+   own opens by itself. It was six full cards of twelve players each, which is the
+   scrolling both issues complained about. **Reverse:** default `open` to `true` in
+   `TeamRosterCard`.
+
+Also moved: the commissioner's stat entry left the Rosters hub for the Commissioner tab,
+where it sits with Deal and Process Schemes and opens by default while a week is live. Lock
+Rosters, Pull Stats and Finalize Week went with it and are one tap in, not two.
+
+### OQ-H. First-run guidance. **[BUILT 2026-09-04 - four calls to confirm or send back]**
+
+Issues #24, #25, #26 and #27 are one complaint from four angles: the app never says what
+to do next. A new commissioner lands on an empty standings table with ten flat sub-tabs; a
+new manager lands on everybody else's zeroes; nothing states the weekly cycle; and pressing
+Submit Scheme appears to do nothing because the confirmation is several screens above the
+button.
+
+All of it is presentation - nothing touched `src/engine/`, and `parity.test.js` is
+untouched - so it was built rather than deferred. Four of the calls inside it are Scott's:
+
+1. **There is a seventh nav pill.** Help sits beside Rules rather than merging into it,
+   because Rules reads out the league's live scoring config and is reference, while Help is
+   a walkthrough. The cost is real and was warned about in the NAV comment in `src/App.jsx`:
+   the nav wraps rather than clips, and a commissioner at 375px can now reach a third row of
+   pills - the point at which that comment says it should be a menu. **Reverse:** drop
+   `help` from `NAV` in `src/App.jsx` and render `HelpTab` as a sub-tab of Rules; the route
+   can stay, so links keep working.
+
+2. **A welcome card interrupts on first entry.** Once per person per league, dismissible,
+   with a 44px close button and a tap-anywhere backdrop. "Seen it" is in `localStorage`
+   (`src/storage/firstRun.js`), which means it re-shows on a new device. The alternative is
+   a column on `league_members`, which is a migration against a live season - the trade is
+   written up in that file. **Reverse:** stop rendering `WelcomeOverlay` in `src/App.jsx`;
+   the persistent `NextStepNote` underneath it stands on its own.
+
+3. **Redeeming an invite now lands a manager on My Team, not League Home.** Standings for a
+   league you joined ten seconds ago are not your business; your roster is. **Reverse:** one
+   line in `onRedeemInvite`.
+
+4. **The submitted scheme is rendered twice on My Team** - once where the artifact put it,
+   at the top, and once immediately above the submit button, which is what issue #27 asked
+   for. The button also has a busy state and a short "Scheme submitted" acknowledgement.
+   **Reverse:** drop the second `SchemeSummary` in `src/components/scheme.jsx`.
+
+**One thing worth Scott's eye more than the four above.** Writing the help text surfaced
+that the app has **no automatic roster freeze at all** - no Thursday cutoff, no kickoff
+timer, no scheme deadline on a clock. Both locks are buttons the commissioner presses:
+"Lock Rosters for the Weekend" closes scheme submission, and a per-player lock (pressed as
+each real game kicks off) is what freezes an individual starter. The Rules tab already
+describes this correctly under "Lineup Lock & Injury Swaps", and every new sentence was
+written to match it - `tests/guidance.test.js` carries a regression guard that fails if any
+of the copy starts promising a weekday or a kickoff deadline.
+
+That is a description of the app, not a complaint about it. But it means **the real scheme
+deadline is whenever the commissioner happens to press Process Schemes**, which is a social
+arrangement rather than a rule, and a league that grows past its founders will probably want
+it to be a stated time. If Scott wants a deadline to actually exist in the product, that is
+a rules change and a new question - it is not one of these four.
+
+### OQ-I. A manager cannot see the scheme they submitted. **[FOUND 2026-09-04 - not fixed]**
+
+Found while building the guidance for #27, and it makes that issue worse than it was
+filed. #27 assumed the confirmation existed and was merely several screens above the
+button. It does not exist at all: **`state.schemes` is always empty in a browser.**
+
+Two conditions that cannot both be true:
+
+- `read_resolved_schemes` (`supabase/migrations/20260818050000_invites_and_league_scoping.sql:160`)
+  lets a browser select a scheme only where **`resolved_at is not null`**.
+- `hydrate.js:203` builds `state.schemes` from exactly the rows where
+  **`resolved_at == null`**.
+
+So the intersection is empty, every time. Verified on the local stack: an unresolved
+scheme inserted directly for a team's current period is invisible to that team's own
+signed-in browser after a reload.
+
+What that costs, all of it pre-existing:
+
+- `SchemeSummary` never renders - the "Your submitted scheme for Week N" line is dead code
+  in practice, on both of the places it is mounted.
+- The submit button never becomes "Update Scheme", and the form never re-populates from
+  what was submitted (`src/components/scheme.jsx`, the `useEffect`).
+- A manager has no way at all to check what they picked, which is the actual complaint
+  underneath #27.
+- The new guidance inherits it: the next-step line goes on saying "submit a scheme" to
+  somebody who already did.
+
+**Not fixed here, deliberately.** The fix is a migration - let a member read their OWN
+unresolved scheme while still hiding everyone else's - and that is `db:push` against a
+live season, which is Kyle's to run. It also brushes against **OQ-9**, whose comment in
+that migration says an unresolved scheme "must not leak mid-week even to the league it
+belongs to". Reading the intent, that is aimed at other managers, and your own scheme is
+not a leak to you - but it is the designer's information-visibility call to confirm, not
+a drive-by change to an RLS policy.
+
+The alternative, no migration: have the server return the submitting team's own scheme
+from `submitScheme` and hold it in local state. Cheaper, and it survives a reload not at
+all, which is most of the value.
+
 ---
 
 ## What is still open
@@ -528,6 +677,8 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | **OQ-3** history depth | Phase 2 | Schema already preserves it; this is about what we surface. |
 | **OQ-C / OQ-D / OQ-E** rules quirks | Anytime | All preserved as-is; each is a small, reversible behaviour question. |
 | **OQ-F** per-slot vs. per-player locks | Anytime | Behaviour-preserving; noted so it is not discovered later. |
+| **OQ-H** first-run guidance | **Built 2026-09-04** | Presentation only. Four reversible calls for Scott, and one finding: nothing in the app freezes on a clock. |
+| **OQ-I** you cannot see your own scheme | **Soon** | A real bug, not a preference. Needs a migration (Kyle) and a nod on OQ-9's intent (Scott). |
 
 **OQ-B is provisionally answered** (yes, Block protects your own starters) and is on the
 list to confirm with the original designer, alongside **OQ-A**. Those two are the standing
@@ -538,7 +689,8 @@ accounts, an `invites` table replacing `team_secrets`, league-scoped read polici
 landing page with three doors (sign in / redeem a code / create a league).
 
 **The standing agenda for the designer is now OQ-A, OQ-B and OQ-E**, plus the season
-archive, which is held for him rather than built.
+archive, which is held for him rather than built - and **OQ-G**, which is built and needs
+confirming rather than deciding.
 
 **OQ-4c and OQ-4b were answered on 2026-08-28 and no longer block anything.** Yards and
 touchdowns split into passing / rushing / receiving at customizable rates, and the player

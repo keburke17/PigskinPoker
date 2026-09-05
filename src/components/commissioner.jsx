@@ -1,8 +1,9 @@
-/* Pigskin Poker UI - extracted from
- * LegacyProject/PigskinPokerCode.jsx lines 1816-2097.
- * Only module boundaries were added to the artifact's own panels: imports at the top,
- * `export` on each declaration. Panels added since are marked by their own comments -
- * CommNflWeekPanel and CommLineupLockPanel are ours, not his.
+/* Pigskin Poker UI - the commissioner's panels.
+ *
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1816-2097. The panels themselves
+ * are the artifact's; what has been added since is the NFL-week panel, the lineup-lock
+ * panel, the pool refresh, the invite panel, and - for issues #29 and #30 - the "Enter
+ * Stats" sub-tab, which is the stat-entry screen that used to live under Rosters.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -21,6 +22,7 @@ import {
 } from "../engine/index.js";
 import { MyTeamTab } from "./MyTeamTab.jsx";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
+import { LiveStatsTab } from "./stats.jsx";
 
 export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam }) {
   const [newName, setNewName] = useState("");
@@ -34,7 +36,12 @@ export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam })
         </div>
       </div>
       {state.teams.map((t) => <CommTeamRow key={t.id} team={t} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam} />)}
-      {state.teams.length === 0 ? <EmptyState>No teams yet - add your first team above.</EmptyState> : null}
+      {state.teams.length === 0 ? (
+        <EmptyState>
+          No teams yet - add your first team above. One row per manager; you can rename
+          them later. Once the teams are in, send invites, then deal Week 1 from Weeks.
+        </EmptyState>
+      ) : null}
     </div>
   );
 }
@@ -256,7 +263,18 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
       {dealError ? <ErrorBanner message={dealError} /> : null}
       {phase === "pre-deal" && (
         <>
-          <p className="pp-sub">Deal a fresh roster to {teams.length} team{teams.length === 1 ? "" : "s"} for {periodLabel(state.currentPeriod)}.</p>
+          {/* ISSUE #24. This used to read "Deal a fresh roster to 0 teams for Week 1."
+            * over a disabled button with no reason given - the one screen a new
+            * commissioner opens looking for the start button. The button is disabled on
+            * the same condition as before; only the explanation is new. */}
+          {teams.length === 0 ? (
+            <p className="pp-sub">
+              No teams to deal to yet. Add them under the Teams tab first - a league
+              needs at least one team before {periodLabel(state.currentPeriod)} can be dealt.
+            </p>
+          ) : (
+            <p className="pp-sub">Deal a fresh roster to {teams.length} team{teams.length === 1 ? "" : "s"} for {periodLabel(state.currentPeriod)}.</p>
+          )}
           <button className="pp-btn pp-btn-gold" disabled={teams.length === 0} onClick={onDeal}>Deal Rosters</button>
         </>
       )}
@@ -268,7 +286,10 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
         </>
       )}
       {phase === "schemes-processed" && (
-        <p className="pp-sub">Schemes have been processed. Head to Live Stats to enter results and finalize.</p>
+        <p className="pp-sub">
+          Schemes have been processed. Head to Enter Stats to lock the rosters for the
+          weekend, fill in the results and finalize.
+        </p>
       )}
       </div>
       <CommNflWeekPanel state={state} onSetNflWeek={onSetNflWeek} />
@@ -679,15 +700,70 @@ export function CommInvitePanel({ state, invites, onCreateInvite, onRevokeInvite
   );
 }
 
+/* "Enter Stats" arrived here from the Rosters hub (issues #29, #30). It belongs with Deal
+ * and Process Schemes: they are the three steps of the same commissioner-driven week, and
+ * Finalize - the step that ends the week - is on this panel. It leads the list, and it is
+ * the sub-tab this screen opens on while a week is live, so it is FEWER taps away than it
+ * was as the third sub-tab of Rosters, not more. */
+/* ISSUE #24. Ten flat sub-tabs in no particular order, with no sign that only one of
+ * them matters yet. This is the order written down, on the screen, ticking itself off -
+ * and it removes itself the moment the first week is dealt, so it is scaffolding rather
+ * than furniture. Nothing here can act; every line points at a sub-tab above it. */
+export function CommSetupChecklist({ state, onGoToSub }) {
+  const steps = [
+    { done: state.teams.length > 0, sub: "teams", label: "Add your teams", note: "One row per manager." },
+    { done: state.teams.length > 0, sub: "invite", label: "Invite the managers", note: "Each invite signs one person in as themselves." },
+    /* _meta, not currentPeriod. The NFL week is a server-owned column kept OUT of the
+     * state proper because parity depends on the artifact's shape - see the note in
+     * src/storage/hydrate.js. Read off currentPeriod it is always undefined, and the
+     * step would sit unticked forever. */
+    { done: !!(state._meta && state._meta.nflWeek), sub: "weeks", label: "Set the NFL week", note: "Optional - it is what Pull Stats reads from." },
+    { done: false, sub: "weeks", label: "Deal " + periodLabel(state.currentPeriod), note: "Every team gets a fresh random 12-player roster." },
+  ];
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Setting up</h3>
+      <p className="pp-sub" style={{ marginBottom: 10 }}>
+        Four steps to a running league. This disappears once the first week is dealt.
+      </p>
+      {steps.map((st, i) => (
+        <div key={i} className="pp-checkstep">
+          <span className={"pp-checkbox" + (st.done ? " done" : "")}>{st.done ? "x" : String(i + 1)}</span>
+          <div style={{ flex: 1 }}>
+            <div className="pp-checkstep-label">{st.label}</div>
+            <div className="pp-sub">{st.note}</div>
+          </div>
+          <button className="pp-btn pp-btn-sm" onClick={() => onGoToSub(st.sub)}>Open</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CommissionerTab(props) {
-  const [sub, setSub] = useState("teams");
-  const subs = ["teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "backup", "reset"];
-  const labels = { teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", backup: "Backup", reset: "Reset" };
+  const midWeek = props.state.currentPeriod.phase !== "pre-deal";
+  const [sub, setSub] = useState(midWeek ? "stats" : "teams");
+  /* Only before the very first deal. A league in week 6 sitting at pre-deal is a
+   * commissioner between weeks, not a commissioner setting up. */
+  const setupPhase = !midWeek
+    && props.state.currentPeriod.type === "week"
+    && props.state.currentPeriod.number === 1;
+  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "backup", "reset"];
+  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", backup: "Backup", reset: "Reset" };
   return (
     <div>
+      {setupPhase ? <CommSetupChecklist state={props.state} onGoToSub={setSub} /> : null}
       <div className="pp-subnav">
         {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
       </div>
+      {sub === "stats" && (
+        <LiveStatsTab
+          state={props.state} isCommissioner={true}
+          onStatChange={props.onStatChange} onToggleRosterLock={props.onToggleRosterLock}
+          onFinalize={props.onFinalize} finalizeError={props.finalizeError}
+          onPullStats={props.onPullStats} statsReport={props.statsReport}
+        />
+      )}
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
       {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { TABS, buildPath, parsePath } from "../src/routing/index.js";
+import { DEFAULT_TAB, TABS, buildPath, parsePath } from "../src/routing/index.js";
 
 describe("parsePath", () => {
   it("reads the landing page", () => {
@@ -15,17 +15,22 @@ describe("parsePath", () => {
     expect(parsePath("")).toEqual({ name: "landing" });
   });
 
-  it("reads a league, defaulting to the home tab", () => {
-    expect(parsePath("/l/abc")).toEqual({ name: "league", leagueId: "abc", tab: "home" });
+  it("reads a league, defaulting to the scoreboard", () => {
+    /* The default moved from "home" (season standings) to "results" (the week in
+     * progress) with issues #29 and #30. Asserted through DEFAULT_TAB so the constant is
+     * the single place the decision lives, and pinned literally on the line below so
+     * changing it back is a deliberate edit to a test rather than a silent one. */
+    expect(DEFAULT_TAB).toBe("results");
+    expect(parsePath("/l/abc")).toEqual({ name: "league", leagueId: "abc", tab: DEFAULT_TAB });
   });
 
   it("reads a named tab", () => {
     expect(parsePath("/l/abc/comm")).toEqual({ name: "league", leagueId: "abc", tab: "comm" });
   });
 
-  it("falls back to home for a tab that does not exist", () => {
+  it("falls back to the default tab for one that does not exist", () => {
     // A stale bookmark or a typo should land somewhere real, not on a blank screen.
-    expect(parsePath("/l/abc/not-a-tab").tab).toBe("home");
+    expect(parsePath("/l/abc/not-a-tab").tab).toBe(DEFAULT_TAB);
   });
 
   it("falls back to the landing page for anything unrecognised", () => {
@@ -45,19 +50,26 @@ describe("parsePath", () => {
 
   it("ignores trailing and doubled slashes", () => {
     expect(parsePath("/l/abc/comm/")).toEqual({ name: "league", leagueId: "abc", tab: "comm" });
-    expect(parsePath("//l//abc//")).toEqual({ name: "league", leagueId: "abc", tab: "home" });
+    expect(parsePath("//l//abc//")).toEqual({ name: "league", leagueId: "abc", tab: DEFAULT_TAB });
   });
 });
 
 describe("buildPath", () => {
   it("is the inverse of parsePath for every shape", () => {
     // The two live next to each other precisely so they cannot drift; this is the check.
-    const paths = ["/", "/join", "/join/ABC123-DEF4567890", "/l/abc", "/l/abc/comm", "/l/abc/rules"];
+    const paths = ["/", "/join", "/join/ABC123-DEF4567890", "/l/abc", "/l/abc/comm", "/l/abc/rules", "/l/abc/home"];
     for (const p of paths) expect(buildPath(parsePath(p))).toBe(p);
   });
 
   it("omits the default tab, so the tidy URL is the one people copy", () => {
-    expect(buildPath({ name: "league", leagueId: "abc", tab: "home" })).toBe("/l/abc");
+    expect(buildPath({ name: "league", leagueId: "abc", tab: DEFAULT_TAB })).toBe("/l/abc");
+  });
+
+  it("still names every non-default tab, including the old default", () => {
+    /* /l/<id> used to mean the standings. It now means the scoreboard, and the standings
+     * need their segment spelled out - which is the one URL this change alters the
+     * meaning of, so it is asserted rather than assumed. */
+    expect(buildPath({ name: "league", leagueId: "abc", tab: "home" })).toBe("/l/abc/home");
   });
 
   it("handles a missing route rather than throwing", () => {
@@ -78,7 +90,11 @@ describe("buildPath", () => {
      *
      * Pinned literally rather than imported from App, which would make the two agree by
      * construction and prove nothing. If a tab is added, this fails and asks for both. */
-    expect(TABS).toEqual(["home", "myteam", "hub", "results", "rules", "comm"]);
+    expect(TABS).toEqual(["home", "myteam", "hub", "results", "rules", "help", "comm"]);
     expect(parsePath("/l/x/hub").tab).toBe("hub");
+    /* `help` joined the list with issue #25. It is a real route, not just a nav pill,
+     * because the welcome overlay deep-links to it and a link people are told to follow
+     * should survive being shared. */
+    expect(parsePath("/l/x/help").tab).toBe("help");
   });
 });

@@ -1,12 +1,12 @@
-/* Pigskin Poker UI - extracted from
- * LegacyProject/PigskinPokerCode.jsx lines 993-1045.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. One line has changed since: what counts as LOCKED is now the league's
- * lineup-lock policy as well as the commissioner's own lock - see
- * src/engine/lineupLock.js. The rows themselves are the artifact's.
+/* Pigskin Poker UI - one roster slot, and one team's roster.
+ *
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 993-1045. Changed twice since:
+ * TeamRosterBlock now ends the starters with the team's total (issue #29), and what
+ * counts as LOCKED is the league's lineup-lock policy as well as the commissioner's own
+ * lock (src/engine/lineupLock.js).
  */
 
-import { computeStarterPoints, getPlayer, isPlayerLocked } from "../engine/index.js";
+import { computeStarterPoints, getPlayer, isPlayerLocked, teamPeriodScore } from "../engine/index.js";
 import { EmptyState, SuitBadge, statLineText } from "./atoms.jsx";
 
 export function RosterSlotRow({ slot, player, state, statLine, locked, showStats }) {
@@ -29,7 +29,16 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
   );
 }
 
-export function TeamRosterBlock({ team, state, showStats, showBench }) {
+/* `showTotal` defaults to `showStats`, because the six numbers and the number they add
+ * up to belong on screen together. Before this the card stopped after the FLEX row and
+ * the only place in the whole app a team total appeared was the commissioner's stat-entry
+ * screen - so to find out your own team was on 59 you had to leave the tab that was
+ * showing you the six numbers (issue #29).
+ *
+ * The sum comes from the engine's teamPeriodScore rather than being added up here: it is
+ * the same walk over the same six slots that finalize does, so the card cannot show a
+ * total the week will not award. */
+export function TeamRosterBlock({ team, state, showStats, showBench, showTotal }) {
   const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
   /* Locked means "cannot be moved now", which is the commissioner's manual lock OR the
    * league's lineup-lock policy having caught up with the clock - one question, asked
@@ -48,6 +57,12 @@ export function TeamRosterBlock({ team, state, showStats, showBench }) {
           />
         );
       })}
+      {(showTotal == null ? showStats : showTotal) ? (
+        <div className="pp-roster-total">
+          <span>Team total</span>
+          <span className="pp-roster-total-pts">{teamPeriodScore(state, team)}</span>
+        </div>
+      ) : null}
       {showBench ? (
         <>
           <div className="pp-eyebrow" style={{ margin: "10px 0 6px" }}>Bench</div>

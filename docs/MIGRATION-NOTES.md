@@ -1220,6 +1220,89 @@ Nothing here finalizes anything. The week still ends when the commissioner says 
 
 ---
 
+## Phase 4b - the week in progress got a screen (2026-09-04)
+
+Issues #29 and #30, and the first change since the port that is about the shape of the app
+rather than the shape of the data. **No engine behaviour changed. `parity.test.js` is
+untouched and was never expected to move.**
+
+### The problem, stated once
+
+Between the deal and the finalize - six days out of seven - nothing in the app answered
+"how is the league doing". League Home showed the last FINALIZED week's standings. My Team
+showed your lineup with no points on it, not even your own. Weekly Results said "No weeks
+finalized yet". The one running scoreboard that existed was `LiveScoresBar`, filed as the
+third sub-tab of **Rosters**, below the commissioner's stat-entry wall - so a manager who
+found it scrolled past the answer into a screen full of inputs they could not use.
+
+The working answer was: open All Rosters, scroll through six cards of twelve players, and
+add up thirty-six numbers in your head, on a phone.
+
+### What was built
+
+- **`results` is now the Scoreboard**, and the tab a bare `/l/<id>` opens. It carries the
+  week in progress at the top - your team, your score, your rank, your top scorer, your six
+  starters with points, then the league table with your row marked - and every finished
+  week underneath it, unchanged.
+- **Team totals exist on screen.** On the roster card, on your own team's header, and on
+  each team's heading in the commissioner's stat entry. The number was one function call
+  away from every one of those screens and appeared on none of them.
+- **Rosters became a browse.** One line per team, name and total, expanding on a tap; yours
+  first and open already.
+- **The commissioner's stat entry moved to the Commissioner tab**, where it opens by
+  default while a week is live. Lock Rosters, Pull Stats and Finalize Week went with it -
+  one tap in rather than two.
+- **The nav wraps on phones.** Short labels were not enough: five manager pills want 410px
+  of a 347px row at 375px, and the commissioner has six. It scrolled with a zero-height
+  scrollbar, so the sixth was clipped mid-word with nothing saying it could be scrolled -
+  "Weekly Results" read as "Weekly R".
+
+### The engine change that is not a behaviour change
+
+`finalizeCurrentPeriod`'s first half - build a score row per team - is now
+`periodScoreRows`, and `projectCurrentPeriod` is the read-only view over it. Both live in
+`src/engine/standings.js`; finalize still calls the first.
+
+**This is the whole point of the change.** A dashboard that added the scores up its own way
+would be a second implementation of the most important arithmetic in the game, and the
+disagreement would surface at the moment the week became permanent. `tests/live.test.js`
+asserts the agreement directly: same state, project it and finalize it, demand identical
+scores, ranks and standings points.
+
+`teamRunningScore` and `LiveScoresBar` were deleted from `stats.jsx`; the sum is
+`teamPeriodScore` in the engine, which is also what let `roster.jsx` show a total without
+importing from `stats.jsx` - `stats.jsx` already imports `RosterSlotRow` the other way, so
+that would have been a cycle.
+
+### The bug found on the way: team order was not stable
+
+The teams query carried no `ORDER BY` (`src/storage/supabase.js`), and `hydrateLeague` does
+not sort `teamRows`, so team order was whatever PostgREST returned and was not promised to
+be the same between two reads. Two screenshots on issue #29 showed different teams first.
+
+Visible half: the roster list shuffled under people. **The other half is that `state.teams`
+order is load-bearing in the engine.** `rankTeamsWithTiebreak` leaves teams it cannot
+separate in *input* order - that is OQ-A - so an unstable read made the beneficiary of such
+a tie unstable too. OQ-A documents the winner as "whichever team joined first"; that was an
+intent, not a guarantee. The query now orders by `created_at`, then `id`.
+
+**OQ-A itself is untouched.** The `i < 5` loop is unchanged and the skipped test is still
+skipped. Ordering the read only makes the documented behaviour deterministic instead of
+database-dependent - and the live scoreboard, which ranks through the same function, now
+puts that behaviour on a screen people read mid-week. See the 2026-09-04 addendum in
+`docs/OPEN-QUESTIONS.md`.
+
+### For the designer
+
+Three of the calls above are Scott's to send back, and each is one line to reverse. They
+are written up as **OQ-G** in `docs/OPEN-QUESTIONS.md`: what a bare league link opens,
+whether the projected Std Pts column should be there at all, and whether Rosters should
+start collapsed.
+
+`npm test`: **379 passed, 1 skipped, 22 files** with the local stack up.
+
+---
+
 ## Lineup lock timing becomes a league option (2026-09-05)
 
 **What was asked for:** a league can play either "change your lineup up until each
@@ -1279,9 +1362,10 @@ came from, so the lock can be exercised locally. `scripts/test.mjs` also asks fo
 fixture feed, because dealing a week now reads the schedule and a unit test must not
 download nflverse's games file to do it.
 
-`npm test`: **258 passed, 143 skipped, 22 files** on the machine this was written on,
+`npm test`: **284 passed, 143 skipped, 24 files** on the machine this was written on,
 which had no Docker and therefore no local stack. With the stack up that should read
-**400 passed, 1 skipped** - 365 as before, plus 21 engine and feed tests that run
-anywhere and 14 database-backed ones that do not. **Those 14 have not been run**: the
-environment could not pull the Supabase images. They want a green run before this is
-trusted against a live league.
+**426 passed, 1 skipped** - 390 as of the section above, plus 21 engine and feed tests
+and a second lock-copy case that run anywhere, and 14 database-backed ones that do not.
+**Those 14 have not been run**: the environment could not pull the Supabase images. They
+want a green run before this is trusted against a live league.
+
