@@ -90,7 +90,11 @@ describe("buildPath", () => {
      *
      * Pinned literally rather than imported from App, which would make the two agree by
      * construction and prove nothing. If a tab is added, this fails and asks for both. */
-    expect(TABS).toEqual(["home", "myteam", "hub", "results", "rules", "comm"]);
+    expect(TABS).toEqual(["home", "myteam", "hub", "results", "rules", "help", "comm"]);
     expect(parsePath("/l/x/hub").tab).toBe("hub");
+    /* `help` joined the list with issue #25. It is a real route, not just a nav pill,
+     * because the welcome overlay deep-links to it and a link people are told to follow
+     * should survive being shared. */
+    expect(parsePath("/l/x/help").tab).toBe("help");
   });
 });

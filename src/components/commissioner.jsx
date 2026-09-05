@@ -24,7 +24,12 @@ export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam })
         </div>
       </div>
       {state.teams.map((t) => <CommTeamRow key={t.id} team={t} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam} />)}
-      {state.teams.length === 0 ? <EmptyState>No teams yet - add your first team above.</EmptyState> : null}
+      {state.teams.length === 0 ? (
+        <EmptyState>
+          No teams yet - add your first team above. One row per manager; you can rename
+          them later. Once the teams are in, send invites, then deal Week 1 from Weeks.
+        </EmptyState>
+      ) : null}
     </div>
   );
 }
@@ -138,7 +143,18 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
       {dealError ? <ErrorBanner message={dealError} /> : null}
       {phase === "pre-deal" && (
         <>
-          <p className="pp-sub">Deal a fresh roster to {teams.length} team{teams.length === 1 ? "" : "s"} for {periodLabel(state.currentPeriod)}.</p>
+          {/* ISSUE #24. This used to read "Deal a fresh roster to 0 teams for Week 1."
+            * over a disabled button with no reason given - the one screen a new
+            * commissioner opens looking for the start button. The button is disabled on
+            * the same condition as before; only the explanation is new. */}
+          {teams.length === 0 ? (
+            <p className="pp-sub">
+              No teams to deal to yet. Add them under the Teams tab first - a league
+              needs at least one team before {periodLabel(state.currentPeriod)} can be dealt.
+            </p>
+          ) : (
+            <p className="pp-sub">Deal a fresh roster to {teams.length} team{teams.length === 1 ? "" : "s"} for {periodLabel(state.currentPeriod)}.</p>
+          )}
           <button className="pp-btn pp-btn-gold" disabled={teams.length === 0} onClick={onDeal}>Deal Rosters</button>
         </>
       )}
@@ -150,7 +166,10 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
         </>
       )}
       {phase === "schemes-processed" && (
-        <p className="pp-sub">Schemes have been processed. Head to Live Stats to enter results and finalize.</p>
+        <p className="pp-sub">
+          Schemes have been processed. Head to Enter Stats to lock the rosters for the
+          weekend, fill in the results and finalize.
+        </p>
       )}
       </div>
       <CommNflWeekPanel state={state} onSetNflWeek={onSetNflWeek} />
@@ -560,13 +579,54 @@ export function CommInvitePanel({ state, invites, onCreateInvite, onRevokeInvite
  * Finalize - the step that ends the week - is on this panel. It leads the list, and it is
  * the sub-tab this screen opens on while a week is live, so it is FEWER taps away than it
  * was as the third sub-tab of Rosters, not more. */
+/* ISSUE #24. Ten flat sub-tabs in no particular order, with no sign that only one of
+ * them matters yet. This is the order written down, on the screen, ticking itself off -
+ * and it removes itself the moment the first week is dealt, so it is scaffolding rather
+ * than furniture. Nothing here can act; every line points at a sub-tab above it. */
+export function CommSetupChecklist({ state, onGoToSub }) {
+  const steps = [
+    { done: state.teams.length > 0, sub: "teams", label: "Add your teams", note: "One row per manager." },
+    { done: state.teams.length > 0, sub: "invite", label: "Invite the managers", note: "Each invite signs one person in as themselves." },
+    /* _meta, not currentPeriod. The NFL week is a server-owned column kept OUT of the
+     * state proper because parity depends on the artifact's shape - see the note in
+     * src/storage/hydrate.js. Read off currentPeriod it is always undefined, and the
+     * step would sit unticked forever. */
+    { done: !!(state._meta && state._meta.nflWeek), sub: "weeks", label: "Set the NFL week", note: "Optional - it is what Pull Stats reads from." },
+    { done: false, sub: "weeks", label: "Deal " + periodLabel(state.currentPeriod), note: "Every team gets a fresh random 12-player roster." },
+  ];
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Setting up</h3>
+      <p className="pp-sub" style={{ marginBottom: 10 }}>
+        Four steps to a running league. This disappears once the first week is dealt.
+      </p>
+      {steps.map((st, i) => (
+        <div key={i} className="pp-checkstep">
+          <span className={"pp-checkbox" + (st.done ? " done" : "")}>{st.done ? "x" : String(i + 1)}</span>
+          <div style={{ flex: 1 }}>
+            <div className="pp-checkstep-label">{st.label}</div>
+            <div className="pp-sub">{st.note}</div>
+          </div>
+          <button className="pp-btn pp-btn-sm" onClick={() => onGoToSub(st.sub)}>Open</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CommissionerTab(props) {
   const midWeek = props.state.currentPeriod.phase !== "pre-deal";
   const [sub, setSub] = useState(midWeek ? "stats" : "teams");
+  /* Only before the very first deal. A league in week 6 sitting at pre-deal is a
+   * commissioner between weeks, not a commissioner setting up. */
+  const setupPhase = !midWeek
+    && props.state.currentPeriod.type === "week"
+    && props.state.currentPeriod.number === 1;
   const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "backup", "reset"];
   const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", backup: "Backup", reset: "Reset" };
   return (
     <div>
+      {setupPhase ? <CommSetupChecklist state={props.state} onGoToSub={setSub} /> : null}
       <div className="pp-subnav">
         {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
       </div>
