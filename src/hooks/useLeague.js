@@ -420,6 +420,14 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* Let the schedule press Pull Stats instead of the commissioner. Off by default, and
+   * it grants nothing the button does not - same guards, same refusal to overwrite a
+   * line he typed. See server/autoPull.js. */
+  const setAutoPullStats = useCallback(
+    (enabled) => immediate("setAutoPullStats", () => store.setAutoPullStats(enabled)),
+    [store, immediate]
+  );
+
   /** Commissioner admin: low-frequency, genuinely league-wide. */
   const mutate = useCallback(
     (key, fn) => immediate(key, () => store.mutateLeague(fn)),
@@ -470,6 +478,7 @@ export function useLeague(store) {
       refreshPlayerPool,
       pullStats,
       setNflWeek,
+      setAutoPullStats,
       processSchemes,
       finalizePeriod,
       startPlayoffs,

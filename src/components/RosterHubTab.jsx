@@ -9,7 +9,7 @@ import { PeriodBanner } from "./atoms.jsx";
 import { AllRostersTab, FreeAgentsTab } from "./rosterTabs.jsx";
 import { LiveStatsTab } from "./stats.jsx";
 
-export function RosterHubTab({ state, isCommissioner, onStatChange, onToggleRosterLock, onFinalize, finalizeError, onPullStats, statsReport }) {
+export function RosterHubTab({ state, isCommissioner, onStatChange, onToggleRosterLock, onFinalize, finalizeError, onPullStats, statsReport, onSetAutoPullStats }) {
   const [sub, setSub] = useState("rosters");
   return (
     <div>
@@ -27,6 +27,7 @@ export function RosterHubTab({ state, isCommissioner, onStatChange, onToggleRost
           onStatChange={onStatChange} onToggleRosterLock={onToggleRosterLock}
           onFinalize={onFinalize} finalizeError={finalizeError}
           onPullStats={onPullStats} statsReport={statsReport}
+          onSetAutoPullStats={onSetAutoPullStats}
         />
       )}
     </div>

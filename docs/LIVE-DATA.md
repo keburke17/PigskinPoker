@@ -210,7 +210,38 @@ Not close, for this project specifically:
   wrong, which is what actually happens the first time somebody disputes a score.
 
 **What it costs us:** it publishes after games finish, not during them. The `LiveScoresBar`
-stays a Sunday-night thing rather than a live one.
+stays a post-game thing rather than a live one.
+
+**But "after games finish" is NOT once a week, and this document used to imply it was.**
+Corrected 2026-09-05, because the wrong reading set an expectation that made the whole
+feature look worse than it is. nflverse recomputes player stats on the same schedule as
+play-by-play: nightly, **plus points through each game day**. Their published cadence is
+roughly six touchpoints in a game week -
+
+| Fires | Roughly (ET) | What has landed |
+|---|---|---|
+| daily | 5:00 AM | catch-up, and the NFL's own stat corrections |
+| post-TNF | Fri 12:30 AM | Thursday night |
+| post-early window | Sun 5:00 PM | the 1pm games |
+| post-late window | Sun 8:00 PM | the 4pm games |
+| post-SNF | Mon 12:30 AM | Sunday night |
+| post-MNF | Tue 12:30 AM | Monday night |
+
+So a league that locks on Thursday is not blind until Sunday night: it sees TNF on Friday
+morning and each Sunday window about an hour after it ends. What nflverse genuinely cannot
+do is move numbers DURING a window - between the 1pm kickoffs and about five o'clock,
+nothing changes.
+
+**Two caveats, both worth keeping in mind before designing around the table.** Those times
+are nflverse's documented intent rather than a contract, and the cron block in their public
+workflow is currently commented out (they trigger it from elsewhere), so the real cadence
+wants observing over a live week or two. And a late release is not an outage for us: the
+pull simply reads whatever is published, and a player the feed has nothing for is left
+blank rather than zeroed (`server/stats.js`), so an early pull degrades quietly.
+
+**None of this needed building.** `fetchWeeklyStats` reads the live file at request time
+with no cache, so every one of those publish points has always been available to whoever
+presses the button. What was missing was only something to press it - stage 3 below.
 
 **That is a question for Scott, not a limitation to work around.** If "automatic" means he
 wants to watch numbers move during the 1pm games, nflverse is the wrong choice and the
@@ -248,11 +279,26 @@ commissioner-driven weekly flow that `CLAUDE.md` is emphatic about.
 exist; this stage is entirely UI. It is what makes stage 1 trustworthy, and it should not
 be deferred far behind it.
 
-### Stage 3 - scheduled polling
+### Stage 3 - scheduled polling **[BUILT 2026-09-05]**
 
 A Netlify scheduled function that runs stage 1's operation on a timer during the season.
 Genuinely optional once stage 1 exists, and it is the first piece that adds a deploy
 surface and a thing that can fail silently at 3am. **Kyle's, not Scott's.**
+
+Built as stage 7 of `docs/PHASE-4-PLAN.md`. Three things about it are worth knowing here:
+
+- **It needed no new credential.** The scheduled function runs inside our own deploy and
+  already holds the secret key, so it calls `server/operations.js` directly rather than
+  authenticating to our own HTTP endpoint with a shared secret. `scheduledStatsPull` is
+  deliberately absent from the routing table in `netlify/functions/api.mjs` and must stay
+  absent - routing it would turn "no new credential" into an unauthenticated route that
+  writes to every league.
+- **Opt-in per league** (`leagues.auto_pull_stats`, default false). Deploying a job must
+  never start writing into a league that did not ask for it.
+- **It does not fail silently at 3am, and it does not cry wolf either.** Every guard is a
+  reason to skip rather than to fail, so a league sitting in `pre-deal` on a Tuesday is a
+  successful run that did nothing - and a genuine error is therefore visible instead of
+  buried in weekly noise. See `server/autoPull.js`.
 
 ### Stage 4 - status sync
 

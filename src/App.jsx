@@ -272,6 +272,7 @@ export default function App() {
   const onRefreshPool = () => ops.refreshPlayerPool();
   const onPullStats = () => ops.pullStats();
   const onSetNflWeek = (week) => ops.setNflWeek(week);
+  const onSetAutoPullStats = (enabled) => ops.setAutoPullStats(enabled);
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -623,6 +624,7 @@ export default function App() {
               onStatChange={onStatChange} onToggleRosterLock={onToggleRosterLock}
               onFinalize={onFinalize} finalizeError={finalizeError}
               onPullStats={onPullStats} statsReport={statsReport}
+              onSetAutoPullStats={onSetAutoPullStats}
             />
           )}
           {tab === "results" && <WeeklyResultsTab state={state} />}

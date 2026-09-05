@@ -410,6 +410,10 @@ export function createSupabaseStore(config) {
      * NFL week - see server/schedule.js. Null unmaps it. */
     setNflWeek: (nflWeek, expect) => call("setNflWeek", { nflWeek, expect }),
 
+    /* Whether the scheduled job may pull this league's stats. Off by default; the
+     * commissioner turns it on for his own league. See server/autoPull.js. */
+    setAutoPullStats: (enabled) => call("setAutoPullStats", { enabled }),
+
     async mutateLeague(fn) {
       const view = await readView();
       const blob = JSON.parse(JSON.stringify(view));

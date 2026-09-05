@@ -23,6 +23,7 @@ import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
 import { planStatsPull, statWriteRows } from "./stats.js";
+import { pullEligibility, summarize } from "./autoPull.js";
 import { isValidNflWeek, nextNflWeek } from "./schedule.js";
 import { selectFeed } from "./feed/index.js";
 import {
@@ -1079,7 +1080,45 @@ export async function pullStats(db, { leagueId, token, expect, feed }) {
     });
   }
 
-  const season = ctx.rows.seasons[0]?.year ?? new Date().getUTCFullYear();
+  const outcome = await runStatsPull(db, {
+    leagueId,
+    rows: ctx.rows,
+    period: ctx.period,
+    feed,
+  });
+  if (outcome.error) {
+    return fail(outcome.error.status, outcome.error.message, {
+      reason: outcome.error.reason,
+      view: ctx.view,
+    });
+  }
+
+  return good({
+    view: hydrate(await fetchLeagueRows(db, leagueId)),
+    report: outcome.report,
+  });
+}
+
+/**
+ * The pull itself, with no opinion about who asked for it.
+ *
+ * Split out of `pullStats` so the scheduled job (stage 7) runs the SAME code rather
+ * than a second implementation of it - the thing this project has consistently refused
+ * to have, for the same reason `src/engine/` is shared with the server. A second pull
+ * that drifted from the first would be a very quiet way to write different numbers on
+ * a Sunday night than on a Monday morning.
+ *
+ * The AUTHORIZATION and the PHASE GUARDS stay with the callers, because they genuinely
+ * differ: the button answers to a commissioner's session and returns 409s he reads on
+ * screen, while the scheduler answers to a cron and treats the same conditions as
+ * reasons to skip a league silently (server/autoPull.js). What must NOT differ is what
+ * gets written, which is everything below.
+ *
+ * @returns {{ report: object }|{ error: { status: number, message: string, reason: string } }}
+ */
+async function runStatsPull(db, { leagueId, rows, period, feed }) {
+  const nflWeek = period.nfl_week;
+  const season = rows.seasons[0]?.year ?? new Date().getUTCFullYear();
 
   let feedLines;
   let results;
@@ -1096,46 +1135,166 @@ export async function pullStats(db, { leagueId, token, expect, feed }) {
     stoppedEarly = stats.stoppedEarly;
     results = games.results;
   } catch (err) {
-    return fail(502, "Could not reach the stats feed - this week is unchanged. " + err.message, {
-      reason: "feed",
-      view: ctx.view,
-    });
+    return {
+      error: {
+        status: 502,
+        reason: "feed",
+        message: "Could not reach the stats feed - this week is unchanged. " + err.message,
+      },
+    };
   }
 
   if (!feedLines.length && results.size === 0) {
     /* Not an error: before Sunday's games finish this is simply the truth, and saying
      * so is more use than an empty success. */
-    return fail(409, "The feed has nothing for NFL week " + nflWeek + " yet - this week is unchanged.", {
-      reason: "feed-empty",
-      view: ctx.view,
-    });
+    return {
+      error: {
+        status: 409,
+        reason: "feed-empty",
+        message: "The feed has nothing for NFL week " + nflWeek + " yet - this week is unchanged.",
+      },
+    };
   }
 
-  const starters = ctx.rows.roster_slots.filter(
-    (r) => r.period_id === ctx.period.id && r.area === "starter"
+  const starters = rows.roster_slots.filter(
+    (r) => r.period_id === period.id && r.area === "starter"
   );
   const { writes, report } = planStatsPull({
     starters,
-    players: ctx.rows.players.filter((p) => p.league_id === leagueId),
-    teams: ctx.rows.teams,
-    statLines: ctx.rows.stat_lines.filter((s) => s.period_id === ctx.period.id),
+    players: rows.players.filter((p) => p.league_id === leagueId),
+    teams: rows.teams,
+    statLines: rows.stat_lines.filter((s) => s.period_id === period.id),
     feedLines,
     results,
     at: new Date().toISOString(),
-    periodId: ctx.period.id,
+    periodId: period.id,
   });
 
   for (const chunk of statWriteRows({ writes })) {
     const { error } = await db
       .from("stat_lines")
       .upsert(chunk, { onConflict: "period_id,team_id,slot" });
-    if (error) return fail(500, "Writing the stat lines failed: " + error.message);
+    if (error) {
+      return {
+        error: { status: 500, reason: "write", message: "Writing the stat lines failed: " + error.message },
+      };
+    }
   }
 
-  return good({
-    view: hydrate(await fetchLeagueRows(db, leagueId)),
-    report: { ...report, season, nflWeek, stoppedEarly },
-  });
+  return { report: { ...report, season, nflWeek, stoppedEarly } };
+}
+
+/**
+ * Turn automatic stats pulls on or off for this league.
+ *
+ * Commissioner only, and NOT phase-gated: whether a robot may press his button is a
+ * standing decision about his league, not a move inside a week, and there is no phase
+ * in which he should be unable to change his mind about it. Turning it off takes
+ * effect on the next run of the job - there is nothing to cancel, because a pull is a
+ * single request rather than a thing that stays running.
+ *
+ * It grants no new power. Everything the scheduler does, the button already does, on
+ * the same guards, and a manual line is never overwritten either way.
+ */
+export async function setAutoPullStats(db, { leagueId, token, enabled }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (typeof enabled !== "boolean") return fail(400, "enabled must be true or false.");
+
+  const { error } = await db
+    .from("leagues")
+    .update({ auto_pull_stats: enabled })
+    .eq("id", leagueId);
+  if (error) return fail(500, error.message);
+
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Stage 7: pull every opted-in league's stats, on a schedule instead of a button.
+ *
+ * WHAT MAKES THIS SAFE IS THAT IT IS NOT NEW. It runs `runStatsPull` - the same code
+ * the commissioner's button runs - behind the same guards, and inherits every promise
+ * server/stats.js makes: a manual line is never overwritten, a player the feed has
+ * nothing for is left blank rather than zeroed, and a coach whose game has not finished
+ * is not given a result. Repeated runs are the point rather than a hazard: a `feed`
+ * line may be corrected by a later pull, so Thursday's numbers are simply improved on
+ * Sunday and again on Tuesday.
+ *
+ * NO NEW CREDENTIAL. This is called from a scheduled Netlify function that already
+ * holds the secret key - it is a peer of netlify/functions/api.mjs, not a client of
+ * it - so there is no scheduler token to mint, store, rotate or leak, and no new way
+ * into the API. `verifySession` is untouched and there is still exactly one credential
+ * in this system: an account.
+ *
+ * EVERY REFUSAL IS A SKIP. See server/autoPull.js for why each guard means "not yet"
+ * rather than "something is wrong", and why the guards run before the feed is fetched.
+ *
+ * @param {object}  db     a secret-key client
+ * @param {object}  feed   injected by tests; otherwise feed/index.js chooses
+ * @returns {{ status, body }} an ops-shaped result whose body carries the run summary
+ */
+export async function scheduledStatsPull(db, { feed } = {}) {
+  const { data: leagues, error } = await db
+    .from("leagues")
+    .select("id, name, auto_pull_stats")
+    .eq("auto_pull_stats", true);
+  if (error) return fail(500, "Could not list leagues: " + error.message);
+
+  const outcomes = [];
+  for (const league of leagues ?? []) {
+    const where = { leagueId: league.id, league: league.name };
+    let rows;
+    try {
+      rows = await fetchLeagueRows(db, league.id);
+    } catch (err) {
+      outcomes.push({ ...where, status: "failed", why: "could not read the league: " + err.message });
+      continue;
+    }
+    if (!rows) {
+      outcomes.push({ ...where, status: "skipped", why: "no such league" });
+      continue;
+    }
+
+    /* The same "current period" the button would act on, found the same way. */
+    const view = hydrate(rows);
+    const period = rows.periods.find((p) => p.id === view?._meta?.periodId) ?? null;
+
+    const { eligible, why } = pullEligibility(league, period);
+    if (!eligible) {
+      outcomes.push({ ...where, status: "skipped", why });
+      continue;
+    }
+
+    const outcome = await runStatsPull(db, { leagueId: league.id, rows, period, feed });
+    if (outcome.error) {
+      /* A feed that has nothing for this week yet is the ordinary state of a Thursday
+       * afternoon, not a fault - the button says so on screen and the job says so in
+       * its log. Anything else is worth surfacing as a failure. */
+      const soft = outcome.error.reason === "feed-empty";
+      outcomes.push({
+        ...where,
+        status: soft ? "skipped" : "failed",
+        why: outcome.error.message,
+      });
+      continue;
+    }
+
+    const { filled, kept, missing } = outcome.report;
+    outcomes.push({
+      ...where,
+      status: "pulled",
+      why: why,
+      filled: filled.length,
+      kept: kept.length,
+      missing: missing.length,
+    });
+  }
+
+  return good(summarize(outcomes));
 }
 
 export async function replaceLeague(db, { leagueId, token, blob }) {

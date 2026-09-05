@@ -304,6 +304,12 @@ export function hydrateLeague(db, opts = {}) {
        * for why it is a server-owned column. Null means unmapped, which is a stats pull
        * refusing to guess rather than an error. */
       nflWeek: current?.nfl_week ?? null,
+      /* Whether a scheduled job may run the stats pull for this league. An operational
+       * setting rather than a game rule - it says who presses the button, not what the
+       * button does - so it lives on `leagues` and, like nflWeek, is deliberately not
+       * in the state proper: the artifact's shape has no field for it and decompose
+       * must not carry it. See server/autoPull.js. */
+      autoPullStats: league.auto_pull_stats === true,
       versions: buildVersionMap(db, season, current, slotsForCurrent, teamLegacy),
     },
   };

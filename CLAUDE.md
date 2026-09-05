@@ -65,7 +65,7 @@ be able to say "save this" or "put it live" and have it happen.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **365 passed, 1 skipped, 21 files**. If the output says
+2. `npm test` before committing: **383 passed, 1 skipped, 22 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -271,7 +271,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-365 tests. Three groups worth knowing about:
+384 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -280,7 +280,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 128 of the 365
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 134 of the 384
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -356,7 +356,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | | |
 |---|---|
 | **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
-| **Live stats feed** | **Mostly done.** The pool refreshes from nflverse depth charts, scoring splits into passing / rushing / receiving (stages 1 and 4, live since 2026-08-29), each period carries the NFL week it plays (stage 3, `server/schedule.js`), and **the weekly stats pull is built** - "Pull Stats" fills every starter's boxes from one NFL week and never overwrites a line the commissioner typed (stage 5, `server/stats.js`). **Not built: the persistent disagreement view beside each box, and scheduled polling** - stages 6 and 7 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice. |
+| **Live stats feed** | **Mostly done.** The pool refreshes from nflverse depth charts, scoring splits into passing / rushing / receiving (stages 1 and 4, live since 2026-08-29), each period carries the NFL week it plays (stage 3, `server/schedule.js`), the weekly stats pull is built (stage 5, `server/stats.js`), and **it now runs on a schedule** - every three hours, for leagues that opt in (stage 7, `server/autoPull.js`, `leagues.auto_pull_stats`). **Not built: the persistent disagreement view beside each box** - stage 6 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice, and carries nflverse's real publish cadence. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |
 
