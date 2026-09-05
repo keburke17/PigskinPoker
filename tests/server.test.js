@@ -1617,4 +1617,113 @@ gate()("the stats pull", () => {
     expect(r.body.report.filled.length + r.body.report.missing.length).toBeGreaterThan(0);
     expect(r.body.report.nflWeek).toBe(2);
   });
+
+  /* ------------------------ stage 7: the scheduled pull ------------------------
+   *
+   * The unit half of this - which leagues are eligible and why not - is in
+   * tests/autoPull.test.js and runs anywhere. What needs a real PostgREST is the part
+   * that cannot be reasoned about: that the scheduler writes THE SAME LINES the button
+   * writes, and that the opt-in genuinely gates it.
+   */
+
+  const setAutoPull = async (enabled) =>
+    db.from("leagues").update({ auto_pull_stats: enabled }).eq("id", leagueId);
+
+  it("does nothing at all to a league that has not opted in", async () => {
+    await setAutoPull(false);
+    const period = await current();
+    const before = await lines(period.id);
+
+    const r = await ops.scheduledStatsPull(db, { feed: feedOf(await startersOf(period.id)) });
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.pulled).toBe(0);
+    expect(await lines(period.id)).toEqual(before);
+  });
+
+  it("writes the same lines the button writes, once opted in", async () => {
+    await setAutoPull(true);
+    const period = await current();
+    const starters = await startersOf(period.id);
+    const scorer = await pick(period.id, starters, { typed: false });
+
+    const r = await ops.scheduledStatsPull(db, { feed: feedOf(starters) });
+    expect(r.status).toBe(200);
+    expect(r.body.pulled).toBe(1);
+
+    const written = await lines(period.id);
+    const line = written.find((s) => s.team_id === scorer.team_id && s.slot === scorer.slot);
+    expect(line.rec_yards).toBe(91);
+    expect(line.source).toBe("feed");
+    await setAutoPull(false);
+  });
+
+  /* The guard that matters most, and the reason the scheduler is not simply a cron on
+   * the button: numbers arriving while a lineup can still move land on whoever occupies
+   * the slot afterwards. A SKIP, not a failure - an unlocked week on a Thursday is the
+   * ordinary state of the world. */
+  it("skips an unlocked week rather than failing the run", async () => {
+    await setAutoPull(true);
+    const period = await current();
+    await db.from("periods").update({ roster_locked: false }).eq("id", period.id);
+    const before = await lines(period.id);
+
+    const r = await ops.scheduledStatsPull(db, { feed: feedOf(await startersOf(period.id)) });
+    expect(r.body.ok).toBe(true);
+    expect(r.body.pulled).toBe(0);
+    expect(r.body.skipped).toBe(1);
+    expect(r.body.leagues[0].why).toContain("not locked");
+    expect(await lines(period.id)).toEqual(before);
+
+    await db.from("periods").update({ roster_locked: true }).eq("id", period.id);
+    await setAutoPull(false);
+  });
+
+  it("never overwrites a line the commissioner typed", async () => {
+    await setAutoPull(true);
+    const period = await current();
+    const starters = await startersOf(period.id);
+    const typed = await pick(period.id, starters, { typed: true });
+    const was = (await lines(period.id)).find(
+      (l) => l.team_id === typed.team_id && l.slot === typed.slot
+    );
+
+    await ops.scheduledStatsPull(db, { feed: feedOf(starters) });
+
+    const now = (await lines(period.id)).find(
+      (l) => l.team_id === typed.team_id && l.slot === typed.slot
+    );
+    expect(now.source).toBe("manual");
+    expect(now.rec_yards).toBe(was.rec_yards);
+    expect(now.feed_rec_yards).toBe(91); // the mirror still records what the feed said
+    await setAutoPull(false);
+  });
+
+  it("setAutoPullStats is commissioner-only", async () => {
+    const manager = await asManager(T1);
+    expect((await ops.setAutoPullStats(db, { leagueId, token: manager, enabled: true })).status).toBe(403);
+
+    const token = await asCommissioner();
+    const r = await ops.setAutoPullStats(db, { leagueId, token, enabled: true });
+    expect(r.status).toBe(200);
+    expect(r.body.view._meta.autoPullStats).toBe(true);
+
+    const off = await ops.setAutoPullStats(db, { leagueId, token, enabled: false });
+    expect(off.body.view._meta.autoPullStats).toBe(false);
+  });
+
+  /* The same family as the `nfl_week` and `external_ids` regressions above: a
+   * server-owned column must survive an ordinary blob write, or a deal would quietly
+   * turn the setting off. */
+  it("SURVIVES AN ORDINARY BLOB WRITE", async () => {
+    const token = await asCommissioner();
+    await ops.setAutoPullStats(db, { leagueId, token, enabled: true });
+
+    await ops.toggleRosterLock(db, { leagueId, token });
+    await ops.toggleRosterLock(db, { leagueId, token });
+
+    const { data } = await db.from("leagues").select("auto_pull_stats").eq("id", leagueId).single();
+    expect(data.auto_pull_stats).toBe(true);
+    await setAutoPull(false);
+  });
 });

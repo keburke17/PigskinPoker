@@ -762,6 +762,7 @@ export function CommissionerTab(props) {
           onStatChange={props.onStatChange} onToggleRosterLock={props.onToggleRosterLock}
           onFinalize={props.onFinalize} finalizeError={props.finalizeError}
           onPullStats={props.onPullStats} statsReport={props.statsReport}
+          onSetAutoPullStats={props.onSetAutoPullStats}
         />
       )}
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}

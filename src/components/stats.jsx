@@ -167,6 +167,42 @@ function PullStatsButton({ state, onPullStats }) {
   );
 }
 
+/* Let the schedule press that button instead.
+ *
+ * Worded as what it DOES rather than as a feature name, because the thing a
+ * commissioner needs to know before ticking it is that it changes who presses the
+ * button and nothing else: the same guards, the same refusal to touch a line he typed,
+ * and the same requirement that he lock the rosters first. It cannot deal, process or
+ * finalize - the week still ends when he says it does.
+ */
+function AutoPullToggle({ state, onSetAutoPullStats }) {
+  const [busy, setBusy] = useState(false);
+  const on = !!(state._meta && state._meta.autoPullStats);
+  return (
+    <label
+      className="pp-sub"
+      style={{ display: "flex", alignItems: "center", gap: 6, cursor: busy ? "wait" : "pointer", maxWidth: 260, textAlign: "right" }}
+      title="Checks the feed every few hours and fills in whatever has been published. It never overwrites a number you typed, and it still needs the rosters locked."
+    >
+      <input
+        type="checkbox"
+        checked={on}
+        disabled={busy}
+        onChange={async (e) => {
+          const next = e.target.checked;
+          setBusy(true);
+          try {
+            await onSetAutoPullStats(next);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <span>Pull automatically, every few hours</span>
+    </label>
+  );
+}
+
 /* What the pull did, and - the part that matters - what it deliberately did not do.
  *
  * A button that silently filled in six boxes per team would be worth less than typing
@@ -225,7 +261,7 @@ export function StatsPullReport({ report }) {
   );
 }
 
-export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRosterLock, onFinalize, finalizeError, onPullStats, statsReport }) {
+export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRosterLock, onFinalize, finalizeError, onPullStats, statsReport, onSetAutoPullStats }) {
   const teamsForPeriod = periodTeams(state);
 
   if (teamsForPeriod.length === 0) return <EmptyState>No teams to show stats for.</EmptyState>;
@@ -241,7 +277,12 @@ export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRost
               <p className="pp-sub">Enter stats for each starter, then finalize the {state.currentPeriod.type === "playoff" ? "round" : "week"} once everyone's in.</p>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              {onPullStats ? <PullStatsButton state={state} onPullStats={onPullStats} /> : null}
+              {onPullStats ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                  <PullStatsButton state={state} onPullStats={onPullStats} />
+                  {onSetAutoPullStats ? <AutoPullToggle state={state} onSetAutoPullStats={onSetAutoPullStats} /> : null}
+                </div>
+              ) : null}
               <button className={"pp-btn " + (state.rosterLocked ? "pp-btn-danger" : "")} onClick={onToggleRosterLock}>
                 {state.rosterLocked ? "Unlock Rosters" : "Lock Rosters for the Weekend"}
               </button>

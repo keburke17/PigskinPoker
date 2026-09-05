@@ -1369,3 +1369,69 @@ and a second lock-copy case that run anywhere, and 14 database-backed ones that 
 **Those 14 have not been run**: the environment could not pull the Supabase images. They
 want a green run before this is trusted against a live league.
 
+---
+
+## The stats pull runs on a schedule (2026-09-05)
+
+Stage 7 of `docs/PHASE-4-PLAN.md`, and the last piece of the live-stats feed except the
+disagreement view.
+
+**What was asked for:** the numbers should simply be there, without the commissioner
+pressing a button.
+
+**The premise turned out to be half wrong, which made this much smaller.** The working
+assumption - written into `docs/LIVE-DATA.md` and repeated since - was that nflverse is a
+Sunday-night feed. It publishes after games FINISH, which is true, but that happens about
+six times in a game week rather than once: nightly, plus post-TNF, post-early-window,
+post-late-window, post-SNF and post-MNF. And `fetchWeeklyStats` has always read the live
+file at request time with no cache, so every one of those points was already reachable by
+whoever pressed the button. **Nothing about the data half needed building.** The corrected
+cadence is now recorded in `LIVE-DATA.md` section 5, with the caveat that it is nflverse's
+documented intent rather than a contract and wants observing over a live week.
+
+**The pull was already safe to repeat**, which is the other reason this was cheap. A
+`feed` line may be corrected by a later pull and a `manual` line never is; a player the
+feed has nothing for is left blank rather than zeroed; a coach whose game has not finished
+gets no result. Those were written for "a Sunday afternoon with half the games still to
+kick off" - which is exactly what a scheduled pull sees. Nothing in `server/stats.js`
+changed.
+
+**No new credential, and that is the main design decision.** The obvious shape is a
+scheduled function POSTing to `/api` with a shared secret. That would have added a secret
+to store and rotate, and an unauthenticated route that writes to every league - guarding
+an operation we already have. It is unnecessary: a Netlify scheduled function runs inside
+our own deployment and reads the same `SUPABASE_SECRET_KEY`, so
+`netlify/functions/pull-stats-scheduled.mjs` is a peer of `api.mjs` and calls
+`server/operations.js` directly. `verifySession` is untouched. `scheduledStatsPull` is
+deliberately absent from the `ROUTES` table, with a comment there saying why.
+
+**One implementation.** `runStatsPull` was split out of `pullStats` so the job and the
+button write identically; only the authorization and how a refusal is reported differ.
+
+**Opt-in per league**, `leagues.auto_pull_stats`, default false (M5,
+`20260905010000_auto_pull_stats.sql`). Deploying a job must not start writing into leagues
+that never asked. On `leagues` rather than `seasons` because it is operational, not a rule.
+
+**Every guard is a skip.** Not opted in, no current week, wrong phase, unlocked rosters,
+unmapped week: each is a normal Tuesday, so a run that skipped everything reports success.
+Collapsing that into failure is how a job cries wolf weekly until nobody reads it. The
+guards run before the fetch, so an ineligible league costs no outbound request.
+
+**Every three hours**, not six crons chasing nflverse's timetable (Netlify allows one
+schedule per function, and their times are not a contract) and not hourly (168 downloads
+of an 8.6 MB file per week from a free community source, to save an hour of staleness on
+numbers read in the morning).
+
+**Found while building it: the two locks do not meet.** A league playing the `weekly`
+lineup lock freezes every lineup automatically at Thursday's kickoff - and the scheduled
+pull then still does nothing, because `periods.roster_locked` is a separate, manual
+toggle and a pull refuses without it. Deliberately NOT resolved here: letting a clock open
+the stats window is a change to the commissioner-driven weekly flow, which is Scott's.
+Recorded as **OQ-12**; the scheduler shipped respecting `roster_locked` as it stands.
+
+`npm test`: **313 passed, 149 skipped, 26 files** with no local stack, after merging
+main (the lineup lock, the Scoreboard tab and the Help copy). With the stack up that
+should read **461 passed, 1 skipped**. The 6 new
+database-backed tests in `tests/server.test.js` are in the skipped set and **have not been
+run** - they want a green run before this is trusted against a live league. The 12 in
+`tests/autoPull.test.js` run anywhere and pass.

@@ -20,6 +20,14 @@ const json = (status, body) => ({
   body: JSON.stringify(body),
 });
 
+/* `scheduledStatsPull` is DELIBERATELY ABSENT from this table, and must stay absent.
+ * It is the one operation with no session behind it - it acts on every opted-in league
+ * at once - and it is safe precisely because the only thing that can call it is our own
+ * scheduled function, which already holds the secret key
+ * (netlify/functions/pull-stats-scheduled.mjs). Routing it here would turn "no new
+ * credential" into "an unauthenticated route that writes to every league", which is the
+ * opposite of what stage 7 was designed to avoid. */
+
 /** action -> handler. Anything not listed here is not reachable. */
 const ROUTES = {
   whoami: (db, p) => ops.whoami(db, p),
@@ -54,6 +62,7 @@ const ROUTES = {
   setNflWeek: (db, p) => ops.setNflWeek(db, p),
   setLineupLock: (db, p) => ops.setLineupLock(db, p),
   refreshKickoffs: (db, p) => ops.refreshKickoffs(db, p),
+  setAutoPullStats: (db, p) => ops.setAutoPullStats(db, p),
 };
 
 export async function handler(event) {

@@ -429,6 +429,9 @@ export function createSupabaseStore(config) {
 
     /* Re-read this week's kickoff times, because flex scheduling moves games. */
     refreshKickoffs: (expect) => call("refreshKickoffs", { expect }),
+    /* Whether the scheduled job may pull this league's stats. Off by default; the
+     * commissioner turns it on for his own league. See server/autoPull.js. */
+    setAutoPullStats: (enabled) => call("setAutoPullStats", { enabled }),
 
     async mutateLeague(fn) {
       const view = await readView();

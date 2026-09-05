@@ -398,6 +398,51 @@ a manager who thinks he has until Sunday finds out otherwise by losing a week.
 
 ---
 
+### OQ-12. Should the clock be allowed to open the stats window? **[FOR SCOTT]**
+
+Raised 2026-09-05 while building the scheduled stats pull. Nothing is broken; two
+features simply do not meet yet, and joining them is a rules decision rather than a
+tidy-up.
+
+There are **two different locks** in the league and they have confusingly similar names:
+
+| | What it stops | Who fires it |
+|---|---|---|
+| the lineup lock | a manager changing his lineup | the clock, per the league's policy (OQ-11) |
+| `roster_locked` | anyone writing stats into the week | the commissioner, pressing "Lock Rosters" |
+
+The second is what a stats pull - by hand or scheduled - refuses without, and for a good
+reason: stats are keyed by SLOT, so numbers that arrive while a lineup can still move
+would land on whoever occupies that slot afterwards, with nothing on screen to say so.
+
+**Where they fail to meet.** In a league playing the `weekly` lineup lock, every lineup
+freezes automatically at Thursday's kickoff - and then the automatic stats pull still
+does nothing all weekend, because nobody pressed Lock Rosters. "Set it and forget it" is
+only half true. The commissioner still has one button to remember, and it is the one
+that is easiest to forget precisely because everything else stopped needing him.
+
+**The question:** when a league's own lineup lock has already fired - every lineup frozen
+by the clock, nothing left that can move - should that be enough to let stats be written,
+or should pressing Lock Rosters stay a deliberate act?
+
+- **Keep it deliberate.** One human decision before numbers enter a week that ends in
+  standings. The cost is a button on a Thursday.
+- **Let the clock do it** when the league plays `weekly` and the first kickoff has
+  passed. The safety reason for the guard is genuinely satisfied - under `weekly` no
+  lineup can move once it fires - and the commissioner keeps the manual lock for
+  everything else.
+
+**Not decided here, and deliberately not built either way.** This is the boundary
+`CLAUDE.md` protects: the commissioner-driven weekly flow is his, and a clock that starts
+writing stats into a week without him is a change to it, however reasonable the argument.
+The scheduler shipped respecting `roster_locked` exactly as it stands, and moving to the
+second option later is a small change.
+
+It only bites a league playing `weekly`. Under `gametime` - the default - the two locks
+are answering different questions anyway.
+
+---
+
 ## Part 2 - Code that disagrees with the rules
 
 I have not changed any of these.
@@ -706,3 +751,9 @@ players.
 (each player at his own kickoff) or `weekly` (everyone at the week's first one), and it
 defaults to `gametime` so no league's rules moved. What is left for the designer is not a
 question about the code - it is choosing which one his own league plays.
+
+**OQ-12 was raised on 2026-09-05 and is still open.** The stats pull now runs on a
+schedule, and a league playing the `weekly` lineup lock freezes every lineup on the clock
+- but writing stats still waits on the commissioner pressing Lock Rosters, which is a
+separate, manual lock. Whether the clock should be allowed to open the stats window is
+his call, and nothing was built either way.

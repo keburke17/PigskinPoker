@@ -297,6 +297,7 @@ export default function App() {
   const onSetNflWeek = (week) => ops.setNflWeek(week);
   const onSetLineupLock = (mode) => ops.setLineupLock(mode);
   const onRefreshKickoffs = () => ops.refreshKickoffs();
+  const onSetAutoPullStats = (enabled) => ops.setAutoPullStats(enabled);
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -693,6 +694,7 @@ export default function App() {
               onStatChange={onStatChange} onToggleRosterLock={onToggleRosterLock}
               onFinalize={onFinalize} finalizeError={finalizeError}
               onPullStats={onPullStats} statsReport={statsReport}
+              onSetAutoPullStats={onSetAutoPullStats}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}

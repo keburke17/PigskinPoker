@@ -78,7 +78,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
           <li><strong>2. Wait for schemes.</strong> The same panel lists who is in and who is still out. Managers can keep changing theirs until you move.</li>
           <li><strong>3. Process Schemes.</strong> Resolves every block, steal and redraw at once. This is the real scheme deadline - there is no clock, so tell your league when you intend to press it.</li>
           <li><strong>4. Lock Rosters for the Weekend.</strong> Commissioner {ARROW} Enter Stats. Closes scheme submission. Lock individual players as their games kick off to stop late lineup swaps.</li>
-          <li><strong>5. Stats.</strong> Type them, or press Pull Stats to fill every starter's boxes from the NFL week. Pulling never overwrites a line you typed yourself.</li>
+          <li><strong>5. Stats.</strong> Type them, or press Pull Stats to fill every starter's boxes from the NFL week. Pulling never overwrites a line you typed yourself. Tick <em>Pull automatically</em> beside the button and it checks every few hours instead - the same rules, just without you pressing it.</li>
           <li><strong>6. Finalize.</strong> Scores the week, awards standings points, opens the next one. This one commits.</li>
         </RuleCard>
       ) : null}
@@ -127,6 +127,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>A conflict banner</strong> means somebody else changed the same thing first. Your change was not applied and nothing of theirs was overwritten - make it again if you still want it.</li>
         <li><strong>A greyed-out Deal button</strong> means the league has no teams yet.</li>
         <li><strong>A greyed-out Pull Stats</strong> means either no NFL week is set for this period, or the rosters are not locked yet - it will tell you which.</li>
+        <li><strong>Automatic pulls that never seem to happen</strong> need the same two things, plus the rosters locked - the schedule skips a week it is not allowed to write to rather than forcing it.</li>
         <li><strong>A LOCKED pill</strong> on a player means the commissioner froze that slot. Ask them if it looks wrong.</li>
         <li><strong>Sign-in links</strong> arrive by email and are single-use. If one has expired, ask for another from the sign-in screen.</li>
       </RuleCard>

@@ -26,10 +26,13 @@ changes, and the hand-typed player pool is replaced by current NFL starters.
 > feed and fills every starter's boxes in, and never overwrites a line the commissioner
 > typed. See "Stage 5, as built" below.
 >
-> **Still unbuilt: stages 6 and 7** - the persistent disagreement view beside each box,
-> and scheduled polling. Stage 2's identity reconciliation is done in passing: the
-> refresh attaches `gsis` and `espn` ids as it matches, and the rebuilt template carries
-> them from league creation, so there is no reconciliation pass to run.
+> **Stage 7 landed on 2026-09-05:** the pull runs on a schedule for leagues that opt in.
+> See "Stage 7, as built" below.
+>
+> **Still unbuilt: stage 6** - the persistent disagreement view beside each box. Stage 2's
+> identity reconciliation is done in passing: the refresh attaches `gsis` and `espn` ids
+> as it matches, and the rebuilt template carries them from league creation, so there is
+> no reconciliation pass to run.
 
 **Sections 6 onward describe the rules everything here has to keep; stages 6 and 7 in
 section 7 are the work not started.** Everything else is built.
@@ -356,7 +359,7 @@ Ordered so the thing Scott most wants does not wait on the feed.
 | **4** | **"Refresh pool" button** - current starters and head coaches from the live depth charts. **DONE and LIVE**, writes batched, template rebuilt | M2-M4 applied 2026-08-29 | Done | Delivers the live-roster half. Independent of stats. |
 | **5** | **"Pull stats" button** - fills the boxes, manual lines protected. **DONE** (2026-08-29) | no | Done | The Sunday-night payoff. `server/stats.js` holds the rule, `pullStats` in operations.js writes it, and the button lives on the Live Stats screen. See below. |
 | **6** | Show the disagreement - "the feed says 91, you set 84", one-click revert | no | Scott | What makes stage 5 trustworthy. Should not lag far behind it. |
-| **7** | Scheduled polling, or a live provider | no, but new infra | **Kyle** | Optional once 5 exists. First piece that can fail silently at 3am. |
+| **7** | **Scheduled polling.** Auto-pull on a cron, per-league opt-in. **DONE** (2026-09-05) | M5 | Done | Optional once 5 exists. Needed NO new credential - the scheduled function is a peer of api.mjs, not a client. See below. |
 
 Stages 1 and 4 are each independently worth shipping. Neither needs the other.
 
@@ -445,6 +448,63 @@ games still to kick off is a different statement. The report names those slots i
 the demo league is dealt past week 1, so a pull asked for a week the recording did not
 have. Weeks outside the recorded range still come back empty on purpose - that is what
 the live feed does before a game is played, so the empty case is reachable locally.
+
+### Stage 7, as built (2026-09-05)
+
+**No new credential, and that is the design.** The obvious shape - a scheduled function
+POSTing to `/api` with a shared secret - would have added a second way into the same
+operation, a secret to store and rotate, and a route that writes to every league without
+a session behind it. It is unnecessary: a Netlify scheduled function runs inside our own
+deployment and reads the same `SUPABASE_SECRET_KEY` from the same environment, so
+`netlify/functions/pull-stats-scheduled.mjs` is a PEER of `api.mjs` and calls
+`server/operations.js` directly. `verifySession` is untouched; there is still exactly one
+credential in this system, and it is an account.
+
+`scheduledStatsPull` is deliberately NOT in the `ROUTES` table, with a comment there
+saying why. Adding it would undo the whole argument above.
+
+**One implementation, not two.** `runStatsPull` was split out of `pullStats` so the job
+and the button run the same code - the same reason `src/engine/` is shared with the
+server. What differs is only what surrounds it: the button answers to a commissioner's
+session and returns 409s he reads on screen; the job answers to a cron and treats those
+same conditions as reasons to skip a league. A second pull that drifted from the first
+would be a very quiet way to write different numbers on a Monday than on a Sunday.
+
+**Opt-in, defaulting to off** (`leagues.auto_pull_stats`, migration M5). A league must
+never start receiving numbers from a job because we deployed one. It sits on `leagues`
+beside `visibility` rather than on `seasons` beside `lineup_lock`, because it is an
+operational setting rather than a game rule: it says who presses the button, not what
+the button does.
+
+**Every guard is a skip, not a failure** (`server/autoPull.js`). Not opted in, no current
+week, wrong phase, rosters unlocked, week unmapped - each of those is the ordinary state
+of a Tuesday afternoon. A run that skipped every league reports success, which is what
+keeps a genuine failure visible instead of buried in weekly noise. The guards also run
+BEFORE the feed is fetched, so most of the week the job makes no outbound request at all.
+
+**Every three hours** (`netlify.toml`), which is neither of the two obvious schedules.
+Chasing nflverse's six publish points would need six crons - Netlify allows one per
+function - and would hardcode a publisher's timetable that is not a contract and has
+already moved. Polling hourly would re-download an 8.6 MB file 168 times a week from a
+free community-run source to save an hour of staleness on numbers nobody reads until the
+morning. Three hours picks up each publish point within one cycle and is one line.
+
+**Repeated pulls were already safe, which is what made this cheap.** `source: 'feed'` is
+the pull's own and may be corrected by a later pull; `'manual'` is never touched. A
+player the feed has nothing for is left blank rather than zeroed, and a coach whose game
+has not finished gets no result. So Thursday's numbers are simply improved on Sunday and
+again on Tuesday, and nothing about stage 5 had to change to allow it.
+
+**What it deliberately does NOT do:** deal, process schemes, lock rosters, or finalize.
+The commissioner-driven weekly flow in section 6 is untouched, and a pull still refuses
+unless he has locked the rosters himself. See the open question about that in
+`docs/OPEN-QUESTIONS.md` - under a `weekly` lineup lock the two locks do not yet meet.
+
+`npm test`: **313 passed, 149 skipped, 26 files** with no local stack. The 6 new
+database-backed tests in `tests/server.test.js` are in that skipped set and **have not
+been run**; the 12 in `tests/autoPull.test.js` run anywhere and pass.
+
+---
 
 ### The reset is the deadline
 
