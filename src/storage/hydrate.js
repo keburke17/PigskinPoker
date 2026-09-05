@@ -19,7 +19,7 @@
  * been set, which is what the UI actually needs to decide what to render.
  */
 
-import { emptyCumulative } from "../engine/index.js";
+import { emptyCumulative, normalizeLineupLock } from "../engine/index.js";
 import { SPLIT_COLUMN, SPLIT_STAT_FIELDS } from "./statLine.js";
 
 const STARTER_SLOTS = ["Coach", "QB", "WR", "RB", "TE", "FLEX"];
@@ -304,6 +304,17 @@ export function hydrateLeague(db, opts = {}) {
        * for why it is a server-owned column. Null means unmapped, which is a stats pull
        * refusing to guess rather than an error. */
       nflWeek: current?.nfl_week ?? null,
+      /* The league's lineup-lock policy, and the kickoff times this week locks on.
+       * Same reasoning as nflWeek: neither exists in the artifact's state shape, and
+       * `kickoffs` is a server-owned column that decompose deliberately does not carry,
+       * so an ordinary blob write cannot put null over a week's times.
+       *
+       * The browser is given the times so it reaches the SAME verdict the server does -
+       * a player greys out at his kickoff without a round trip - but the server is
+       * still the only thing that refuses a write. See src/engine/lineupLock.js. */
+      lineupLock: normalizeLineupLock(season.lineup_lock),
+      kickoffs: current?.kickoffs ?? {},
+      kickoffsReadAt: current?.kickoffs_read_at ?? null,
       /* Whether a scheduled job may run the stats pull for this league. An operational
        * setting rather than a game rule - it says who presses the button, not what the
        * button does - so it lives on `leagues` and, like nflWeek, is deliberately not

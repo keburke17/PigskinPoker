@@ -1220,6 +1220,157 @@ Nothing here finalizes anything. The week still ends when the commissioner says 
 
 ---
 
+## Phase 4b - the week in progress got a screen (2026-09-04)
+
+Issues #29 and #30, and the first change since the port that is about the shape of the app
+rather than the shape of the data. **No engine behaviour changed. `parity.test.js` is
+untouched and was never expected to move.**
+
+### The problem, stated once
+
+Between the deal and the finalize - six days out of seven - nothing in the app answered
+"how is the league doing". League Home showed the last FINALIZED week's standings. My Team
+showed your lineup with no points on it, not even your own. Weekly Results said "No weeks
+finalized yet". The one running scoreboard that existed was `LiveScoresBar`, filed as the
+third sub-tab of **Rosters**, below the commissioner's stat-entry wall - so a manager who
+found it scrolled past the answer into a screen full of inputs they could not use.
+
+The working answer was: open All Rosters, scroll through six cards of twelve players, and
+add up thirty-six numbers in your head, on a phone.
+
+### What was built
+
+- **`results` is now the Scoreboard**, and the tab a bare `/l/<id>` opens. It carries the
+  week in progress at the top - your team, your score, your rank, your top scorer, your six
+  starters with points, then the league table with your row marked - and every finished
+  week underneath it, unchanged.
+- **Team totals exist on screen.** On the roster card, on your own team's header, and on
+  each team's heading in the commissioner's stat entry. The number was one function call
+  away from every one of those screens and appeared on none of them.
+- **Rosters became a browse.** One line per team, name and total, expanding on a tap; yours
+  first and open already.
+- **The commissioner's stat entry moved to the Commissioner tab**, where it opens by
+  default while a week is live. Lock Rosters, Pull Stats and Finalize Week went with it -
+  one tap in rather than two.
+- **The nav wraps on phones.** Short labels were not enough: five manager pills want 410px
+  of a 347px row at 375px, and the commissioner has six. It scrolled with a zero-height
+  scrollbar, so the sixth was clipped mid-word with nothing saying it could be scrolled -
+  "Weekly Results" read as "Weekly R".
+
+### The engine change that is not a behaviour change
+
+`finalizeCurrentPeriod`'s first half - build a score row per team - is now
+`periodScoreRows`, and `projectCurrentPeriod` is the read-only view over it. Both live in
+`src/engine/standings.js`; finalize still calls the first.
+
+**This is the whole point of the change.** A dashboard that added the scores up its own way
+would be a second implementation of the most important arithmetic in the game, and the
+disagreement would surface at the moment the week became permanent. `tests/live.test.js`
+asserts the agreement directly: same state, project it and finalize it, demand identical
+scores, ranks and standings points.
+
+`teamRunningScore` and `LiveScoresBar` were deleted from `stats.jsx`; the sum is
+`teamPeriodScore` in the engine, which is also what let `roster.jsx` show a total without
+importing from `stats.jsx` - `stats.jsx` already imports `RosterSlotRow` the other way, so
+that would have been a cycle.
+
+### The bug found on the way: team order was not stable
+
+The teams query carried no `ORDER BY` (`src/storage/supabase.js`), and `hydrateLeague` does
+not sort `teamRows`, so team order was whatever PostgREST returned and was not promised to
+be the same between two reads. Two screenshots on issue #29 showed different teams first.
+
+Visible half: the roster list shuffled under people. **The other half is that `state.teams`
+order is load-bearing in the engine.** `rankTeamsWithTiebreak` leaves teams it cannot
+separate in *input* order - that is OQ-A - so an unstable read made the beneficiary of such
+a tie unstable too. OQ-A documents the winner as "whichever team joined first"; that was an
+intent, not a guarantee. The query now orders by `created_at`, then `id`.
+
+**OQ-A itself is untouched.** The `i < 5` loop is unchanged and the skipped test is still
+skipped. Ordering the read only makes the documented behaviour deterministic instead of
+database-dependent - and the live scoreboard, which ranks through the same function, now
+puts that behaviour on a screen people read mid-week. See the 2026-09-04 addendum in
+`docs/OPEN-QUESTIONS.md`.
+
+### For the designer
+
+Three of the calls above are Scott's to send back, and each is one line to reverse. They
+are written up as **OQ-G** in `docs/OPEN-QUESTIONS.md`: what a bare league link opens,
+whether the projected Std Pts column should be there at all, and whether Rosters should
+start collapsed.
+
+`npm test`: **379 passed, 1 skipped, 22 files** with the local stack up.
+
+---
+
+## Lineup lock timing becomes a league option (2026-09-05)
+
+**What was asked for:** a league can play either "change your lineup up until each
+player's game" or "everything locks Thursday", chosen per league, with each league
+behaving accordingly.
+
+**Why it is not a rules change for anybody.** The first of those is what the rules screen
+has always described - legacy line 1786, *"right up until that player's game begins"* -
+and it is the default, so no existing league's rules moved. What changed for a `gametime`
+league is only WHO enforces it: the clock now does, instead of the commissioner pressing
+Lock on twelve players through a Sunday afternoon. His manual lock is untouched and still
+outranks everything, because a late scratch is a fact about a player, not about a
+kickoff. The choice itself is recorded as **OQ-11** in `docs/OPEN-QUESTIONS.md`.
+
+**The two policies** (`src/engine/lineupLock.js`):
+
+| | Locks | Feels like |
+|---|---|---|
+| `gametime` (default) | each player at his own team's kickoff | keep tinkering all Sunday with whoever has not played |
+| `weekly` | every lineup at the week's FIRST kickoff | Thursday night is the deadline |
+
+`weekly` deliberately says "the week's first kickoff" rather than "Thursday": the 2026
+season opens on a **Wednesday**, and a rule that hardcoded the weekday would have been
+wrong in week 1 of the season it shipped in.
+
+**Where the clock comes from.** `games.csv` - already the source of the head coaches and
+the Coach slot's results - carries `gameday` and `gametime` for every game from the day
+the schedule is published. `kickoffsFromGames` reads one week of it into
+`periods.kickoffs`, keyed by the full team names the pool uses so a lock can be decided
+from a player row alone.
+
+**Those times are Eastern wall clock with no offset written down**, and the offset is not
+constant: the same "13:00" is 17:00Z in September and 18:00Z in December. `kickoffIso`
+asks `Intl` what America/New_York was doing at that instant rather than hardcoding -4 or
+-5. Read as UTC it would have locked every league four hours early; with a fixed -5,
+every September game an hour late. `tests/lineupLock.test.js` pins all three cases.
+
+**Server-owned, like `nfl_week`.** `periods.kickoffs` is written by direct update and
+kept out of `decompose.js`, so an ordinary blob write cannot put null over a week's
+times - the same rule, and the same regression test, as the `external_ids` and `nfl_week`
+cases above. Read when a week is dealt, re-readable on demand because flex scheduling
+moves Sunday games as late as twelve days out.
+
+**Enforced on the server, not only on screen.** `swapLineupSlot` refuses a swap whose
+starter OR bench player is locked - the bench half matters as much, since promoting a
+receiver whose game has finished is exactly the move the lock exists to prevent. The
+browser reaches the same verdict from the same times, so a row greys out at kickoff
+without a round trip, and `src/hooks/useNow.js` ticks so it happens without a reload.
+
+**A player with no kickoff never locks on the clock.** A bye, a team the schedule did not
+name, a week whose times were never read: the honest answer is "no game time known", and
+locking on a guess takes a team off a manager for a game nobody is playing.
+
+**The recorded fixture grew three columns.** `games.csv` in `server/feed/fixture/` now
+carries `gameday`, `weekday` and `gametime`, taken from the same live file the rest of it
+came from, so the lock can be exercised locally. `scripts/test.mjs` also asks for the
+fixture feed, because dealing a week now reads the schedule and a unit test must not
+download nflverse's games file to do it.
+
+`npm test`: **284 passed, 143 skipped, 24 files** on the machine this was written on,
+which had no Docker and therefore no local stack. With the stack up that should read
+**426 passed, 1 skipped** - 390 as of the section above, plus 21 engine and feed tests
+and a second lock-copy case that run anywhere, and 14 database-backed ones that do not.
+**Those 14 have not been run**: the environment could not pull the Supabase images. They
+want a green run before this is trusted against a live league.
+
+---
+
 ## The stats pull runs on a schedule (2026-09-05)
 
 Stage 7 of `docs/PHASE-4-PLAN.md`, and the last piece of the live-stats feed except the
@@ -1278,8 +1429,9 @@ toggle and a pull refuses without it. Deliberately NOT resolved here: letting a 
 the stats window is a change to the commissioner-driven weekly flow, which is Scott's.
 Recorded as **OQ-12**; the scheduler shipped respecting `roster_locked` as it stands.
 
-`npm test`: **249 passed, 135 skipped, 22 files** with no local stack on the machine this
-was written on. With the stack up that should read **383 passed, 1 skipped**. The 6 new
+`npm test`: **313 passed, 149 skipped, 26 files** with no local stack, after merging
+main (the lineup lock, the Scoreboard tab and the Help copy). With the stack up that
+should read **461 passed, 1 skipped**. The 6 new
 database-backed tests in `tests/server.test.js` are in the skipped set and **have not been
 run** - they want a green run before this is trusted against a live league. The 12 in
 `tests/autoPull.test.js` run anywhere and pass.

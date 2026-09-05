@@ -500,7 +500,7 @@ The commissioner-driven weekly flow in section 6 is untouched, and a pull still 
 unless he has locked the rosters himself. See the open question about that in
 `docs/OPEN-QUESTIONS.md` - under a `weekly` lineup lock the two locks do not yet meet.
 
-`npm test`: **249 passed, 135 skipped, 22 files** with no local stack. The 6 new
+`npm test`: **313 passed, 149 skipped, 26 files** with no local stack. The 6 new
 database-backed tests in `tests/server.test.js` are in that skipped set and **have not
 been run**; the 12 in `tests/autoPull.test.js` run anywhere and pass.
 

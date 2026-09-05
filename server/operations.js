@@ -27,8 +27,12 @@ import { pullEligibility, summarize } from "./autoPull.js";
 import { isValidNflWeek, nextNflWeek } from "./schedule.js";
 import { selectFeed } from "./feed/index.js";
 import {
+  LINEUP_LOCK,
+  LINEUP_LOCK_MODES,
   dealRosters,
   finalizeCurrentPeriod,
+  lockedByClock,
+  normalizeLineupLock,
   newSeed,
   processSchemes as engineProcessSchemes,
   seedFromString,
@@ -113,6 +117,30 @@ function guard(ctx, opName, expect, keys) {
   return null;
 }
 
+/**
+ * The league's lineup-lock policy as a question you can ask about one roster row:
+ * "is this player's game already under way?" Returns the sentence to refuse with, or
+ * null when the swap is allowed.
+ *
+ * Reads the same two facts the browser reads - `seasons.lineup_lock` and this period's
+ * `kickoffs` - and reaches the verdict with the same engine function, so the screen and
+ * the server cannot drift apart. A player whose team has no kickoff (a bye, a week
+ * whose times were never read) is never locked by the clock.
+ */
+function kickoffLock(ctx, now = Date.now()) {
+  const mode = normalizeLineupLock(ctx.rows.seasons[0]?.lineup_lock);
+  const kickoffs = ctx.period?.kickoffs ?? {};
+  return (playerId) => {
+    if (!playerId) return null;
+    const player = ctx.rows.players.find((p) => p.id === playerId);
+    if (!player) return null;
+    if (!lockedByClock(mode, kickoffs, player.nfl_team, now)) return null;
+    return mode === LINEUP_LOCK.WEEKLY
+      ? "Lineups are locked - this league locks every lineup at the week's first kickoff."
+      : player.name + "'s game has started, so that lineup slot is locked.";
+  };
+}
+
 const teamRow = (rows, legacyId) => rows.teams.find((t) => t.legacy_id === legacyId) ?? null;
 const playerRow = (rows, legacyId) =>
   legacyId == null ? null : (rows.players.find((p) => p.legacy_id === legacyId) ?? null);
@@ -144,6 +172,50 @@ async function mapNewPeriod(client, seasonId, current) {
   /* A failure here is not worth failing the deal or the finalize over: the week is
    * still playable, and the commissioner can set the mapping himself. */
   await client.from("periods").update({ nfl_week: week }).eq("id", row.id);
+}
+
+/**
+ * Read this period's kickoff times from the schedule and store them on the period.
+ *
+ * WHAT IT IS FOR. The lineup lock fires on a clock, and this is where that clock comes
+ * from: `periods.kickoffs` maps each NFL team to when it plays this week, and every
+ * lock verdict - the server's refusal and the browser's greyed-out row alike - is read
+ * off it. See src/engine/lineupLock.js.
+ *
+ * SERVER-OWNED, LIKE nfl_week. Written by direct update, never through the blob, so an
+ * ordinary write cannot put null over a week's times (server/schedule.js, same rule).
+ *
+ * NEVER FAILS THE CALLER. A deal is not worth failing over a schedule file being slow:
+ * no kickoffs means nothing locks on the clock, the commissioner's manual locks still
+ * work exactly as they always have, and `refreshKickoffs` picks it up later. The one
+ * caller that reports the outcome is `refreshKickoffs`, which the commissioner pressed.
+ *
+ * @returns {{ ok: boolean, count: number, error?: string }}
+ */
+async function readKickoffs(client, periodRow, season, feed) {
+  if (!periodRow) return { ok: false, count: 0, error: "no current week" };
+  if (!isValidNflWeek(periodRow.nfl_week)) {
+    return { ok: false, count: 0, error: "this week is not mapped to an NFL week yet" };
+  }
+  let kickoffs;
+  try {
+    const source = feed || (await selectFeed());
+    ({ kickoffs } = await source.fetchKickoffs({ season, week: periodRow.nfl_week }));
+  } catch (err) {
+    return { ok: false, count: 0, error: err.message };
+  }
+  const count = Object.keys(kickoffs || {}).length;
+  /* An empty answer is not written over times we already have. Before a schedule is
+   * published the feed genuinely returns nothing, and replacing a good week's times
+   * with {} would silently unlock a league mid-Sunday. */
+  if (count === 0) return { ok: false, count: 0, error: "the schedule has no times for that week yet" };
+
+  const { error } = await client
+    .from("periods")
+    .update({ kickoffs, kickoffs_read_at: new Date().toISOString() })
+    .eq("id", periodRow.id);
+  if (error) return { ok: false, count: 0, error: error.message };
+  return { ok: true, count };
 }
 
 /* ----------------------------- accounts ---------------------------------- */
@@ -622,6 +694,18 @@ export async function swapLineupSlot(db, { leagueId, token, teamId, slot, benchI
   if (!starter || !bench) return fail(404, "That roster slot doesn't exist.");
   if (starter.locked || bench.locked) return fail(409, "That player is locked.", { reason: "locked" });
 
+  /* The league's lineup-lock policy, enforced HERE rather than only on screen. The
+   * browser greys the row out from the same kickoff times, but a client that ignores
+   * the UI must not be able to move a player whose game has started - that is the whole
+   * point of a lock. Manual locks are checked above; this is the clock.
+   *
+   * Both ends of the swap are checked. Under `gametime` the bench player matters as
+   * much as the starter: benching a receiver whose game is over to promote one who has
+   * not played is exactly the move the lock exists to prevent. */
+  const clockLock = kickoffLock(ctx);
+  const refusal = clockLock(starter.player_id) || clockLock(bench.player_id);
+  if (refusal) return fail(409, refusal, { reason: "locked", view: ctx.view });
+
   const a = await db
     .from("roster_slots")
     .update({ player_id: bench.player_id, version: starter.version + 1 })
@@ -806,7 +890,7 @@ async function commissionerLifecycle(db, leagueId, token, opName, expect, apply)
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
-export async function dealPeriod(db, { leagueId, token, expect }) {
+export async function dealPeriod(db, { leagueId, token, expect, feed }) {
   return commissionerLifecycle(db, leagueId, token, "dealPeriod", expect, async (ctx) => {
     const v = ctx.view;
     const teamIds =
@@ -849,6 +933,12 @@ export async function dealPeriod(db, { leagueId, token, expect }) {
           .from("periods")
           .update({ deal_seed: seed, dealt_at: new Date().toISOString() })
           .eq("id", ctx.period.id);
+        /* Read the week's kickoff times here, because dealing is when the week starts
+         * and the lock needs a clock from that moment on. Best effort by design: a
+         * schedule file that is slow or not yet published must not fail a deal, and a
+         * league with no times simply locks nothing until the commissioner refreshes
+         * them - see readKickoffs. */
+        await readKickoffs(client, ctx.period, ctx.rows.seasons[0]?.year, feed);
       },
     };
   });
@@ -922,7 +1012,7 @@ export async function startPlayoffs(db, { leagueId, token, bracketSize, advancem
  * Passing null unmaps the period, which makes a pull refuse rather than fetch a week
  * nobody vouched for.
  */
-export async function setNflWeek(db, { leagueId, token, nflWeek, expect }) {
+export async function setNflWeek(db, { leagueId, token, nflWeek, expect, feed }) {
   const ctx = await context(db, leagueId, token);
   if (ctx.error) return ctx.error;
   if (!isCommissioner(ctx.session)) {
@@ -939,7 +1029,90 @@ export async function setNflWeek(db, { leagueId, token, nflWeek, expect }) {
 
   const { error } = await db.from("periods").update({ nfl_week: week }).eq("id", ctx.period.id);
   if (error) return fail(500, error.message);
+
+  /* The mapping is what says which week's kickoffs this period locks on, so a
+   * correction has to bring the times with it - otherwise the league would keep
+   * locking on last week's Thursday. Unmapping clears them for the same reason: no
+   * week, no clock, and a stale set of times would be worse than none. */
+  if (week === null) {
+    await db.from("periods").update({ kickoffs: null, kickoffs_read_at: null }).eq("id", ctx.period.id);
+  } else {
+    await readKickoffs(db, { ...ctx.period, nfl_week: week }, ctx.rows.seasons[0]?.year, feed);
+  }
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Choose when this league's lineups stop being changeable.
+ *
+ * The whole option, in one column. `gametime` is what every league has always played -
+ * each player locked when his own game kicked off, which until now the commissioner
+ * enforced by pressing Lock on each of them. `weekly` locks every lineup at the first
+ * kickoff of the week, so what a manager has on Thursday evening is what plays.
+ *
+ * NOT PHASE-GATED, and deliberately so: this is a league rule rather than a move in the
+ * week, and there is no phase in which a commissioner should be unable to say what his
+ * league plays. It takes effect immediately, which mid-week means it can lock lineups
+ * that were open a second ago (switching to `weekly` after Thursday night) or reopen
+ * ones that had locked (switching back to `gametime` on Sunday morning, where only the
+ * teams already playing stay locked). It never touches a manual lock either way.
+ */
+export async function setLineupLock(db, { leagueId, token, mode, expect }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const bad = guard(ctx, "setLineupLock", expect, [vkey.season()]);
+  if (bad) return bad;
+
+  if (!LINEUP_LOCK_MODES.includes(mode)) {
+    return fail(400, "A lineup lock is either '" + LINEUP_LOCK_MODES.join("' or '") + "'.");
+  }
+  const season = ctx.rows.seasons[0];
+  if (!season) return fail(404, "This league has no season.");
+
+  const { error } = await db
+    .from("seasons")
+    .update({ lineup_lock: mode, version: (season.version ?? 1) + 1 })
+    .eq("id", season.id);
+  if (error) return fail(500, error.message);
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Re-read this week's kickoff times.
+ *
+ * Needed because the schedule moves: flex scheduling can turn a Sunday night game into
+ * a one o'clock kickoff up to twelve days out, and a league locking on the old time
+ * would let a manager move a player whose game has already started. Reading them again
+ * is cheap and the commissioner is the one who knows a game moved.
+ *
+ * Unlike the read that happens at deal time, this one REPORTS what it found - it was
+ * pressed on purpose, so "the schedule has no times for that week yet" is the answer,
+ * not a silence.
+ */
+export async function refreshKickoffs(db, { leagueId, token, expect, feed }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  const bad = guard(ctx, "refreshKickoffs", expect, [vkey.period()]);
+  if (bad) return bad;
+  if (!ctx.period) return fail(404, "This league has no current week.");
+
+  const outcome = await readKickoffs(db, ctx.period, ctx.rows.seasons[0]?.year, feed);
+  if (!outcome.ok) {
+    return fail(409, "Could not read the kickoff times - " + outcome.error + ". This week's are unchanged.", {
+      reason: "kickoffs",
+      view: ctx.view,
+    });
+  }
+  return good({
+    view: hydrate(await fetchLeagueRows(db, leagueId)),
+    report: { teams: outcome.count, nflWeek: ctx.period.nfl_week, at: new Date().toISOString() },
+  });
 }
 
 /* --------------------------- league administration ----------------------- */

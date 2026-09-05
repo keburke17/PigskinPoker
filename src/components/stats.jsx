@@ -1,7 +1,17 @@
-/* Pigskin Poker UI - extracted verbatim from
- * LegacyProject/PigskinPokerCode.jsx lines 1529-1649.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+/* The commissioner's stat entry, and the two feed buttons that fill it in.
+ *
+ * Originally LegacyProject/PigskinPokerCode.jsx lines 1529-1649, extracted verbatim. Since
+ * then: the split stat boxes (OQ-4c), Pull Stats and its report, the LOCKED pill reading
+ * the league's lineup-lock policy rather than only the commissioner's own lock, and - for
+ * issues #29 and #30 - the removal of `LiveScoresBar` and `teamRunningScore` from this
+ * file.
+ *
+ * That scoreboard used to be the ONLY place in the app a team total appeared, buried under
+ * the controls below. It is now the Scoreboard tab; the sum behind it moved into the
+ * engine as `teamPeriodScore`, which is also what let roster.jsx show a total without
+ * importing from this file (roster.jsx <- stats.jsx already, so the other direction was a
+ * cycle). This screen keeps the number where the commissioner is actually typing: on each
+ * team's heading.
  */
 
 import { useState } from "react";
@@ -11,6 +21,9 @@ import {
   computeStarterPoints,
   getPlayer,
   hasSplitStats,
+  isPlayerLocked,
+  periodTeams,
+  teamPeriodScore,
 } from "../engine/index.js";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge } from "./atoms.jsx";
 import { RosterSlotRow } from "./roster.jsx";
@@ -78,8 +91,12 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
   const pid = team.roster.starters[slot];
   const player = getPlayer(state, pid);
   const stats = (state.statsEntry[team.id] || {})[slot] || {};
-  const locks = state.lockedPlayerIds || {};
-  const locked = pid && locks[pid];
+  /* The pill and the button say different things on purpose: `locked` is whether the
+   * player can be moved at all (manual lock or the league's kickoff policy), while the
+   * button below toggles only the MANUAL half - the commissioner cannot un-start a
+   * football game. */
+  const locked = !!pid && isPlayerLocked(state, pid);
+  const manualLocked = !!pid && !!(state.lockedPlayerIds || {})[pid];
   if (!player) return <RosterSlotRow slot={slot} player={null} state={state} showStats={false} />;
 
   if (!isCommissioner) {
@@ -105,45 +122,9 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
         <StatCategoryInputs position={player.position} stats={stats} onChange={(next) => onChange(team.id, slot, next)} />
       )}
       <span className="pp-roster-slot-pts">{computeStarterPoints(state, stats, player.position)} pts</span>
-      <button className={"pp-btn pp-btn-sm " + (locked ? "pp-btn-danger" : "pp-btn-ghost")} onClick={() => onChange(team.id, "__togglelock__", pid)}>
-        {locked ? "Unlock" : "Lock"}
+      <button className={"pp-btn pp-btn-sm " + (manualLocked ? "pp-btn-danger" : "pp-btn-ghost")} onClick={() => onChange(team.id, "__togglelock__", pid)}>
+        {manualLocked ? "Unlock" : "Lock"}
       </button>
-    </div>
-  );
-}
-
-export function teamRunningScore(state, team) {
-  if (!team.roster) return 0;
-  const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
-  let total = 0;
-  ["Coach", "QB", "WR", "RB", "TE", "FLEX"].forEach((slot) => {
-    const pid = team.roster.starters[slot];
-    const player = getPlayer(state, pid);
-    total += computeStarterPoints(state, stats[slot], player ? player.position : slot);
-  });
-  return total;
-}
-
-export function LiveScoresBar({ state, teams }) {
-  const rows = teams.filter((t) => t.roster).map((t) => ({ team: t, score: teamRunningScore(state, t) }))
-    .sort((a, b) => b.score - a.score);
-  if (rows.length === 0) return null;
-  return (
-    <div className="pp-card">
-      <h3 className="pp-h3">This {state.currentPeriod.type === "playoff" ? "Round's" : "Week's"} Scores</h3>
-      <table className="pp-table">
-        <thead><tr><th style={{ width: 30 }}>#</th><th>Team</th><th style={{ textAlign: "right" }}>Score</th></tr></thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={r.team.id}>
-              <td>{i + 1}</td>
-              <td style={{ fontWeight: 700 }}>{r.team.name}</td>
-              <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--gold-bright)" }}>{r.score}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="pp-sub" style={{ marginTop: 8, marginBottom: 0 }}>Updates live as stats are entered - only counts starters that already have a stat line.</p>
     </div>
   );
 }
@@ -281,9 +262,7 @@ export function StatsPullReport({ report }) {
 }
 
 export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRosterLock, onFinalize, finalizeError, onPullStats, statsReport, onSetAutoPullStats }) {
-  const teamsForPeriod = state.currentPeriod.type === "playoff"
-    ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id))
-    : state.teams;
+  const teamsForPeriod = periodTeams(state);
 
   if (teamsForPeriod.length === 0) return <EmptyState>No teams to show stats for.</EmptyState>;
   if (teamsForPeriod.every((t) => !t.roster)) return <EmptyState>No roster dealt yet this period.</EmptyState>;
@@ -314,10 +293,12 @@ export function LiveStatsTab({ state, isCommissioner, onStatChange, onToggleRost
         </div>
       )}
       {isCommissioner ? <StatsPullReport report={statsReport} /> : null}
-      <LiveScoresBar state={state} teams={teamsForPeriod} />
       {teamsForPeriod.map((team) => (
         <div key={team.id} className="pp-card">
-          <h3 className="pp-h3">{team.name}</h3>
+          <div className="pp-roster-head pp-roster-head-static">
+            <span className="pp-roster-head-name">{team.name}</span>
+            {team.roster ? <span className="pp-roster-head-pts">{teamPeriodScore(state, team)}</span> : null}
+          </div>
           {!team.roster ? <EmptyState>No roster dealt.</EmptyState> : (
             ["Coach", "QB", "WR", "RB", "TE", "FLEX"].map((slot) => (
               <StatEntryRow key={slot} state={state} team={team} slot={slot} isCommissioner={isCommissioner} onChange={onStatChange} />

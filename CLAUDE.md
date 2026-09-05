@@ -65,7 +65,7 @@ be able to say "save this" or "put it live" and have it happen.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **383 passed, 1 skipped, 22 files**. If the output says
+2. `npm test` before committing: **461 passed, 1 skipped, 26 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -139,7 +139,10 @@ in a league that is actually being played is worse than a bug everyone has adapt
   falling back to an empty league - because auto-save would then write emptiness over
   real data. See `src/hooks/useLeague.js`.
 - **The commissioner-driven weekly flow**: `pre-deal -> dealt -> schemes-processed ->
-  stats -> finalized`. Do not automate away the commissioner's control.
+  stats -> finalized`. Do not automate away the commissioner's control. The Scoreboard tab
+  shows a *projected* standings-points column mid-week; it is read-only and comes from
+  `projectCurrentPeriod`, which is the same three engine calls finalize makes. **A live
+  view reads. Only `finalizeCurrentPeriod` writes `cumulative`.**
 - **`commissionerCode` and each team's `joinCode` still exist in the engine's state
   shape** (`src/engine/state.js`, `src/storage/demoLeague.js`) even though nothing
   persists or checks them any more. That shape is the artifact's, and
@@ -149,6 +152,20 @@ in a league that is actually being played is worse than a bug everyone has adapt
 - **Blocks resolve before steals and redraws**, and steals resolve in a single shuffled
   pass so freed players can flow between actions (`src/engine/schemes.js`). The ordering
   is load-bearing.
+
+### One rule IS an option now, and it is the only one
+
+**When lineups lock** (`src/engine/lineupLock.js`, added 2026-09-05). A league plays
+either `gametime` - each player locks when his own NFL team kicks off - or `weekly`,
+where every lineup locks at the week's first kickoff. **`gametime` is the default and is
+exactly what the app already did**, so no league's rules moved; what changed is that the
+clock enforces it instead of the commissioner pressing Lock on each player.
+
+Two things follow for anyone reading lock state: `state.lockedPlayerIds` is now only the
+MANUAL half, so ask `isPlayerLocked(state, playerId, now)` rather than indexing it; and
+`periods.kickoffs` is server-owned like `nfl_week`, deliberately absent from
+`decompose.js`. The manual lock always outranks the clock. See OQ-11 in
+`docs/OPEN-QUESTIONS.md` for why it became an option at all.
 
 ---
 
@@ -166,7 +183,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          21 suites
+tests/          25 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -271,7 +288,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-384 tests. Three groups worth knowing about:
+462 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -280,7 +297,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 134 of the 384
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 148 of the 462
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -356,8 +373,10 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | | |
 |---|---|
 | **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
+| **Lineup lock** | **Done.** Per-league: each player at his own kickoff, or every lineup at the week's first one (`seasons.lineup_lock`). Times come from the schedule and are re-readable, because flex scheduling moves games. |
 | **Live stats feed** | **Mostly done.** The pool refreshes from nflverse depth charts, scoring splits into passing / rushing / receiving (stages 1 and 4, live since 2026-08-29), each period carries the NFL week it plays (stage 3, `server/schedule.js`), the weekly stats pull is built (stage 5, `server/stats.js`), and **it now runs on a schedule** - every three hours, for leagues that opt in (stage 7, `server/autoPull.js`, `leagues.auto_pull_stats`). **Not built: the persistent disagreement view beside each box** - stage 6 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice, and carries nflverse's real publish cadence. |
 | **Backup import** | Export/restore works and is validated, but no historical league has been imported - the Artifact league was a worked example, not real history. |
+| **A phone-first shell** | The Scoreboard, roster and standings screens were rebuilt around the week in progress (issues #29, #30, OQ-G). What was NOT done: the sticky header is 217px of an 812px phone - title, role badge, save bar, account bar and a now two-row nav - and OQ-8's finding stands that every touch target is under the 44px minimum. Both are look-and-feel calls for the designer. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |
 
 ---

@@ -1134,6 +1134,281 @@ gate()("the NFL week mapping", () => {
   });
 });
 
+/* The lineup lock, against real Postgres.
+ *
+ * The rule itself is unit-tested without a database (tests/lineupLock.test.js). What
+ * can only be checked here is that the SERVER refuses the write - the browser greys the
+ * row out, but a client that ignores the UI is exactly what a lock is for - and that
+ * the two policies are per-league rather than global.
+ *
+ * The kickoff times are written straight onto the period rather than fetched, so these
+ * assertions do not depend on what day the suite is run. The fetching half is covered
+ * by the fixture cases at the end.
+ */
+gate()("the lineup lock", () => {
+  beforeEach(() => resetDemo());
+
+  const HOUR = 3600 * 1000;
+  const past = () => new Date(Date.now() - HOUR).toISOString();
+  const future = () => new Date(Date.now() + HOUR).toISOString();
+
+  const currentPeriod = async () => {
+    const { data } = await db
+      .from("periods").select("*").eq("type", "week").eq("number", 2).maybeSingle();
+    return data;
+  };
+
+  /* The demo's current week sits in 'stats', where no lineup may be changed at all.
+   * Wind it back to the phase a manager actually swaps in, so what is being tested is
+   * the lock rather than the phase guard. */
+  const openForSwaps = async (periodId) =>
+    db.from("periods").update({ phase: "schemes-processed" }).eq("id", periodId);
+
+  const setKickoffs = async (periodId, kickoffs) =>
+    db.from("periods").update({ kickoffs }).eq("id", periodId);
+
+  const setMode = async (mode) => {
+    const { data: season } = await db.from("seasons").select("id").eq("league_id", leagueId).single();
+    await db.from("seasons").update({ lineup_lock: mode }).eq("id", season.id);
+  };
+
+  /** One team's slots for this period, with the NFL team each player belongs to. */
+  const rosterOf = async (periodId, teamLegacy) => {
+    const { data: team } = await db
+      .from("teams").select("id").eq("league_id", leagueId).eq("legacy_id", teamLegacy).single();
+    const { data: slots } = await db
+      .from("roster_slots").select("*").eq("period_id", periodId).eq("team_id", team.id);
+    const { data: players } = await db.from("players").select("id, name, nfl_team").eq("league_id", leagueId);
+    const byId = new Map(players.map((p) => [p.id, p]));
+    return slots.map((r) => ({ ...r, player: byId.get(r.player_id) ?? null }));
+  };
+
+  it("defaults every league to gametime, and lets the commissioner choose weekly", async () => {
+    const token = await asCommissioner();
+    const { data: before } = await db.from("seasons").select("lineup_lock").eq("league_id", leagueId).single();
+    expect(before.lineup_lock).toBe("gametime");
+
+    const r = await ops.setLineupLock(db, { leagueId, token, mode: "weekly" });
+    expect(r.status).toBe(200);
+    expect(r.body.view._meta.lineupLock).toBe("weekly");
+
+    const { data: after } = await db.from("seasons").select("lineup_lock").eq("league_id", leagueId).single();
+    expect(after.lineup_lock).toBe("weekly");
+  });
+
+  it("is the commissioner's to set, and only his", async () => {
+    const mgr = await asManager(T1);
+    const refused = await ops.setLineupLock(db, { leagueId, token: mgr, mode: "weekly" });
+    expect(refused.status).toBe(403);
+
+    const token = await asCommissioner();
+    const nonsense = await ops.setLineupLock(db, { leagueId, token, mode: "whenever" });
+    expect(nonsense.status).toBe(400);
+
+    const { data } = await db.from("seasons").select("lineup_lock").eq("league_id", leagueId).single();
+    expect(data.lineup_lock).toBe("gametime");
+  });
+
+  it("gametime: refuses a starter whose game has kicked off", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    const roster = await rosterOf(period.id, T1);
+    const qb = roster.find((r) => r.slot === "QB");
+    await setKickoffs(period.id, { [qb.player.nfl_team]: past() });
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, { leagueId, token, teamId: T1, slot: "QB", benchIndex: 0 });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe("locked");
+    expect(r.body.error).toMatch(/game has started/i);
+
+    // Refused means unchanged, not half-applied.
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === "QB").player_id).toBe(qb.player_id);
+  });
+
+  it("gametime: still allows a swap between two players who have not played", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    const roster = await rosterOf(period.id, T1);
+    const qb = roster.find((r) => r.slot === "QB");
+    /* Lock only the quarterback's team, then find a starter and a bench player who are
+     * on neither that team nor each other's - the late-window swap the whole policy
+     * exists to allow. */
+    const kicked = qb.player.nfl_team;
+    const openStarter = roster.find((r) => r.area === "starter" && r.player && r.player.nfl_team !== kicked);
+    const openBench = roster.find((r) => r.area === "bench" && r.player && r.player.nfl_team !== kicked);
+    expect(openStarter && openBench).toBeTruthy();
+    await setKickoffs(period.id, { [kicked]: past() });
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, {
+      leagueId, token, teamId: T1, slot: openStarter.slot, benchIndex: openBench.bench_index,
+    });
+    expect(r.status).toBe(200);
+
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === openStarter.slot).player_id).toBe(openBench.player_id);
+  });
+
+  it("gametime: refuses the BENCH half too - a finished player cannot be promoted", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    const roster = await rosterOf(period.id, T1);
+    const starter = roster.find((r) => r.slot === "TE");
+    const bench = roster.find(
+      (r) => r.area === "bench" && r.player && r.player.nfl_team !== starter.player.nfl_team
+    );
+    await setKickoffs(period.id, { [bench.player.nfl_team]: past() });
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, {
+      leagueId, token, teamId: T1, slot: "TE", benchIndex: bench.bench_index,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toContain(bench.player.name);
+  });
+
+  it("weekly: one kickoff closes every lineup, whoever is playing when", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setMode("weekly");
+    const roster = await rosterOf(period.id, T1);
+    const starter = roster.find((r) => r.area === "starter" && r.player);
+    const bench = roster.find((r) => r.area === "bench" && r.player);
+    /* One team's game has started; nobody else's has. Under gametime this swap would be
+     * allowed - that is the difference between the two leagues. */
+    await setKickoffs(period.id, { "Kansas City Chiefs": past(), "Green Bay Packers": future() });
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, {
+      leagueId, token, teamId: T1, slot: starter.slot, benchIndex: bench.bench_index,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/first kickoff/i);
+  });
+
+  it("weekly: leaves the week open right up to that kickoff", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setMode("weekly");
+    const roster = await rosterOf(period.id, T1);
+    const starter = roster.find((r) => r.area === "starter" && r.player);
+    const bench = roster.find((r) => r.area === "bench" && r.player);
+    await setKickoffs(period.id, { "Kansas City Chiefs": future() });
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, {
+      leagueId, token, teamId: T1, slot: starter.slot, benchIndex: bench.bench_index,
+    });
+    expect(r.status).toBe(200);
+  });
+
+  it("a week with no kickoff times locks nobody on the clock", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setMode("weekly");
+    await setKickoffs(period.id, null);
+    const roster = await rosterOf(period.id, T1);
+    const starter = roster.find((r) => r.area === "starter" && r.player);
+    const bench = roster.find((r) => r.area === "bench" && r.player);
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, {
+      leagueId, token, teamId: T1, slot: starter.slot, benchIndex: bench.bench_index,
+    });
+    expect(r.status).toBe(200);
+  });
+
+  it("the commissioner's manual lock still holds, whatever the schedule says", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setKickoffs(period.id, {});
+    const roster = await rosterOf(period.id, T1);
+    const starter = roster.find((r) => r.slot === "WR");
+    await db.from("roster_slots").update({ locked: true }).eq("id", starter.id);
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, { leagueId, token, teamId: T1, slot: "WR", benchIndex: 0 });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe("locked");
+  });
+
+  it("reads the week's kickoff times when it deals, and hands them to the browser", async () => {
+    const feed = await import("../server/feed/fixture.js");
+    const token = await asCommissioner();
+    await ops.finalizePeriod(db, { leagueId, token });          // week 3, mapped to NFL week 3
+    const dealt = await ops.dealPeriod(db, { leagueId, token, feed });
+    expect(dealt.status).toBe(200);
+
+    const { data: week3 } = await db
+      .from("periods").select("kickoffs, kickoffs_read_at").eq("type", "week").eq("number", 3).single();
+    expect(Object.keys(week3.kickoffs)).toHaveLength(32);
+    expect(week3.kickoffs_read_at).toBeTruthy();
+    // The browser decides what to grey out from these, so they have to travel.
+    expect(Object.keys(dealt.body.view._meta.kickoffs)).toHaveLength(32);
+  });
+
+  it("re-reads them on demand, because flex scheduling moves games", async () => {
+    const feed = await import("../server/feed/fixture.js");
+    const token = await asCommissioner();
+    const r = await ops.refreshKickoffs(db, { leagueId, token, feed });
+    expect(r.status).toBe(200);
+    expect(r.body.report.teams).toBe(32);
+    expect(r.body.report.nflWeek).toBe(2);
+
+    const mgr = await asManager(T1);
+    expect((await ops.refreshKickoffs(db, { leagueId, token: mgr, feed })).status).toBe(403);
+  });
+
+  it("refuses to read them for a week nobody has mapped, and changes nothing", async () => {
+    const feed = await import("../server/feed/fixture.js");
+    const token = await asCommissioner();
+    await ops.setNflWeek(db, { leagueId, token, nflWeek: null, feed });
+
+    const r = await ops.refreshKickoffs(db, { leagueId, token, feed });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe("kickoffs");
+
+    const period = await currentPeriod();
+    expect(period.kickoffs).toBe(null);
+  });
+
+  it("brings this week's times with a corrected NFL week", async () => {
+    /* The mapping is what says WHICH week's kickoffs apply, so a correction that left
+     * the old times behind would lock the league on the wrong Thursday. */
+    const feed = await import("../server/feed/fixture.js");
+    const token = await asCommissioner();
+    await ops.refreshKickoffs(db, { leagueId, token, feed });
+    const before = (await currentPeriod()).kickoffs;
+
+    const set = await ops.setNflWeek(db, { leagueId, token, nflWeek: 5, feed });
+    expect(set.status).toBe(200);
+    const after = (await currentPeriod()).kickoffs;
+    /* Week 5 has byes in it, so this is deliberately not "32" - a team that is not
+     * playing has no kickoff, and its players stay changeable all week. */
+    expect(Object.keys(after).length).toBeGreaterThan(24);
+    expect(after).not.toEqual(before);
+  });
+
+  it("SURVIVES AN ORDINARY BLOB WRITE, like nfl_week before it", async () => {
+    /* Same regression, same reasoning: `kickoffs` is written by direct update and left
+     * out of decompose, so a lifecycle step that rewrites the period row must not clear
+     * it. Asserted against a real PostgREST rather than against a reading of the code. */
+    const feed = await import("../server/feed/fixture.js");
+    const token = await asCommissioner();
+    await ops.refreshKickoffs(db, { leagueId, token, feed });
+    const before = (await currentPeriod()).kickoffs;
+    expect(Object.keys(before)).toHaveLength(32);
+
+    await ops.setStatLine(db, { leagueId, token, teamId: T1, slot: "QB", line: { yards: "10", tds: "1" } });
+    await ops.toggleRosterLock(db, { leagueId, token });
+    await ops.toggleRosterLock(db, { leagueId, token });
+
+    expect((await currentPeriod()).kickoffs).toEqual(before);
+  });
+});
+
 /* The stats pull, against real Postgres.
  *
  * The planner is covered without a database in tests/stats.test.js. What can only be

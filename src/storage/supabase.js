@@ -179,7 +179,19 @@ export function createSupabaseStore(config) {
     const seasonIds = (seasons.data ?? []).map((s) => s.id);
 
     const [teams, players, periods] = await Promise.all([
-      sb.from("teams").select("*").eq("league_id", leagueId),
+      /* ORDERED, and it matters twice.
+       *
+       * Without this the order is whatever PostgREST hands back, which is not promised to
+       * be stable between reads - two screenshots of All Rosters in issue #29 showed
+       * different teams first. That is the visible half.
+       *
+       * The other half is that `state.teams` order is load-bearing in the engine:
+       * rankTeamsWithTiebreak leaves teams it cannot separate in INPUT order (OQ-A, the
+       * five-of-six tiebreaker loop), so an unstable read makes the beneficiary of such a
+       * tie unstable too. OQ-A documents that tie as going to "whichever team joined
+       * first"; ordering by created_at is what makes that sentence true rather than
+       * aspirational. `id` is the tiebreak of last resort so the order is total. */
+      sb.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id"),
       sb.from("players").select("*").eq("league_id", leagueId),
       sb.from("periods").select("*").in("season_id", seasonIds),
     ]);
@@ -410,6 +422,13 @@ export function createSupabaseStore(config) {
      * NFL week - see server/schedule.js. Null unmaps it. */
     setNflWeek: (nflWeek, expect) => call("setNflWeek", { nflWeek, expect }),
 
+    /* When lineups stop being changeable: 'gametime' (each player at his own kickoff)
+     * or 'weekly' (everybody at the week's first kickoff). A league rule, so it is the
+     * season row's version that guards it. See src/engine/lineupLock.js. */
+    setLineupLock: (mode, expect) => call("setLineupLock", { mode, expect }),
+
+    /* Re-read this week's kickoff times, because flex scheduling moves games. */
+    refreshKickoffs: (expect) => call("refreshKickoffs", { expect }),
     /* Whether the scheduled job may pull this league's stats. Off by default; the
      * commissioner turns it on for his own league. See server/autoPull.js. */
     setAutoPullStats: (enabled) => call("setAutoPullStats", { enabled }),

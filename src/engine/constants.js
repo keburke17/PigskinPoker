@@ -34,6 +34,10 @@ export const ICON = {
   shield: CP(0x1f6e1, 0xfe0f),
   flag: CP(0x1f3c1),
   forward: CP(0x27a1, 0xfe0f),
+  /* Disclosure triangles for the collapsible roster cards. Built the same way as every
+   * other glyph here, for the same reason - see the note above CP(). */
+  caretRight: CP(0x25b8),
+  caretDown: CP(0x25be),
 };
 
 export const SUIT_GLYPH = {

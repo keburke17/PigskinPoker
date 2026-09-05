@@ -298,6 +298,14 @@ export function useLeague(store) {
       if (!team || !team.roster) return prev;
       const starterId = team.roster.starters[slot];
       const benchId = team.roster.bench[benchIndex];
+      /* The MANUAL locks only, deliberately - not the league's kickoff policy.
+       *
+       * This function is its own inverse: the refusal path below calls it again to put
+       * the two players back. A clock check here could pass on the way out and fail on
+       * the way back, in the second either side of a kickoff, and the screen would keep
+       * a move the server refused. The lineup editor already hides a locked player, and
+       * a refusal carries the server's own view, so nothing is lost by staying out of
+       * it. See src/engine/lineupLock.js. */
       const locks = prev.lockedPlayerIds || {};
       if ((starterId && locks[starterId]) || (benchId && locks[benchId])) return prev;
       const nextBench = team.roster.bench.slice();
@@ -420,6 +428,28 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* When this league's lineups lock: each player at his own kickoff, or every lineup
+   * at the week's first one. A league rule rather than a weekly move - pressed once and
+   * then left alone. See src/engine/lineupLock.js. */
+  const setLineupLock = useCallback(
+    (mode) => immediate("setLineupLock", () => store.setLineupLock(mode, versions())),
+    [store, immediate]
+  );
+
+  /* Re-read this week's kickoff times. Flex scheduling moves Sunday games, and the lock
+   * is only as right as the times it fires on. Reports what it found, for the same
+   * reason the pool refresh does: pressing it and being told nothing is no use. */
+  const [kickoffReport, setKickoffReport] = useState(null);
+  const refreshKickoffs = useCallback(
+    () =>
+      immediate("refreshKickoffs", async () => {
+        const r = await store.refreshKickoffs(versions());
+        setKickoffReport(r && r.ok ? (r.report ?? null) : null);
+        return r;
+      }),
+    [store, immediate]
+  );
+
   /* Let the schedule press Pull Stats instead of the commissioner. Off by default, and
    * it grants nothing the button does not - same guards, same refusal to overwrite a
    * line he typed. See server/autoPull.js. */
@@ -451,6 +481,7 @@ export function useLeague(store) {
     submittedTeamIds,
     poolReport,
     statsReport,
+    kickoffReport,
     identity,
     setIdentity,
     loading,
@@ -478,6 +509,8 @@ export function useLeague(store) {
       refreshPlayerPool,
       pullStats,
       setNflWeek,
+      setLineupLock,
+      refreshKickoffs,
       setAutoPullStats,
       processSchemes,
       finalizePeriod,

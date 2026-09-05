@@ -60,6 +60,8 @@ const ROUTES = {
   refreshPlayerPool: (db, p) => ops.refreshPlayerPool(db, p),
   pullStats: (db, p) => ops.pullStats(db, p),
   setNflWeek: (db, p) => ops.setNflWeek(db, p),
+  setLineupLock: (db, p) => ops.setLineupLock(db, p),
+  refreshKickoffs: (db, p) => ops.refreshKickoffs(db, p),
   setAutoPullStats: (db, p) => ops.setAutoPullStats(db, p),
 };
 
