@@ -35,8 +35,20 @@ export async function handler() {
     /* One line per run, and it says what happened to every league it considered.
      * A run that skipped all of them is the normal Tuesday and reads as one. */
     console.log("[pull-stats]", JSON.stringify(body));
-    for (const league of body.leagues ?? []) {
-      if (league.status === "failed") console.error("[pull-stats] FAILED", league.league, "-", league.why);
+
+    /* `ok` is false when a league genuinely failed, or when the run could not even list
+     * them - which is what an unapplied migration looks like from in here. Both have to
+     * come back NON-2xx, or Netlify records a green run every three hours while nothing
+     * is happening. That is the "fails silently at 3am" this stage was warned about, and
+     * logging at info level while returning 200 is exactly how it would have happened.
+     *
+     * A skip is still a success: see server/autoPull.js for why those are separated. */
+    if (!body.ok) {
+      console.error("[pull-stats] RUN FAILED:", body.error || body.failed + " league(s)");
+      for (const league of body.leagues ?? []) {
+        if (league.status === "failed") console.error("[pull-stats] FAILED", league.league, "-", league.why);
+      }
+      return { statusCode: 500 };
     }
     return { statusCode: 200 };
   } catch (e) {
