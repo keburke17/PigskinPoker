@@ -11,21 +11,29 @@ import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
 import { RosterSlotRow } from "./roster.jsx";
 import { SchemeForm, SchemeSummary } from "./scheme.jsx";
+import { NextStepNote } from "./WelcomeOverlay.jsx";
 
-export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename }) {
+export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoTo }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(team.name);
   const dealt = state.currentPeriod.phase !== "pre-deal";
   const schemeDisabled = !team.roster || state.rosterLocked;
+  /* Both of these used to stop at the fact and leave the person to guess what it meant
+   * (issue #26): "No roster dealt yet." never said a roster was coming or who deals it,
+   * and the locked message never said that LINEUP swaps are a separate thing that stays
+   * open. Nothing here changes when the form is disabled - only what it says. */
   const disabledReason = !team.roster
-    ? "No roster dealt yet."
+    ? "No roster dealt yet. Your commissioner deals every team a fresh 12-player roster - once they do, you set your lineup and pick a scheme here."
     : state.rosterLocked
-    ? "Rosters are locked for this " + (state.currentPeriod.type === "playoff" ? "round" : "week") + " - scheme submission is closed."
+    ? "Rosters are locked for this " + (state.currentPeriod.type === "playoff" ? "round" : "week") + " - scheme submission is closed. You can still swap any player whose real game has not started."
     : null;
 
   return (
     <div>
       <PeriodBanner state={state} extra={state.rosterLocked ? "Rosters locked for the weekend" : null} />
+      {/* The permanent half of the welcome card (issue #26) - for the person who
+        * dismissed it, or who joined three months ago and is back on a Thursday. */}
+      {onGoTo ? <NextStepNote state={state} role="manager" team={team} onGoTo={onGoTo} /> : null}
       <div className="pp-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           {renaming ? (

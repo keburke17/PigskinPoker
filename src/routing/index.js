@@ -23,7 +23,7 @@
  * missing from this list is written into the URL happily and then silently parsed back
  * as DEFAULT_TAB, so the address bar and the screen disagree and a shared deep link takes
  * someone to the wrong tab. */
-export const TABS = ["home", "myteam", "hub", "results", "rules", "comm"];
+export const TABS = ["home", "myteam", "hub", "results", "rules", "help", "comm"];
 
 /**
  * Where a bare /l/<leagueId> lands, and the tab whose segment buildPath omits.

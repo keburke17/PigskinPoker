@@ -335,3 +335,68 @@
   .pp-nav{ flex-wrap:wrap; overflow-x:visible; }
   .pp-nav-wrap::after{ display:none; }
 }
+
+/* ------------------------------------------------------- first-run guidance --
+   Issues #24, #25, #26 and #27. The welcome card, the persistent "next step" line,
+   the commissioner's setup checklist, and the acknowledgement beside the scheme
+   button. No UI kit and no new dependency (CLAUDE.md, Conventions) - this is the
+   first overlay in the app, and it is a positioned div rather than anything
+   portal-based, in keeping with the rest. */
+
+.pp-overlay{
+  position:fixed; inset:0; z-index:50;
+  background: rgba(0,0,0,0.62);
+  display:flex; align-items:center; justify-content:center;
+  padding:16px; overflow-y:auto;
+}
+.pp-overlay-card{
+  position:relative; width:100%; max-width:440px;
+  background: var(--surface-2); border:1px solid var(--gold-dim);
+  border-radius: var(--radius); padding:18px 16px;
+  max-height: calc(100vh - 32px); overflow-y:auto;
+}
+/* A real close affordance, at 44px, because #26 asked for one and OQ-8 found every
+   other target in the app under the minimum. This one is not going to repeat that. */
+.pp-overlay-x{
+  position:absolute; top:4px; right:4px; width:44px; height:44px;
+  background:none; border:none; color:var(--text-dim);
+  font-size:16px; font-weight:700; cursor:pointer; line-height:1;
+}
+.pp-overlay-x:hover{ color: var(--gold-bright); }
+.pp-overlay-step{
+  border:1px solid var(--gold-dim); background: rgba(217,182,76,0.09);
+  border-radius: var(--radius-sm); padding:10px 12px; margin-bottom:12px;
+}
+.pp-overlay-step-head{ font-weight:700; color: var(--gold-bright); margin-bottom:4px; font-size:14px; }
+.pp-overlay-list{ margin-bottom:14px; }
+.pp-overlay-actions{ display:flex; flex-wrap:wrap; gap:8px; }
+.pp-overlay-actions .pp-btn{ min-height:44px; }
+
+.pp-nextstep{
+  display:flex; align-items:center; gap:8px;
+  border:1px solid var(--border-soft); border-radius: var(--radius-sm);
+  padding:8px 10px; margin-bottom:12px; font-size:13px;
+}
+.pp-nextstep-label{
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;
+  color: var(--gold-dim);
+}
+.pp-nextstep-text{ flex:1; color: var(--text-dim); }
+.pp-nextstep-link{
+  background:none; border:none; color: var(--gold-bright);
+  font-size:12px; font-weight:700; cursor:pointer; padding:6px 4px;
+}
+
+.pp-checkstep{ display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border-soft); }
+.pp-checkstep-label{ font-weight:600; font-size:13px; }
+.pp-checkbox{
+  flex:none; width:22px; height:22px; border-radius:50%;
+  border:1px solid var(--border-soft); color: var(--text-faint);
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:800;
+}
+.pp-checkbox.done{ border-color: var(--ok); color: var(--ok); }
+
+/* Sits directly under the submit button, which is the whole of issue #27 - the durable
+   confirmation is the summary above it; this is the "that registered" flicker. */
+.pp-scheme-ack{ display:inline-block; margin-left:10px; font-size:12px; font-weight:700; color: var(--ok); }

@@ -522,6 +522,96 @@ Also moved: the commissioner's stat entry left the Rosters hub for the Commissio
 where it sits with Deal and Process Schemes and opens by default while a week is live. Lock
 Rosters, Pull Stats and Finalize Week went with it and are one tap in, not two.
 
+### OQ-H. First-run guidance. **[BUILT 2026-09-04 - four calls to confirm or send back]**
+
+Issues #24, #25, #26 and #27 are one complaint from four angles: the app never says what
+to do next. A new commissioner lands on an empty standings table with ten flat sub-tabs; a
+new manager lands on everybody else's zeroes; nothing states the weekly cycle; and pressing
+Submit Scheme appears to do nothing because the confirmation is several screens above the
+button.
+
+All of it is presentation - nothing touched `src/engine/`, and `parity.test.js` is
+untouched - so it was built rather than deferred. Four of the calls inside it are Scott's:
+
+1. **There is a seventh nav pill.** Help sits beside Rules rather than merging into it,
+   because Rules reads out the league's live scoring config and is reference, while Help is
+   a walkthrough. The cost is real and was warned about in the NAV comment in `src/App.jsx`:
+   the nav wraps rather than clips, and a commissioner at 375px can now reach a third row of
+   pills - the point at which that comment says it should be a menu. **Reverse:** drop
+   `help` from `NAV` in `src/App.jsx` and render `HelpTab` as a sub-tab of Rules; the route
+   can stay, so links keep working.
+
+2. **A welcome card interrupts on first entry.** Once per person per league, dismissible,
+   with a 44px close button and a tap-anywhere backdrop. "Seen it" is in `localStorage`
+   (`src/storage/firstRun.js`), which means it re-shows on a new device. The alternative is
+   a column on `league_members`, which is a migration against a live season - the trade is
+   written up in that file. **Reverse:** stop rendering `WelcomeOverlay` in `src/App.jsx`;
+   the persistent `NextStepNote` underneath it stands on its own.
+
+3. **Redeeming an invite now lands a manager on My Team, not League Home.** Standings for a
+   league you joined ten seconds ago are not your business; your roster is. **Reverse:** one
+   line in `onRedeemInvite`.
+
+4. **The submitted scheme is rendered twice on My Team** - once where the artifact put it,
+   at the top, and once immediately above the submit button, which is what issue #27 asked
+   for. The button also has a busy state and a short "Scheme submitted" acknowledgement.
+   **Reverse:** drop the second `SchemeSummary` in `src/components/scheme.jsx`.
+
+**One thing worth Scott's eye more than the four above.** Writing the help text surfaced
+that the app has **no automatic roster freeze at all** - no Thursday cutoff, no kickoff
+timer, no scheme deadline on a clock. Both locks are buttons the commissioner presses:
+"Lock Rosters for the Weekend" closes scheme submission, and a per-player lock (pressed as
+each real game kicks off) is what freezes an individual starter. The Rules tab already
+describes this correctly under "Lineup Lock & Injury Swaps", and every new sentence was
+written to match it - `tests/guidance.test.js` carries a regression guard that fails if any
+of the copy starts promising a weekday or a kickoff deadline.
+
+That is a description of the app, not a complaint about it. But it means **the real scheme
+deadline is whenever the commissioner happens to press Process Schemes**, which is a social
+arrangement rather than a rule, and a league that grows past its founders will probably want
+it to be a stated time. If Scott wants a deadline to actually exist in the product, that is
+a rules change and a new question - it is not one of these four.
+
+### OQ-I. A manager cannot see the scheme they submitted. **[FOUND 2026-09-04 - not fixed]**
+
+Found while building the guidance for #27, and it makes that issue worse than it was
+filed. #27 assumed the confirmation existed and was merely several screens above the
+button. It does not exist at all: **`state.schemes` is always empty in a browser.**
+
+Two conditions that cannot both be true:
+
+- `read_resolved_schemes` (`supabase/migrations/20260818050000_invites_and_league_scoping.sql:160`)
+  lets a browser select a scheme only where **`resolved_at is not null`**.
+- `hydrate.js:203` builds `state.schemes` from exactly the rows where
+  **`resolved_at == null`**.
+
+So the intersection is empty, every time. Verified on the local stack: an unresolved
+scheme inserted directly for a team's current period is invisible to that team's own
+signed-in browser after a reload.
+
+What that costs, all of it pre-existing:
+
+- `SchemeSummary` never renders - the "Your submitted scheme for Week N" line is dead code
+  in practice, on both of the places it is mounted.
+- The submit button never becomes "Update Scheme", and the form never re-populates from
+  what was submitted (`src/components/scheme.jsx`, the `useEffect`).
+- A manager has no way at all to check what they picked, which is the actual complaint
+  underneath #27.
+- The new guidance inherits it: the next-step line goes on saying "submit a scheme" to
+  somebody who already did.
+
+**Not fixed here, deliberately.** The fix is a migration - let a member read their OWN
+unresolved scheme while still hiding everyone else's - and that is `db:push` against a
+live season, which is Kyle's to run. It also brushes against **OQ-9**, whose comment in
+that migration says an unresolved scheme "must not leak mid-week even to the league it
+belongs to". Reading the intent, that is aimed at other managers, and your own scheme is
+not a leak to you - but it is the designer's information-visibility call to confirm, not
+a drive-by change to an RLS policy.
+
+The alternative, no migration: have the server return the submitting team's own scheme
+from `submitScheme` and hold it in local state. Cheaper, and it survives a reload not at
+all, which is most of the value.
+
 ---
 
 ## What is still open
@@ -539,6 +629,8 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | **OQ-3** history depth | Phase 2 | Schema already preserves it; this is about what we surface. |
 | **OQ-C / OQ-D / OQ-E** rules quirks | Anytime | All preserved as-is; each is a small, reversible behaviour question. |
 | **OQ-F** per-slot vs. per-player locks | Anytime | Behaviour-preserving; noted so it is not discovered later. |
+| **OQ-H** first-run guidance | **Built 2026-09-04** | Presentation only. Four reversible calls for Scott, and one finding: nothing in the app freezes on a clock. |
+| **OQ-I** you cannot see your own scheme | **Soon** | A real bug, not a preference. Needs a migration (Kyle) and a nod on OQ-9's intent (Scott). |
 
 **OQ-B is provisionally answered** (yes, Block protects your own starters) and is on the
 list to confirm with the original designer, alongside **OQ-A**. Those two are the standing
