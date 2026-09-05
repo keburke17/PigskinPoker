@@ -1,12 +1,15 @@
 /* Pigskin Poker UI - your own team.
  *
- * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1419-1473. Changed since: your
- * score sits beside your team name and your starters carry their points, which this
- * screen showed nowhere at all before issue #29.
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1419-1473. Changed twice since:
+ * your score sits beside your team name and your starters carry their points, which this
+ * screen showed nowhere at all before issue #29; and a bench row is LOCKED under the
+ * league's lineup-lock policy as well as the commissioner's own lock, with the screen
+ * ticking so that happens at kickoff rather than at the next reload.
  */
 
 import { useState } from "react";
-import { getPlayer, teamPeriodScore } from "../engine/index.js";
+import { LINEUP_LOCK, getPlayer, isPlayerLocked, lineupLockMode, teamPeriodScore } from "../engine/index.js";
+import { useNow } from "../hooks/useNow.js";
 import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
 import { RosterSlotRow } from "./roster.jsx";
@@ -14,6 +17,9 @@ import { SchemeForm, SchemeSummary } from "./scheme.jsx";
 import { NextStepNote } from "./WelcomeOverlay.jsx";
 
 export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoTo }) {
+  /* Ticks so the bench greys out when the games start, without a reload - the lock is a
+   * moment, not a message from the server. See src/hooks/useNow.js. */
+  const now = useNow();
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(team.name);
   const dealt = state.currentPeriod.phase !== "pre-deal";
@@ -21,11 +27,20 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoT
   /* Both of these used to stop at the fact and leave the person to guess what it meant
    * (issue #26): "No roster dealt yet." never said a roster was coming or who deals it,
    * and the locked message never said that LINEUP swaps are a separate thing that stays
-   * open. Nothing here changes when the form is disabled - only what it says. */
+   * open. Nothing here changes when the form is disabled - only what it says.
+   *
+   * WHAT IT SAYS ABOUT SWAPS DEPENDS ON THE LEAGUE now. "You can still swap any player
+   * whose game has not started" is true under `gametime` and simply wrong under
+   * `weekly`, where the whole lineup closed at the week's first kickoff - and a manager
+   * who believes the wrong one of those loses a week finding out. */
+  const swapNote =
+    lineupLockMode(state) === LINEUP_LOCK.WEEKLY
+      ? " Lineup changes close at this week's first kickoff, so check the lineup above while you are here."
+      : " You can still swap any player whose real game has not started.";
   const disabledReason = !team.roster
     ? "No roster dealt yet. Your commissioner deals every team a fresh 12-player roster - once they do, you set your lineup and pick a scheme here."
     : state.rosterLocked
-    ? "Rosters are locked for this " + (state.currentPeriod.type === "playoff" ? "round" : "week") + " - scheme submission is closed. You can still swap any player whose real game has not started."
+    ? "Rosters are locked for this " + (state.currentPeriod.type === "playoff" ? "round" : "week") + " - scheme submission is closed." + swapNote
     : null;
 
   return (
@@ -63,7 +78,7 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoT
         {team.roster ? (
           team.roster.bench.map((pid, i) => {
             const player = getPlayer(state, pid);
-            const locked = pid && (state.lockedPlayerIds || {})[pid];
+            const locked = !!pid && isPlayerLocked(state, pid, now);
             return <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked} showStats={false} />;
           })
         ) : (

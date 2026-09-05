@@ -5,9 +5,15 @@
  * src/components/guidance.js rather than inline in a component. The overlay, the
  * persistent note and the Help tab all read this, so pinning it here pins all three.
  *
- * THE LOCK ASSERTIONS AT THE BOTTOM MATTER MOST. There is no automatic roster freeze in
- * this game - no Thursday cutoff, no kickoff timer - and help text that invents one
- * would be a rules change made in prose. These tests fail if that sentence drifts.
+ * THE LOCK ASSERTIONS AT THE BOTTOM MATTER MOST, and what they guard changed on
+ * 2026-09-05. Lineups now DO lock on a clock, and which clock is a league option
+ * (OQ-11): `gametime` freezes each player at his own kickoff, `weekly` freezes every
+ * lineup at the week's first one. Schemes still close only when the commissioner
+ * presses the button, on no clock at all.
+ *
+ * So the guard is no longer "never mention a kickoff" - it is "never describe the rule
+ * this league is NOT playing", which is the thing that actually costs somebody a week.
+ * These tests fail if either sentence drifts onto the wrong league.
  */
 
 import { describe, it, expect } from "vitest";
@@ -99,30 +105,65 @@ describe("the lock copy tells the truth about when things freeze", () => {
     currentPeriod: { type: "week", number: 4, phase: "dealt" },
     rosterLocked: true,
   });
+  /* The same league, playing the other lineup rule. Kickoffs included, because a
+   * deadline the copy can actually name is the interesting case. */
+  const weeklyLeague = (over = {}) =>
+    stateWith({
+      ...over,
+      _meta: {
+        lineupLock: "weekly",
+        kickoffs: { "Buffalo Bills": "2026-09-18T00:15:00.000Z" },
+      },
+    });
 
-  it("says schemes are closed but lineup swaps are not", () => {
+  it("says schemes are closed but lineup swaps are not, in a gametime league", () => {
     const step = nextStep(locked, "manager", withRoster(team));
     expect(step.headline).toMatch(/locked/i);
     expect(step.detail).toMatch(/still swap/i);
   });
 
-  it("never promises a weekday or a kickoff deadline anywhere", () => {
-    /* REGRESSION GUARD. Both locks are buttons the commissioner presses
-     * (src/components/stats.jsx, src/components/lineup.jsx); nothing in this app fires
-     * on a clock. Copy that says "Thursday" or "by kickoff" would be documenting a rule
-     * that does not exist, in a league people are actually playing. */
-    const states = [
-      stateWith(),
-      stateWith({ currentPeriod: { type: "week", number: 4, phase: "dealt" } }),
-      stateWith({ currentPeriod: { type: "week", number: 4, phase: "schemes-processed" } }),
-      locked,
+  it("says the lineup is closing instead, in a weekly league", () => {
+    const step = nextStep(
+      weeklyLeague({ currentPeriod: { type: "week", number: 4, phase: "dealt" }, rosterLocked: true }),
+      "manager",
+      withRoster(team)
+    );
+    expect(step.detail).toMatch(/first kickoff/i);
+    /* The one thing that must NOT survive the switch: telling a manager whose lineup
+     * closed on Thursday that he can still swap. */
+    expect(step.detail).not.toMatch(/still swap/i);
+  });
+
+  it("never describes the rule the league is not playing", () => {
+    /* REGRESSION GUARD, rewritten for OQ-11. A gametime league must never be promised a
+     * weekly deadline, and a weekly league must never be told its late games are still
+     * open. Either one is a rules change made in prose, in a league people are playing.
+     *
+     * The scheme deadline is separate and still on nobody's clock, which is why
+     * "Thursday" stays banned outright: `weekly` locks on the week's FIRST kickoff,
+     * whatever weekday that is - the 2026 season opens on a Wednesday. */
+    const periods = [
+      { type: "week", number: 4, phase: "dealt" },
+      { type: "week", number: 4, phase: "schemes-processed" },
     ];
     const roles = [["commissioner", null], ["manager", withRoster(team)]];
-    for (const s of states) {
-      for (const [role, t] of roles) {
-        const step = nextStep(s, role, t);
-        const text = step.headline + " " + step.detail;
-        expect(text).not.toMatch(/thursday|sunday night|by kickoff|deadline of|midnight/i);
+
+    for (const currentPeriod of periods) {
+      for (const rosterLocked of [false, true]) {
+        for (const [role, t] of roles) {
+          const gametime = nextStep(stateWith({ currentPeriod, rosterLocked }), role, t);
+          const weekly = nextStep(weeklyLeague({ currentPeriod, rosterLocked }), role, t);
+          const gametimeText = gametime.headline + " " + gametime.detail;
+          const weeklyText = weekly.headline + " " + weekly.detail;
+
+          // Neither league invents a weekday, a scheme clock, or a midnight.
+          expect(gametimeText).not.toMatch(/thursday|sunday night|deadline of|midnight/i);
+          expect(weeklyText).not.toMatch(/thursday|sunday night|deadline of|midnight/i);
+          // A gametime league is never given a single league-wide lineup deadline.
+          expect(gametimeText).not.toMatch(/first kickoff/i);
+          // A weekly league is never told the later games are still open to it.
+          expect(weeklyText).not.toMatch(/has not started|own game kicks off/i);
+        }
       }
     }
   });

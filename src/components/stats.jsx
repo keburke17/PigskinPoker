@@ -1,8 +1,10 @@
 /* The commissioner's stat entry, and the two feed buttons that fill it in.
  *
  * Originally LegacyProject/PigskinPokerCode.jsx lines 1529-1649, extracted verbatim. Since
- * then: the split stat boxes (OQ-4c), Pull Stats and its report, and - for issues #29 and
- * #30 - the removal of `LiveScoresBar` and `teamRunningScore` from this file.
+ * then: the split stat boxes (OQ-4c), Pull Stats and its report, the LOCKED pill reading
+ * the league's lineup-lock policy rather than only the commissioner's own lock, and - for
+ * issues #29 and #30 - the removal of `LiveScoresBar` and `teamRunningScore` from this
+ * file.
  *
  * That scoreboard used to be the ONLY place in the app a team total appeared, buried under
  * the controls below. It is now the Scoreboard tab; the sum behind it moved into the
@@ -19,6 +21,7 @@ import {
   computeStarterPoints,
   getPlayer,
   hasSplitStats,
+  isPlayerLocked,
   periodTeams,
   teamPeriodScore,
 } from "../engine/index.js";
@@ -88,8 +91,12 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
   const pid = team.roster.starters[slot];
   const player = getPlayer(state, pid);
   const stats = (state.statsEntry[team.id] || {})[slot] || {};
-  const locks = state.lockedPlayerIds || {};
-  const locked = pid && locks[pid];
+  /* The pill and the button say different things on purpose: `locked` is whether the
+   * player can be moved at all (manual lock or the league's kickoff policy), while the
+   * button below toggles only the MANUAL half - the commissioner cannot un-start a
+   * football game. */
+  const locked = !!pid && isPlayerLocked(state, pid);
+  const manualLocked = !!pid && !!(state.lockedPlayerIds || {})[pid];
   if (!player) return <RosterSlotRow slot={slot} player={null} state={state} showStats={false} />;
 
   if (!isCommissioner) {
@@ -115,8 +122,8 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
         <StatCategoryInputs position={player.position} stats={stats} onChange={(next) => onChange(team.id, slot, next)} />
       )}
       <span className="pp-roster-slot-pts">{computeStarterPoints(state, stats, player.position)} pts</span>
-      <button className={"pp-btn pp-btn-sm " + (locked ? "pp-btn-danger" : "pp-btn-ghost")} onClick={() => onChange(team.id, "__togglelock__", pid)}>
-        {locked ? "Unlock" : "Lock"}
+      <button className={"pp-btn pp-btn-sm " + (manualLocked ? "pp-btn-danger" : "pp-btn-ghost")} onClick={() => onChange(team.id, "__togglelock__", pid)}>
+        {manualLocked ? "Unlock" : "Lock"}
       </button>
     </div>
   );

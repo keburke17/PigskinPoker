@@ -8,7 +8,7 @@ not depend on the network - or on what the depth charts happen to say this morni
 | File | What it is |
 |---|---|
 | `depth-charts.csv` | The newest snapshot out of `depth_charts_<season>.csv`, verbatim - every position, not just the six the pool wants |
-| `games.csv` | THIS season's `games.csv`, cut to the six columns `coachesFromGames` reads - the head coaches |
+| `games.csv` | THIS season's `games.csv`, cut to the nine columns that are read: the head coaches, plus `gameday`/`weekday`/`gametime` for the lineup lock |
 | `results-week.csv` | A few real weeks of FINISHED games, for the Coach slot's Win/Tie/Loss |
 | `stats-week.csv` | A few real weeks of player stats, filtered to players in the pool |
 | `manifest.json` | What was recorded, when, which weeks are real, and where the numbers came from |
@@ -36,6 +36,13 @@ question than the one asked.
 
 **The depth chart is a moment, and it ages.** It is a starting point for development, not
 a source of truth about who is starting. Re-record it when it matters.
+
+**The kickoff times in `games.csv` are the real ones, and they are the one thing here
+that is genuinely this season's.** They are what the lineup lock fires on
+(`kickoffsFromGames`), so a week dealt locally locks on the days and times that week is
+actually played. They move: flex scheduling reschedules Sunday games up to twelve days
+out, and a recording taken before that says the old time. Re-record, or press Refresh
+Kickoff Times, if the exact minute matters to what you are testing.
 
 ## Why it cannot reach production
 
