@@ -1,11 +1,24 @@
-/* Pigskin Poker UI - extracted verbatim from
+/* Pigskin Poker UI - extracted from
  * LegacyProject/PigskinPokerCode.jsx lines 1816-2097.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ * Only module boundaries were added to the artifact's own panels: imports at the top,
+ * `export` on each declaration. Panels added since are marked by their own comments -
+ * CommNflWeekPanel and CommLineupLockPanel are ours, not his.
  */
 
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_SCORING, POSITIONS, deepClone, defaultAdvancement, periodLabel, standingsPointsArray } from "../engine/index.js";
+import {
+  DEFAULT_SCORING,
+  LINEUP_LOCK,
+  POSITIONS,
+  deepClone,
+  defaultAdvancement,
+  firstKickoff,
+  formatKickoff,
+  kickoffsFor,
+  lineupLockMode,
+  periodLabel,
+  standingsPointsArray,
+} from "../engine/index.js";
 import { MyTeamTab } from "./MyTeamTab.jsx";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
 
@@ -114,7 +127,115 @@ export function CommNflWeekPanel({ state, onSetNflWeek }) {
   );
 }
 
-export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek }) {
+
+/* When lineups stop being changeable - the one league option that changes how a whole
+ * week feels to play.
+ *
+ * Both settings have always been describable; only one of them has ever been enforced,
+ * and by hand. `gametime` is the rule the rules screen describes and the commissioner
+ * has been pressing Lock for all afternoon. `weekly` is the fantasy-football default
+ * most people arrive expecting: set it Thursday, and Thursday is the deadline.
+ *
+ * The times come from the NFL schedule (server/feed/nflverse.js), which is why this
+ * panel says what it knows and offers to read it again - flex scheduling moves games,
+ * and a lock is only as right as the kickoff it fires on.
+ */
+export function CommLineupLockPanel({ state, onSetLineupLock, onRefreshKickoffs, kickoffReport }) {
+  const mode = lineupLockMode(state);
+  const kickoffs = kickoffsFor(state);
+  const teamsKnown = Object.keys(kickoffs).length;
+  const first = firstKickoff(kickoffs);
+  const readAt = (state._meta && state._meta.kickoffsReadAt) || null;
+  const nflWeek = (state._meta && state._meta.nflWeek) ?? null;
+  const [busy, setBusy] = useState(false);
+
+  const choose = async (next) => {
+    if (next === mode) return;
+    await onSetLineupLock(next);
+  };
+
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Lineup Lock</h3>
+      <p className="pp-sub">
+        When managers stop being able to move players in and out of their starting
+        lineup. This is a league rule - set it once and every week follows it.
+      </p>
+
+      <LockChoice
+        checked={mode === LINEUP_LOCK.GAMETIME}
+        onChoose={() => choose(LINEUP_LOCK.GAMETIME)}
+        title="Each player at his own kickoff"
+        body="A manager can keep changing his lineup all Sunday, but only with players
+              whose games have not started. The one o'clock starters lock at one; the
+              late window stays open."
+      />
+      <LockChoice
+        checked={mode === LINEUP_LOCK.WEEKLY}
+        onChoose={() => choose(LINEUP_LOCK.WEEKLY)}
+        title="Everyone at the week's first kickoff"
+        body="Thursday night in most weeks. Whatever a manager has in his lineup when the
+              first game starts is what plays, injuries and inactives included."
+      />
+
+      <p className="pp-sub" style={{ marginTop: 10 }}>
+        Either way you can still lock a single player by hand on the Live Stats screen,
+        and a manual lock always wins.
+      </p>
+
+      <h3 className="pp-h3" style={{ marginTop: 12 }}>Kickoff times</h3>
+      {teamsKnown === 0 ? (
+        <p className="pp-sub">
+          <strong>None read for this week.</strong> Nothing locks on the clock until they
+          are{nflWeek == null ? ", and this week is not mapped to an NFL week yet - set that first" : ""}.
+        </p>
+      ) : (
+        <p className="pp-sub">
+          {teamsKnown} team{teamsKnown === 1 ? "" : "s"} scheduled for NFL week {nflWeek}.
+          {first ? " First kickoff " + formatKickoff(first) + "." : ""}
+          {readAt ? " Read " + String(readAt).replace("T", " ").slice(0, 16) + " UTC." : ""}
+        </p>
+      )}
+      <button
+        className="pp-btn"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onRefreshKickoffs();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Reading..." : "Refresh Kickoff Times"}
+      </button>
+      {kickoffReport ? (
+        <p className="pp-sub" style={{ marginTop: 6 }}>
+          Read {kickoffReport.teams} team{kickoffReport.teams === 1 ? "" : "s"} for NFL week {kickoffReport.nflWeek}.
+        </p>
+      ) : null}
+      <p className="pp-sub" style={{ marginTop: 6 }}>
+        Read automatically when you deal a week. Worth pressing again if a game has been
+        flexed, because the lock fires on the time we hold.
+      </p>
+    </div>
+  );
+}
+
+function LockChoice({ checked, onChoose, title, body }) {
+  return (
+    <label className="pp-field" style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+      <input type="radio" checked={checked} onChange={onChoose} style={{ marginTop: 4 }} />
+      <span>
+        <strong>{title}</strong>
+        <span className="pp-sub" style={{ display: "block" }}>{body}</span>
+      </span>
+    </label>
+  );
+}
+
+export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport }) {
   const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
   /* `state.schemes` only ever holds what THIS browser was told, and a manager's
    * pending scheme is hidden from every browser read by design - so on the
@@ -151,6 +272,12 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
       )}
       </div>
       <CommNflWeekPanel state={state} onSetNflWeek={onSetNflWeek} />
+      <CommLineupLockPanel
+        state={state}
+        onSetLineupLock={onSetLineupLock}
+        onRefreshKickoffs={onRefreshKickoffs}
+        kickoffReport={kickoffReport}
+      />
     </>
   );
 }
@@ -562,7 +689,7 @@ export function CommissionerTab(props) {
         {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
       </div>
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
-      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} />}
+      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}

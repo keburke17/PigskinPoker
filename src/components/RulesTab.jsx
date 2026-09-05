@@ -1,10 +1,21 @@
-/* Pigskin Poker UI - extracted verbatim from
+/* Pigskin Poker UI - extracted from
  * LegacyProject/PigskinPokerCode.jsx lines 1716-1815.
  * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ * declaration. One card has been edited since: "Lineup Lock & Injury Swaps" now states
+ * THIS league's lock policy rather than one of them, because it became an option.
  */
 
-import { ARROW, DEFAULT_SCORING, SUIT_CH, currentStandingsPointsArray } from "../engine/index.js";
+import {
+  ARROW,
+  DEFAULT_SCORING,
+  LINEUP_LOCK,
+  SUIT_CH,
+  currentStandingsPointsArray,
+  firstKickoff,
+  formatKickoff,
+  kickoffsFor,
+  lineupLockMode,
+} from "../engine/index.js";
 
 export function QuickRefTile({ label, value }) {
   return (
@@ -102,13 +113,43 @@ export function RulesTab({ state }) {
         <li>They only move between your own starting lineup and bench.</li>
       </RuleCard>
 
-      <RuleCard title="Lineup Lock & Injury Swaps">
-        <li>After schemes are processed, the commissioner can lock rosters for the weekend, which closes further scheme submission.</li>
-        <li>Even while locked, the commissioner can mark individual players as locked once their real-life game starts.</li>
-        <li>Managers can still freely swap any non-locked player in or out of their lineup, right up until that player's game begins.</li>
-        <li>Lineup swaps always route a starter through the bench - you can never directly swap two starters.</li>
-      </RuleCard>
+      <LineupLockCard state={state} />
     </div>
+  );
+}
+
+/* What this league does about lineup changes, in its own terms.
+ *
+ * Written from the setting rather than describing both, because a rules screen that
+ * lists the options is a rules screen nobody can act on: a manager wants to know
+ * whether he can still move his receiver at four o'clock, not what leagues in general
+ * do. The kickoff line is there for the same reason - the deadline is a time, so it
+ * says the time.
+ */
+export function LineupLockCard({ state }) {
+  const mode = lineupLockMode(state);
+  const kickoffs = kickoffsFor(state);
+  const first = firstKickoff(kickoffs);
+  const known = Object.keys(kickoffs).length > 0;
+
+  return (
+    <RuleCard title="Lineup Lock & Injury Swaps">
+      <li>After schemes are processed, the commissioner can lock rosters for the weekend, which closes further scheme submission.</li>
+      {mode === LINEUP_LOCK.WEEKLY ? (
+        <>
+          <li><strong>This league locks every lineup at the week's first kickoff</strong>{first ? " - " + formatKickoff(first) + " this week" : ""}. What you have in your lineup then is what plays.</li>
+          <li>Injuries and inactives announced after that are your bad luck, the same as starting a player who is ruled out.</li>
+        </>
+      ) : (
+        <>
+          <li><strong>This league locks each player when his own game starts.</strong> You can keep changing your lineup all day, using players whose games have not kicked off yet.</li>
+          <li>So a one o'clock starter is frozen at one o'clock, and a Sunday-night receiver can still come in at seven.</li>
+        </>
+      )}
+      {!known ? <li>Kickoff times have not been read for this week, so only the commissioner's own locks apply.</li> : null}
+      <li>The commissioner can lock any individual player by hand at any time - for a late scratch, say - and that lock always holds.</li>
+      <li>Lineup swaps always route a starter through the bench - you can never directly swap two starters.</li>
+    </RuleCard>
   );
 }
 

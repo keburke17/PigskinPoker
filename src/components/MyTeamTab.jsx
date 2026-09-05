@@ -1,17 +1,23 @@
-/* Pigskin Poker UI - extracted verbatim from
+/* Pigskin Poker UI - extracted from
  * LegacyProject/PigskinPokerCode.jsx lines 1419-1473.
  * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ * declaration. Changed since: a bench row is LOCKED under the league's lineup-lock
+ * policy as well as the commissioner's own lock, and the screen ticks so that happens
+ * at kickoff rather than at the next reload.
  */
 
 import { useState } from "react";
-import { getPlayer } from "../engine/index.js";
+import { getPlayer, isPlayerLocked } from "../engine/index.js";
+import { useNow } from "../hooks/useNow.js";
 import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
 import { RosterSlotRow } from "./roster.jsx";
 import { SchemeForm, SchemeSummary } from "./scheme.jsx";
 
 export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename }) {
+  /* Ticks so the bench greys out when the games start, without a reload - the lock is a
+   * moment, not a message from the server. See src/hooks/useNow.js. */
+  const now = useNow();
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(team.name);
   const schemeDisabled = !team.roster || state.rosterLocked;
@@ -48,7 +54,7 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename }) {
         {team.roster ? (
           team.roster.bench.map((pid, i) => {
             const player = getPlayer(state, pid);
-            const locked = pid && (state.lockedPlayerIds || {})[pid];
+            const locked = !!pid && isPlayerLocked(state, pid, now);
             return <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked} showStats={false} />;
           })
         ) : (

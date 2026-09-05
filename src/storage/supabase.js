@@ -410,6 +410,14 @@ export function createSupabaseStore(config) {
      * NFL week - see server/schedule.js. Null unmaps it. */
     setNflWeek: (nflWeek, expect) => call("setNflWeek", { nflWeek, expect }),
 
+    /* When lineups stop being changeable: 'gametime' (each player at his own kickoff)
+     * or 'weekly' (everybody at the week's first kickoff). A league rule, so it is the
+     * season row's version that guards it. See src/engine/lineupLock.js. */
+    setLineupLock: (mode, expect) => call("setLineupLock", { mode, expect }),
+
+    /* Re-read this week's kickoff times, because flex scheduling moves games. */
+    refreshKickoffs: (expect) => call("refreshKickoffs", { expect }),
+
     async mutateLeague(fn) {
       const view = await readView();
       const blob = JSON.parse(JSON.stringify(view));

@@ -540,3 +540,96 @@ export function resultsFromGames(rows, { season, week }) {
   }
   return out;
 }
+
+/* ------------------------------------------------------------- kickoffs -- */
+
+/**
+ * When each team plays in one NFL week - what a lineup lock fires on.
+ *
+ * Same file as the coaches and the results, three more columns: games.csv carries
+ * `gameday` (YYYY-MM-DD) and `gametime` (HH:MM) for every game from the day the
+ * schedule is published, so this works before a ball is thrown, which is the only time
+ * it is any use.
+ *
+ * WHY IT IS RE-READ RATHER THAN READ ONCE. Flex scheduling moves Sunday games as late
+ * as twelve days out, and a Sunday-night game that becomes a one o'clock kickoff locks
+ * six hours earlier than the league was told. `refreshKickoffs` exists for that.
+ *
+ * @returns {{ season, week, kickoffs: Object<string,string> }} full NFL team name ->
+ *   ISO timestamp. A game with no time listed is absent rather than guessed at.
+ */
+export async function fetchKickoffs({ season, week, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(GAMES_URL);
+  if (!res.ok) throw new Error("nflverse games returned HTTP " + res.status);
+  return {
+    season,
+    week: Number(week),
+    kickoffs: kickoffsFromGames(parseCsv(await res.text()), { season, week }),
+  };
+}
+
+/** Exported for testing: one week's kickoff times out of the whole games file. */
+export function kickoffsFromGames(rows, { season, week }) {
+  const wantedSeason = String(season);
+  const wantedWeek = String(week);
+  const out = {};
+
+  for (const r of rows) {
+    if (String(r.season) !== wantedSeason) continue;
+    if (String(r.week) !== wantedWeek) continue;
+    const iso = kickoffIso(r.gameday, r.gametime);
+    if (!iso) continue; // a game with no time yet: absent, never guessed at
+    const home = NFL_TEAMS[r.home_team];
+    const away = NFL_TEAMS[r.away_team];
+    if (home) out[home] = iso;
+    if (away) out[away] = iso;
+  }
+  return out;
+}
+
+/**
+ * `gameday` + `gametime` as an instant.
+ *
+ * THE TIMES IN THAT FILE ARE EASTERN WALL CLOCK, with no offset on them, and the
+ * difference matters twice a season: the same "13:00" is 17:00Z in September and 18:00Z
+ * in December. So rather than hardcoding -4 or -5, this asks Intl what America/New_York
+ * was doing at that instant. Two passes because the offset depends on the answer it is
+ * being used to compute - the second pass only differs inside the hour a transition
+ * happens, which is 2am on a Sunday in March and November, and no game kicks off there.
+ *
+ * @returns {string|null} ISO timestamp, or null if either half is missing or malformed
+ */
+export function kickoffIso(gameday, gametime) {
+  if (!gameday || !gametime) return null;
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(gameday).trim());
+  const time = /^(\d{1,2}):(\d{2})/.exec(String(gametime).trim());
+  if (!day || !time) return null;
+  const naive = Date.UTC(
+    Number(day[1]), Number(day[2]) - 1, Number(day[3]),
+    Number(time[1]), Number(time[2])
+  );
+  if (!Number.isFinite(naive)) return null;
+  let utc = naive + easternOffsetMs(naive);
+  utc = naive + easternOffsetMs(utc);
+  return new Date(utc).toISOString();
+}
+
+const EASTERN = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour12: false,
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
+/* How far behind UTC New York is at that instant, in milliseconds - +4h or +5h, as a
+ * number to ADD to an Eastern wall clock to get UTC. Formatting the instant in the zone
+ * and reading it back as if it were UTC is the standard trick, and it needs no data of
+ * its own: the browser and Node both ship the zone table. */
+function easternOffsetMs(utcMs) {
+  const p = {};
+  EASTERN.formatToParts(new Date(utcMs)).forEach((part) => {
+    if (part.type !== "literal") p[part.type] = Number(part.value);
+  });
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
+  return utcMs - asUtc;
+}

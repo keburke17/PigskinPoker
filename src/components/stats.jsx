@@ -1,7 +1,9 @@
-/* Pigskin Poker UI - extracted verbatim from
+/* Pigskin Poker UI - extracted from
  * LegacyProject/PigskinPokerCode.jsx lines 1529-1649.
  * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ * declaration. Two things have been added to StatEntryRow since - the split stat
+ * categories (OQ-4c), and a LOCKED pill that reflects the league's lineup-lock policy
+ * while the Lock button still toggles only the commissioner's own lock.
  */
 
 import { useState } from "react";
@@ -11,6 +13,7 @@ import {
   computeStarterPoints,
   getPlayer,
   hasSplitStats,
+  isPlayerLocked,
 } from "../engine/index.js";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge } from "./atoms.jsx";
 import { RosterSlotRow } from "./roster.jsx";
@@ -78,8 +81,12 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
   const pid = team.roster.starters[slot];
   const player = getPlayer(state, pid);
   const stats = (state.statsEntry[team.id] || {})[slot] || {};
-  const locks = state.lockedPlayerIds || {};
-  const locked = pid && locks[pid];
+  /* The pill and the button say different things on purpose: `locked` is whether the
+   * player can be moved at all (manual lock or the league's kickoff policy), while the
+   * button below toggles only the MANUAL half - the commissioner cannot un-start a
+   * football game. */
+  const locked = !!pid && isPlayerLocked(state, pid);
+  const manualLocked = !!pid && !!(state.lockedPlayerIds || {})[pid];
   if (!player) return <RosterSlotRow slot={slot} player={null} state={state} showStats={false} />;
 
   if (!isCommissioner) {
@@ -105,8 +112,8 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
         <StatCategoryInputs position={player.position} stats={stats} onChange={(next) => onChange(team.id, slot, next)} />
       )}
       <span className="pp-roster-slot-pts">{computeStarterPoints(state, stats, player.position)} pts</span>
-      <button className={"pp-btn pp-btn-sm " + (locked ? "pp-btn-danger" : "pp-btn-ghost")} onClick={() => onChange(team.id, "__togglelock__", pid)}>
-        {locked ? "Unlock" : "Lock"}
+      <button className={"pp-btn pp-btn-sm " + (manualLocked ? "pp-btn-danger" : "pp-btn-ghost")} onClick={() => onChange(team.id, "__togglelock__", pid)}>
+        {manualLocked ? "Unlock" : "Lock"}
       </button>
     </div>
   );

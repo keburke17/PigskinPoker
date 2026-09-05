@@ -1,10 +1,12 @@
-/* Pigskin Poker UI - extracted verbatim from
+/* Pigskin Poker UI - extracted from
  * LegacyProject/PigskinPokerCode.jsx lines 993-1045.
  * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ * declaration. One line has changed since: what counts as LOCKED is now the league's
+ * lineup-lock policy as well as the commissioner's own lock - see
+ * src/engine/lineupLock.js. The rows themselves are the artifact's.
  */
 
-import { computeStarterPoints, getPlayer } from "../engine/index.js";
+import { computeStarterPoints, getPlayer, isPlayerLocked } from "../engine/index.js";
 import { EmptyState, SuitBadge, statLineText } from "./atoms.jsx";
 
 export function RosterSlotRow({ slot, player, state, statLine, locked, showStats }) {
@@ -29,7 +31,10 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
 
 export function TeamRosterBlock({ team, state, showStats, showBench }) {
   const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
-  const locks = state.lockedPlayerIds || {};
+  /* Locked means "cannot be moved now", which is the commissioner's manual lock OR the
+   * league's lineup-lock policy having caught up with the clock - one question, asked
+   * in one place. See src/engine/lineupLock.js. */
+  const locked = (pid) => !!pid && isPlayerLocked(state, pid);
   if (!team.roster) return <EmptyState>No roster dealt yet this period.</EmptyState>;
   return (
     <div>
@@ -39,7 +44,7 @@ export function TeamRosterBlock({ team, state, showStats, showBench }) {
         return (
           <RosterSlotRow
             key={slot} slot={slot} player={player} state={state}
-            statLine={stats[slot]} locked={pid && locks[pid]} showStats={showStats}
+            statLine={stats[slot]} locked={locked(pid)} showStats={showStats}
           />
         );
       })}
@@ -49,7 +54,7 @@ export function TeamRosterBlock({ team, state, showStats, showBench }) {
           {team.roster.bench.map((pid, i) => {
             const player = getPlayer(state, pid);
             return (
-              <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={pid && locks[pid]} showStats={false} />
+              <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked(pid)} showStats={false} />
             );
           })}
         </>
