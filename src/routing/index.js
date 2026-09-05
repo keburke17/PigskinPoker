@@ -21,9 +21,23 @@
 /* These are the tab KEYS from App's NAV, not their labels - `hub` is the one that
  * catches you out, because it is labelled "Rosters". They must match exactly: a key
  * missing from this list is written into the URL happily and then silently parsed back
- * as "home", so the address bar and the screen disagree and a shared deep link takes
+ * as DEFAULT_TAB, so the address bar and the screen disagree and a shared deep link takes
  * someone to the wrong tab. */
 export const TABS = ["home", "myteam", "hub", "results", "rules", "comm"];
+
+/**
+ * Where a bare /l/<leagueId> lands, and the tab whose segment buildPath omits.
+ *
+ * It was "home" - the season standings - until issues #29 and #30 moved the week in
+ * progress onto `results` and made that the screen the app is for. Every other fantasy
+ * app opens on the current week; standings are a place you visit, not a place you land.
+ *
+ * ONE CONSTANT ON PURPOSE. Changing this changes what an existing bookmark to /l/<id>
+ * opens, which is a real consequence and should be one edit made deliberately rather
+ * than three literals that have to be found. Nothing breaks either way: /l/<id>/home is
+ * still the standings, and every deep link that names its tab is unaffected.
+ */
+export const DEFAULT_TAB = "results";
 
 /** Parse a path into a route. Unknown shapes fall back to the landing page rather than
  *  erroring - a bad URL should show something, not a blank screen. */
@@ -37,7 +51,7 @@ export function parsePath(pathname) {
   }
 
   if (parts[0] === "l" && parts[1]) {
-    const tab = parts[2] && TABS.includes(parts[2]) ? parts[2] : "home";
+    const tab = parts[2] && TABS.includes(parts[2]) ? parts[2] : DEFAULT_TAB;
     return { name: "league", leagueId: parts[1], tab };
   }
 
@@ -49,7 +63,7 @@ export function buildPath(route) {
   if (!route) return "/";
   if (route.name === "join") return route.code ? "/join/" + encodeURIComponent(route.code) : "/join";
   if (route.name === "league") {
-    const tab = route.tab && route.tab !== "home" ? "/" + route.tab : "";
+    const tab = route.tab && route.tab !== DEFAULT_TAB ? "/" + route.tab : "";
     return "/l/" + route.leagueId + tab;
   }
   return "/";

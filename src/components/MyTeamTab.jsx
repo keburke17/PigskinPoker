@@ -1,11 +1,12 @@
-/* Pigskin Poker UI - extracted verbatim from
- * LegacyProject/PigskinPokerCode.jsx lines 1419-1473.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+/* Pigskin Poker UI - your own team.
+ *
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1419-1473. Changed since: your
+ * score sits beside your team name and your starters carry their points, which this
+ * screen showed nowhere at all before issue #29.
  */
 
 import { useState } from "react";
-import { getPlayer } from "../engine/index.js";
+import { getPlayer, teamPeriodScore } from "../engine/index.js";
 import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
 import { RosterSlotRow } from "./roster.jsx";
@@ -14,6 +15,7 @@ import { SchemeForm, SchemeSummary } from "./scheme.jsx";
 export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(team.name);
+  const dealt = state.currentPeriod.phase !== "pre-deal";
   const schemeDisabled = !team.roster || state.rosterLocked;
   const disabledReason = !team.roster
     ? "No roster dealt yet."
@@ -35,14 +37,19 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename }) {
           ) : (
             <>
               <h2 className="pp-h2" style={{ marginBottom: 0 }}>{team.name}</h2>
-              <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => setRenaming(true)}>Rename</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {dealt && team.roster ? (
+                  <span className="pp-score-mid" title="Your score this period">{teamPeriodScore(state, team)}</span>
+                ) : null}
+                <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => setRenaming(true)}>Rename</button>
+              </div>
             </>
           )}
         </div>
         <SchemeSummary state={state} team={team} />
         <h3 className="pp-h3">Starting Lineup</h3>
         <p className="pp-sub" style={{ marginBottom: 10 }}>Swap a starter with an eligible bench player. Direct starter-for-starter swaps aren't allowed - route every change through the bench.</p>
-        <LineupEditor state={state} team={team} onSwap={onSwap} />
+        <LineupEditor state={state} team={team} onSwap={onSwap} showStats={dealt} />
         <h3 className="pp-h3" style={{ marginTop: 16 }}>Bench</h3>
         <p className="pp-sub" style={{ marginBottom: 10 }}>Not tied to any slot - swap any of these into a matching starting spot above.</p>
         {team.roster ? (
