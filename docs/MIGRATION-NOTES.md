@@ -1299,7 +1299,10 @@ are written up as **OQ-G** in `docs/OPEN-QUESTIONS.md`: what a bare league link 
 whether the projected Std Pts column should be there at all, and whether Rosters should
 start collapsed.
 
-`npm test`: **379 passed, 1 skipped, 22 files** with the local stack up.
+`npm test`: **390 passed, 1 skipped, 23 files** with the local stack up. (Recorded as 379
+and 22 while this was being written, which was true of an earlier commit on the branch
+and not of what merged - `tests/live.test.js` and `tests/guidance.test.js` were still
+landing. Corrected 2026-09-05 against the merge commit itself.)
 
 ---
 
@@ -1362,12 +1365,27 @@ came from, so the lock can be exercised locally. `scripts/test.mjs` also asks fo
 fixture feed, because dealing a week now reads the schedule and a unit test must not
 download nflverse's games file to do it.
 
-`npm test`: **284 passed, 143 skipped, 24 files** on the machine this was written on,
-which had no Docker and therefore no local stack. With the stack up that should read
-**426 passed, 1 skipped** - 390 as of the section above, plus 21 engine and feed tests
-and a second lock-copy case that run anywhere, and 14 database-backed ones that do not.
-**Those 14 have not been run**: the environment could not pull the Supabase images. They
-want a green run before this is trusted against a live league.
+`npm test`: **426 passed, 1 skipped, 24 files** with the local stack up - 390 as of the
+section above, plus 21 engine and feed tests, a second lock-copy case, and 14
+database-backed ones. All of it green, including the 14, which is worth saying because
+the change was authored on a machine with no Docker: they were written blind and did not
+run until the migration was applied. **What caught that was a real failure**, not a
+review - 10 of them failed on the first run against a local database that had not been
+told about the migration yet. See the note below.
+
+### `db:push` is the hosted database, `npm run dev` is yours
+
+Two databases, one migration, and the gap between them cost a confusing test run. `npm
+run db:push` applies migrations to the HOSTED project; it does nothing to the local
+Supabase stack. A stack that was already running when you pulled a migration is a stack
+that has never seen it, and PostgREST answers "column does not exist" to every query
+touching the new columns - which arrives as ten failing assertions rather than one
+obvious error.
+
+`npm run dev` applies any migration the local database is missing, and `npm run db:reset`
+rebuilds it from scratch. Either fixes it. **After pulling a branch that adds a
+migration, run one of them before trusting `npm test`** - the same way `docs/DEPLOYMENT.md`
+says to reset and test locally BEFORE pushing to the hosted project.
 
 ---
 
