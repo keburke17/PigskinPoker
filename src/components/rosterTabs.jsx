@@ -1,23 +1,62 @@
-/* Pigskin Poker UI - extracted verbatim from
- * LegacyProject/PigskinPokerCode.jsx lines 1474-1528.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+/* Pigskin Poker UI - the Rosters hub's two panels.
+ *
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1474-1528. FreeAgentsTab is
+ * unchanged; AllRostersTab was rebuilt for issues #29 and #30 - see the note on it.
  */
 
 import { useState } from "react";
-import { FA_TABS, allRosteredPlayerIds } from "../engine/index.js";
+import { FA_TABS, ICON, allRosteredPlayerIds, teamPeriodScore } from "../engine/index.js";
 import { EmptyState, SuitBadge, Tag } from "./atoms.jsx";
 import { TeamRosterBlock } from "./roster.jsx";
 
-export function AllRostersTab({ state }) {
+/* One team's card: the headline everybody wants, and the twelve rows only some people do.
+ *
+ * Collapsed by default so the whole league fits on one phone screen (issue #30 asked for
+ * "compact"), with the answer - name and total - on the line you can already see. Your
+ * own team opens by itself, because the one card you came for should not need a tap. */
+function TeamRosterCard({ team, state, showStats, isMine }) {
+  const [open, setOpen] = useState(isMine);
+  return (
+    <div className={"pp-card pp-card-tight" + (isMine ? " pp-my-card" : "")}>
+      <button className="pp-roster-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="pp-roster-head-caret">{open ? ICON.caretDown : ICON.caretRight}</span>
+        <span className="pp-roster-head-name">
+          {team.name}
+          {isMine ? <span className="pp-you-tag">You</span> : null}
+        </span>
+        {showStats && team.roster ? (
+          <span className="pp-roster-head-pts">{teamPeriodScore(state, team)}</span>
+        ) : null}
+      </button>
+      {open ? (
+        <div style={{ marginTop: 8 }}>
+          <TeamRosterBlock team={team} state={state} showStats={showStats} showBench={true} showTotal={false} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* Who has who. It is a browse, not a dashboard - the scoreboard tab is the dashboard now,
+ * so this does not have to be the place anyone adds numbers up.
+ *
+ * `myTeam` first, then everybody else in the order the league stores them. The list stays
+ * complete; your team is lifted out of it, not filtered from it. */
+export function AllRostersTab({ state, myTeam }) {
   if (state.teams.length === 0) return <EmptyState>No teams yet.</EmptyState>;
+  const mine = myTeam ? state.teams.filter((t) => t.id === myTeam.id) : [];
+  const rest = state.teams.filter((t) => !myTeam || t.id !== myTeam.id);
+  const showStats = state.currentPeriod.phase !== "pre-deal";
   return (
     <div>
-      {state.teams.map((team) => (
-        <div key={team.id} className="pp-card">
-          <h3 className="pp-h3">{team.name}</h3>
-          <TeamRosterBlock team={team} state={state} showStats={state.currentPeriod.phase !== "pre-deal"} showBench={true} />
-        </div>
+      {mine.concat(rest).map((team) => (
+        <TeamRosterCard
+          key={team.id}
+          team={team}
+          state={state}
+          showStats={showStats}
+          isMine={!!myTeam && team.id === myTeam.id}
+        />
       ))}
     </div>
   );

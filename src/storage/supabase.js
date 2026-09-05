@@ -179,7 +179,19 @@ export function createSupabaseStore(config) {
     const seasonIds = (seasons.data ?? []).map((s) => s.id);
 
     const [teams, players, periods] = await Promise.all([
-      sb.from("teams").select("*").eq("league_id", leagueId),
+      /* ORDERED, and it matters twice.
+       *
+       * Without this the order is whatever PostgREST hands back, which is not promised to
+       * be stable between reads - two screenshots of All Rosters in issue #29 showed
+       * different teams first. That is the visible half.
+       *
+       * The other half is that `state.teams` order is load-bearing in the engine:
+       * rankTeamsWithTiebreak leaves teams it cannot separate in INPUT order (OQ-A, the
+       * five-of-six tiebreaker loop), so an unstable read makes the beneficiary of such a
+       * tie unstable too. OQ-A documents that tie as going to "whichever team joined
+       * first"; ordering by created_at is what makes that sentence true rather than
+       * aspirational. `id` is the tiebreak of last resort so the order is total. */
+      sb.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id"),
       sb.from("players").select("*").eq("league_id", leagueId),
       sb.from("periods").select("*").in("season_id", seasonIds),
     ]);

@@ -1,13 +1,16 @@
-/* Pigskin Poker UI - extracted verbatim from
- * LegacyProject/PigskinPokerCode.jsx lines 1816-2097.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+/* Pigskin Poker UI - the commissioner's panels.
+ *
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1816-2097. The panels themselves
+ * are the artifact's; what has been added since is the NFL-week panel, the pool refresh,
+ * the invite panel, and - for issues #29 and #30 - the "Enter Stats" sub-tab, which is the
+ * stat-entry screen that used to live under Rosters.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_SCORING, POSITIONS, deepClone, defaultAdvancement, periodLabel, standingsPointsArray } from "../engine/index.js";
 import { MyTeamTab } from "./MyTeamTab.jsx";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
+import { LiveStatsTab } from "./stats.jsx";
 
 export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam }) {
   const [newName, setNewName] = useState("");
@@ -552,15 +555,29 @@ export function CommInvitePanel({ state, invites, onCreateInvite, onRevokeInvite
   );
 }
 
+/* "Enter Stats" arrived here from the Rosters hub (issues #29, #30). It belongs with Deal
+ * and Process Schemes: they are the three steps of the same commissioner-driven week, and
+ * Finalize - the step that ends the week - is on this panel. It leads the list, and it is
+ * the sub-tab this screen opens on while a week is live, so it is FEWER taps away than it
+ * was as the third sub-tab of Rosters, not more. */
 export function CommissionerTab(props) {
-  const [sub, setSub] = useState("teams");
-  const subs = ["teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "backup", "reset"];
-  const labels = { teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", backup: "Backup", reset: "Reset" };
+  const midWeek = props.state.currentPeriod.phase !== "pre-deal";
+  const [sub, setSub] = useState(midWeek ? "stats" : "teams");
+  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "backup", "reset"];
+  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", backup: "Backup", reset: "Reset" };
   return (
     <div>
       <div className="pp-subnav">
         {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
       </div>
+      {sub === "stats" && (
+        <LiveStatsTab
+          state={props.state} isCommissioner={true}
+          onStatChange={props.onStatChange} onToggleRosterLock={props.onToggleRosterLock}
+          onFinalize={props.onFinalize} finalizeError={props.finalizeError}
+          onPullStats={props.onPullStats} statsReport={props.statsReport}
+        />
+      )}
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
       {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}

@@ -50,18 +50,49 @@ export function rankTeamsWithTiebreak(rows) {
   return ranked;
 }
 
-export function finalizeCurrentPeriod(state, rng = defaultRng) {
-  const next = deepClone(state);
-  const period = next.currentPeriod;
-  const isPlayoff = period.type === "playoff";
-  const activeIds = isPlayoff ? next.playoffConfig.activeTeamIds : next.teams.map((t) => t.id);
-  const teams = next.teams.filter((t) => activeIds.includes(t.id));
-  if (teams.length === 0) {
-    return { error: "No teams to finalize for this period." };
-  }
+/**
+ * Which teams are playing the period that is currently open. The regular season is
+ * everybody; a playoff round is only the teams still in the bracket.
+ */
+export function periodTeams(state) {
+  const period = state.currentPeriod;
+  const activeIds = period.type === "playoff"
+    ? state.playoffConfig.activeTeamIds
+    : state.teams.map((t) => t.id);
+  return state.teams.filter((t) => activeIds.includes(t.id));
+}
 
-  const rows = teams.map((team) => {
-    const stats = (next.statsEntry && next.statsEntry[team.id]) || {};
+/** One team's score for the period that is currently open, from the stat lines entered
+ *  so far. A slot with no line scores zero, which is exactly what it will score if the
+ *  week finalizes with the line still missing. */
+export function teamPeriodScore(state, team) {
+  if (!team || !team.roster) return 0;
+  const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
+  let total = 0;
+  STARTER_SLOTS.forEach((slot) => {
+    const player = getPlayer(state, team.roster.starters[slot]);
+    total += computeStarterPoints(state, stats[slot], player ? player.position : slot);
+  });
+  return total;
+}
+
+/**
+ * Every playing team's row for the open period: this period's score and totals, plus the
+ * season-to-date `tb` array that rankTeamsWithTiebreak reads.
+ *
+ * WHY THIS IS ITS OWN FUNCTION. It was the first half of finalizeCurrentPeriod, and it is
+ * lifted out so the live scoreboard can show the week WITHOUT a second implementation of
+ * "what has this team scored". A dashboard that added the numbers up its own way could
+ * disagree with the finalize that follows it, and the disagreement would only surface at
+ * the moment the week became permanent. Finalize still calls this; the two cannot drift.
+ *
+ * Read-only. It clones nothing and mutates nothing, so a live view can call it on every
+ * render without touching the league.
+ */
+export function periodScoreRows(state) {
+  const isPlayoff = state.currentPeriod.type === "playoff";
+  return periodTeams(state).map((team) => {
+    const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
     const cum = isPlayoff
       ? team.playoffCumulative || emptyCumulative()
       : team.cumulative || emptyCumulative();
@@ -72,9 +103,9 @@ export function finalizeCurrentPeriod(state, rng = defaultRng) {
       bestThisPeriod = null;
     STARTER_SLOTS.forEach((slot) => {
       const playerId = team.roster ? team.roster.starters[slot] : null;
-      const player = getPlayer(next, playerId);
+      const player = getPlayer(state, playerId);
       const line = stats[slot];
-      const pts = computeStarterPoints(next, line, player ? player.position : slot);
+      const pts = computeStarterPoints(state, line, player ? player.position : slot);
       rawScore += pts;
       if (player && player.position === "Coach") {
         coachResult = line ? line.result : null;
@@ -91,6 +122,7 @@ export function finalizeCurrentPeriod(state, rng = defaultRng) {
     });
     return {
       teamId: team.id,
+      teamName: team.name,
       rawScore,
       tds,
       yards,
@@ -106,6 +138,46 @@ export function finalizeCurrentPeriod(state, rng = defaultRng) {
       ],
     };
   });
+}
+
+/**
+ * The open period as it stands right now, ranked the way finalize will rank it.
+ *
+ * This is the live scoreboard's data, and it is deliberately the same three calls
+ * finalize makes - periodScoreRows, rankTeamsWithTiebreak, currentStandingsPointsArray -
+ * in the same order, so what the screen shows mid-week is what the week will actually
+ * award. `standingsPoints` on each row is therefore a PROJECTION and nothing more: only
+ * finalizeCurrentPeriod ever writes a team's cumulative totals, and this function does
+ * not call it.
+ *
+ * The rows come back in ranked order, untouched. Do not re-sort them: ties that
+ * rankTeamsWithTiebreak leaves in input order are OQ-A (see the comment on that
+ * function), and re-sorting here would quietly show a different order from the one the
+ * week is going to be scored in.
+ */
+export function projectCurrentPeriod(state) {
+  const rows = periodScoreRows(state);
+  if (rows.length === 0) return { rows: [] };
+  const spArr = currentStandingsPointsArray(state, rows.length);
+  return {
+    rows: rankTeamsWithTiebreak(rows).map((r) =>
+      Object.assign({}, r, {
+        standingsPoints: spArr[r.rank - 1] != null ? spArr[r.rank - 1] : 1,
+      })
+    ),
+  };
+}
+
+export function finalizeCurrentPeriod(state, rng = defaultRng) {
+  const next = deepClone(state);
+  const period = next.currentPeriod;
+  const isPlayoff = period.type === "playoff";
+  const teams = periodTeams(next);
+  if (teams.length === 0) {
+    return { error: "No teams to finalize for this period." };
+  }
+
+  const rows = periodScoreRows(next);
 
   const ranked = rankTeamsWithTiebreak(rows);
   const spArr = currentStandingsPointsArray(next, teams.length);

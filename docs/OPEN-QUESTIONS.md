@@ -4,7 +4,7 @@ Decisions that are **yours**, not mine. Two kinds:
 
 - **OQ-1 .. OQ-9** - things the artifact sandbox forced, which are now genuinely open for
   the first time. The code cannot tell us whether these were choices or workarounds.
-- **OQ-A .. OQ-F** - places where the code and the written rules disagree, or where the
+- **OQ-A .. OQ-G** - places where the code and the written rules disagree, or where the
   behaviour is surprising. Per the ground rules I have **changed none of these**. They are
   written down and waiting on you.
 
@@ -406,6 +406,25 @@ Worth raising with him directly rather than letting him find it here: it is rare
 it fires it silently moves standings points, and the beneficiary is whichever team was
 created first.
 
+**Addendum, 2026-09-04 - "created first" is now actually true.** That last sentence was
+describing an intent, not a guarantee. Input order is `state.teams` order, and the teams
+query carried no `ORDER BY` (`src/storage/supabase.js`), so it was whatever PostgREST
+happened to return and was not promised to be stable between two reads of the same league.
+Two screenshots on issue #29 showed different teams first. An OQ-A tie was therefore being
+awarded to an *arbitrary* team, not to the earliest one.
+
+The query now orders by `created_at`, then `id`. **This does not touch OQ-A** - the loop
+bound is unchanged and the skipped test is still skipped - it only makes the documented
+tiebreak deterministic instead of database-dependent. If a tie of this kind ever fired
+before now, the winner may not have been the team this section says it was.
+
+**Also 2026-09-04:** the live scoreboard added for issues #29 and #30 ranks the week in
+progress with `rankTeamsWithTiebreak`, so OQ-A is now visible on a screen people look at
+mid-week rather than only in the finalized table. That was the point of routing the
+projection through the same function finalize uses - a dashboard that ranked its own way
+could show an order the week would not actually award. **The loop bound does not get
+"fixed" to make the scoreboard look right.**
+
 ### OQ-B. Blocks are not validated engine-side. **[PROVISIONAL: yes - confirm with the original designer]**
 
 `SchemeForm` (line 1295) only offers your own **starters** when the scheme type is `block`.
@@ -470,6 +489,39 @@ and simpler to enforce. Flagging it as a deliberate, behaviour-preserving change
 letting you discover it later. **Recommendation: proceed.** No action needed unless you see
 a case I have missed.
 
+### OQ-G. The scoreboard-first layout. **[BUILT 2026-09-04 - three parts to confirm or send back]**
+
+Issues #29 and #30 said the same thing from two ends: through the whole week the app is
+actually being played, nothing on League Home, My Team or Weekly Results answered "how is
+the league doing", and the running scoreboard that already existed was the third sub-tab of
+Rosters, underneath the commissioner's stat-entry wall.
+
+That is presentation, not rules - no engine behaviour changed and `parity.test.js` is
+untouched - so it was built rather than deferred. But three of the calls inside it are
+Scott's to redirect, and each is deliberately cheap to reverse:
+
+1. **A bare league link now opens the Scoreboard, not the standings.** `/l/<id>` used to
+   mean League Home. It means the week in progress now, and the standings are
+   `/l/<id>/home`. Nothing breaks - every deep link that names its tab is unaffected - but
+   an existing bookmark to a bare league URL opens somewhere different. **Reverse:** set
+   `DEFAULT_TAB` back to `"home"` in `src/routing/index.js`. One line, one test.
+
+2. **The live table shows a projected Std Pts column.** It says what the week would award
+   if it finalized right now, and it is computed by the same three engine calls finalize
+   makes, so it cannot disagree with the real thing. Two consequences worth saying out
+   loud: it is a projection and moves as stats arrive, and because it ranks through
+   `rankTeamsWithTiebreak` it puts **OQ-A** on a screen people read mid-week. **Reverse:**
+   pass `showProjection={false}` in `src/components/scoreboard.jsx`.
+
+3. **Rosters collapsed.** Each team is one line - name and total - and opens on a tap; your
+   own opens by itself. It was six full cards of twelve players each, which is the
+   scrolling both issues complained about. **Reverse:** default `open` to `true` in
+   `TeamRosterCard`.
+
+Also moved: the commissioner's stat entry left the Rosters hub for the Commissioner tab,
+where it sits with Deal and Process Schemes and opens by default while a week is live. Lock
+Rosters, Pull Stats and Finalize Week went with it and are one tap in, not two.
+
 ---
 
 ## What is still open
@@ -497,7 +549,8 @@ accounts, an `invites` table replacing `team_secrets`, league-scoped read polici
 landing page with three doors (sign in / redeem a code / create a league).
 
 **The standing agenda for the designer is now OQ-A, OQ-B and OQ-E**, plus the season
-archive, which is held for him rather than built.
+archive, which is held for him rather than built - and **OQ-G**, which is built and needs
+confirming rather than deciding.
 
 **OQ-4c and OQ-4b were answered on 2026-08-28 and no longer block anything.** Yards and
 touchdowns split into passing / rushing / receiving at customizable rates, and the player
