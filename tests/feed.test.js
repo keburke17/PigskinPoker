@@ -49,25 +49,29 @@ describe("choosing a feed", () => {
 });
 
 describe("the recorded fixture", () => {
-  it("builds the same 224-player pool the live feed does, with no network", async () => {
+  /* CHANGED 2026-09-04: 192, not 224. Head coaches became the commissioner's (OQ-4d),
+   * so buildPool stops producing them - a league still holds 224 players, and the feed
+   * is responsible for 192 of them. games.csv is still recorded, and coachesFromGames is
+   * still read here, because the Coach slot scores off that file's RESULTS. */
+  it("builds the same 192-player pool the live feed does, with no network", async () => {
     const chart = await fixture.fetchDepthChart({ season: 2026 });
     const { coaches } = await fixture.fetchHeadCoaches({ season: 2026 });
-    const { players, gaps } = fixture.buildPool({ depthPlayers: chart.players, coaches });
+    const { players, gaps } = fixture.buildPool({ depthPlayers: chart.players });
 
-    expect(players).toHaveLength(224);
+    expect(players).toHaveLength(192);
     expect(gaps).toEqual([]);
-    expect(coaches.size).toBe(32);
+    expect(coaches.size).toBe(32); // read, and deliberately not put in the pool
     // Every team, every position, and the ids the refresh matches on.
     expect(players.filter((p) => p.position === "QB")).toHaveLength(32);
     expect(players.filter((p) => p.position === "RB")).toHaveLength(64);
-    expect(players.filter((p) => p.position === "Coach")).toHaveLength(32);
-    expect(players.filter((p) => p.externalIds.gsis)).toHaveLength(192); // all but the coaches
+    expect(players.filter((p) => p.position === "Coach")).toHaveLength(0);
+    expect(players.filter((p) => p.externalIds.gsis)).toHaveLength(192); // all of them now
   });
 
   it("is a real snapshot, and says what it is", () => {
     const m = fixture.manifest();
     expect(m.depthChartSnapshotAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(m.poolPlayers).toBe(224);
+    expect(m.poolPlayers).toBe(192);
     /* The stat lines are a real past week wearing this season's label. Recorded because
      * stats_player_week_<this season>.csv does not exist until games are played. */
     expect(m.stats.sourceSeason).toBeLessThan(m.season);
@@ -79,8 +83,7 @@ describe("the recorded fixture", () => {
     expect(lines.length).toBeGreaterThan(100);
 
     const chart = await fixture.fetchDepthChart({ season: 2026 });
-    const { coaches } = await fixture.fetchHeadCoaches({ season: 2026 });
-    const pool = fixture.buildPool({ depthPlayers: chart.players, coaches }).players;
+    const pool = fixture.buildPool({ depthPlayers: chart.players }).players;
     const inPool = new Set(pool.map((p) => p.externalIds.gsis).filter(Boolean));
     expect(lines.every((l) => inPool.has(l.gsis))).toBe(true);
 

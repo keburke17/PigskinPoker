@@ -15,6 +15,12 @@
  * what it thinks in `feed_status` and leaves `status` alone. Marking someone OUT is a
  * statement about this league, and the feed does not get to argue.
  *
+ * HEAD COACHES ARE NOT THE FEED'S AT ALL any more - Scott's decision on 2026-09-04,
+ * after the free coach data put John Harbaugh with the Giants. Every Coach row is
+ * treated as his regardless of its `source`, which is a stronger rule than 'manual':
+ * the rows already in his league were written by an earlier refresh and would otherwise
+ * count as the feed's own work to revise. See docs/OPEN-QUESTIONS.md OQ-4d.
+ *
  * See docs/PHASE-4-PLAN.md section 4.5.
  */
 
@@ -40,9 +46,13 @@ const matchKey = (name, position) => normalizeName(name) + "|" + position;
  * @returns {{ inserts, updates, retires, untouched, report }}
  */
 export function planPoolRefresh({ existing, wanted, at }) {
+  /* Coaches are out of scope entirely - not matched, not retired, not counted. */
+  const mine = existing.filter((r) => r.position === "Coach");
+  const inScope = existing.filter((r) => r.position !== "Coach");
+
   const byGsis = new Map();
   const byName = new Map();
-  for (const row of existing) {
+  for (const row of inScope) {
     const gsis = row.external_ids && row.external_ids.gsis;
     if (gsis) byGsis.set(String(gsis), row);
     const key = matchKey(row.name, row.position);
@@ -58,6 +68,10 @@ export function planPoolRefresh({ existing, wanted, at }) {
   const disagreements = [];
 
   for (const p of wanted) {
+    if (p.position === "Coach") continue; // the feed does not get a say on coaches
+    /* What the depth chart plus the roster file make of him. Defaults to Active so a
+     * feed that could not report status still produces a dealable pool. */
+    const feedStatus = p.status || "Active";
     const gsis = p.externalIds && p.externalIds.gsis;
     let row = gsis ? byGsis.get(String(gsis)) : null;
     let matchedBy = row ? "id" : null;
@@ -74,15 +88,15 @@ export function planPoolRefresh({ existing, wanted, at }) {
         name: p.name,
         position: p.position,
         nfl_team: p.team,
-        status: "Active",
+        status: feedStatus,
         external_ids: p.externalIds || {},
         depth_rank: p.depthRank ?? null,
         source: "feed",
         status_source: "feed",
-        feed_status: "Active",
+        feed_status: feedStatus,
         feed_updated_at: at,
       });
-      added.push({ name: p.name, position: p.position, team: p.team });
+      added.push({ name: p.name, position: p.position, team: p.team, status: feedStatus });
       continue;
     }
 
@@ -100,21 +114,27 @@ export function planPoolRefresh({ existing, wanted, at }) {
       external_ids: { ...(row.external_ids || {}), ...(p.externalIds || {}) },
       depth_rank: p.depthRank ?? null,
       source: "feed",
-      feed_status: "Active",
+      feed_status: feedStatus,
       feed_updated_at: at,
+      /* He is a listed starter again, so he is back in the pool and back in front of the
+       * managers - whether or not he is fit to play this week, which `status` says. */
+      retired: false,
     };
     // Only the feed's own status decisions are the feed's to revise.
     if (row.status_source !== "manual") {
-      patch.status = "Active";
+      patch.status = feedStatus;
       patch.status_source = "feed";
-    } else if (row.status !== "Active") {
-      /* He is a starter again as far as the feed is concerned, and the commissioner has
-       * him sidelined. That disagreement is the single most useful thing this screen can
-       * say, so it is surfaced rather than silently obeyed. */
+    } else if (row.status !== feedStatus) {
+      /* The commissioner and the feed disagree about whether this man plays. That is the
+       * single most useful thing this screen can say, so it is surfaced rather than
+       * silently obeyed either way. */
       disagreements.push({
         name: row.name,
         position: row.position,
-        why: "the depth chart has him starting, you have him " + row.status,
+        why:
+          feedStatus === "Active"
+            ? "the depth chart has him starting, you have him " + row.status
+            : "the feed has him " + feedStatus + ", you have him " + row.status,
       });
     }
     if (matchedBy === "name" && row.name !== p.name) {
@@ -128,7 +148,7 @@ export function planPoolRefresh({ existing, wanted, at }) {
    * results that already reference him. */
   const retires = [];
   const untouched = [];
-  for (const row of existing) {
+  for (const row of inScope) {
     if (claimed.has(row.id)) continue;
     if (row.source === "manual") {
       untouched.push({ name: row.name, position: row.position, why: "you added this player" });
@@ -142,7 +162,14 @@ export function planPoolRefresh({ existing, wanted, at }) {
       });
       continue;
     }
-    if (row.status === "OUT" && row.status_source === "feed") continue; // already retired
+    if (row.retired) continue; // already retired
+    /* RETIRED, NOT DELETED, AND NOT MERELY "OUT".
+     *
+     * `status` keeps him out of the deal, which the engine has always done by dealing
+     * only from Active. `retired` keeps him out of the MANAGERS' sight, which OUT could
+     * not: the Free Agents screen gives OUT its own tab, so a misspelling the feed
+     * replaced - "James Cook" beside a starting "James Cook III" - was on show to
+     * everybody in the league. See the migration of 2026-09-04 for the whole of it. */
     retires.push({
       id: row.id,
       status: "OUT",
@@ -150,6 +177,7 @@ export function planPoolRefresh({ existing, wanted, at }) {
       feed_status: "OUT",
       feed_updated_at: at,
       depth_rank: null,
+      retired: true,
     });
   }
 
@@ -165,6 +193,11 @@ export function planPoolRefresh({ existing, wanted, at }) {
       retired: retires.length,
       updated: updates.length,
       untouched: untouched.concat(disagreements),
+      /* Counted, not listed. Thirty-two names the refresh deliberately did nothing to
+       * would bury the handful of lines that describe an actual change. The sidelined
+       * players are reported by the caller, which has them from buildPool with the team
+       * and depth rank attached. */
+      coachesKept: mine.length,
     },
   };
 }

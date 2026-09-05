@@ -35,8 +35,30 @@ describe("decompose -> hydrate", () => {
     expect(back.rosterLocked).toBe(original.rosterLocked);
   });
 
-  it("preserves the player pool exactly", () => {
-    expect(back.playerPool).toEqual(original.playerPool);
+  /* CHANGED 2026-09-04. `retired` is a persistence-layer field, not part of the state
+   * shape the artifact had - it says the pool refresh dropped this player, which the
+   * artifact had no way to do. So a blob that predates it (the artifact's own, or an
+   * import carrying the real league's history) comes back with the field added and set
+   * to false, and the round trip is lossless in every direction that matters:
+   * everything the blob DID carry survives, and a blob that carries `retired` keeps it. */
+  it("preserves the player pool exactly, but for the retired flag it adds", () => {
+    const withoutFlag = back.playerPool.map(({ retired, ...rest }) => rest); // eslint-disable-line no-unused-vars
+    expect(withoutFlag).toEqual(original.playerPool);
+    // A pool that has never been refreshed has retired nobody.
+    expect(back.playerPool.every((p) => p.retired === false)).toBe(true);
+  });
+
+  it("round-trips a retired player, so a refresh's work is not undone by an edit", () => {
+    /* The failure this guards against: the commissioner renames somebody on the pool
+     * screen, the whole league is written back through decompose, and every player the
+     * last refresh retired reappears in front of the managers. */
+    const state = createDemoLeague();
+    state.playerPool[0].retired = true;
+    state.playerPool[0].status = "OUT";
+    const { back: again } = roundTrip(state);
+    const player = again.playerPool.find((p) => p.id === state.playerPool[0].id);
+    expect(player.retired).toBe(true);
+    expect(again.playerPool.filter((p) => p.retired)).toHaveLength(1);
   });
 
   it("preserves every team's identity and rosters", () => {

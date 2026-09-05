@@ -170,6 +170,111 @@ Nothing changes until you answer, and answering changes nothing on its own - the
 already in the league stay exactly as they are. Full context, and everything the feed needs
 besides this, is in `docs/LIVE-DATA.md`.
 
+### OQ-4d. Who owns the head coaches, and how are injuries tracked? **[ANSWERED 2026-09-04]**
+
+Raised by Scott after running the first real refreshes against his local league: "the
+rosters when refreshed are very much not up to date... many coaches still wrong as well."
+
+**What was actually wrong, checked against his database rather than assumed.** The refresh
+was working. It had written 224 correct rows from a depth-chart snapshot stamped that
+morning, and retired 30 stale hand-typed ones. Three separate things made it look broken:
+
+1. **The pool screen listed retired players beside live ones**, with the position count
+   including them - the WR card read 75 when 64 were dealable - and eight of the retired
+   rows were one letter from a correct row sitting next to it ("Derek Henry" beside
+   "Derrick Henry", "Kalil Shakir" beside "Khalil Shakir"). Presentation, not data:
+   retiring means OUT rather than deletion on purpose, because a deleted player would
+   break the rosters and results that reference him. **Fixed** - the pool screen now
+   counts and lists only what can be dealt, and the rest are behind a toggle.
+2. **Genuine starters outside a 2-deep pool.** Matthew Golden, Ricky Pearsall and Jakobi
+   Meyers are all WR3s; Tyler Higbee is a TE2. Correctly excluded by OQ-4b's own depth,
+   but they read as missing. **No change** - that is the answered rule working.
+3. **The coaches were wrong, and not because of our code.** nflverse's `games.csv` listed,
+   for all 17 games of 2026: John Harbaugh with the **Giants**, Jesse Minter at Baltimore,
+   Mike McCarthy at Pittsburgh, Todd Monken at Cleveland, Robert Saleh at Tennessee - and
+   it spelled Klint Kubiak **"Klint Kubliak"**. Internally consistent, so nothing was
+   scrambling on our end; the app was faithfully reporting a badly-maintained file.
+
+> **Scott's answer, 2026-09-04: head coaches are the commissioner's.** The refresh does not
+> add, rename, retire or restatus a single Coach row - enforced by position in
+> `server/pool.js`, which is deliberately stronger than the `source = 'manual'` rule,
+> because the coach rows already in his league were written by an earlier refresh and would
+> otherwise count as the feed's own work to revise. `buildPool` produces 192 rows now
+> rather than 224; a league still holds 224 players, and the feed is responsible for 192.
+> Pool rows gained an **Edit** control in the same change, because a list nobody may edit
+> is not a list anybody maintains.
+>
+> `coachesFromGames` stays exported and tested. The results half of that file is still the
+> plan for scoring the Coach slot's Win/Tie/Loss; only its coach columns are distrusted.
+
+**And injuries, which was the question underneath the question.** Scott: "Jayden Higgins
+of the Houston Texans is supposed to be their WR2, but he is out for the season... does he
+just fall into the IR category? is it pulling that type of live information?"
+
+It was not. The depth-chart extract carries twelve columns and none is injury status - the
+"IR" ESPN shows on its own site is dropped before we see it. **Rank was doing the work
+by accident**: ESPN demotes an injured player, and it had Higgins at Houston's **WR7**, so
+he fell out of a 2-deep pool on his own. Verified at the time: all 192 skill players then
+in the pool matched a roster row and **none was on reserve**.
+
+> **Scott's answer, 2026-09-04: pull it properly, and skip the injured man.** Roster status
+> is read from nflverse's weekly roster file, where `RES` (reserve/injured) maps to **IR**
+> and anything else off the active roster maps to OUT. When a listed starter is hurt, the
+> **next healthy player takes the slot** - so every NFL team always contributes a full
+> 1 QB / 2 RB / 2 WR / 1 TE and the dealable pool does not thin out every time somebody
+> gets hurt. The injured player is still added, carrying IR, because a pool that simply
+> omits him cannot explain where he went.
+>
+> **The injury pull is allowed to fail on its own.** That file is ~940KB per week, reached
+> 15.4MB by the end of 2025, is not in week order and does not compress on the wire, so
+> there is no prefix to stop after and no tail to range-request. A failure there leaves the
+> refresh to finish on depth charts alone and says so on screen - losing it costs a day or
+> two of lag, and treating it as fatal would cost the refresh entirely.
+>
+> It also does not take the highest week in the file: that file runs to week 22, and week
+> 22 is the two teams left in the Super Bowl. Taking it would leave thirty teams with no
+> roster row and mark every one of their starters OUT.
+
+**Not a rules change.** Dealing has always drawn only from `status === "Active"`, and
+`tests/parity.test.js` is green - this changes who is in the pool, not how the game plays.
+
+#### OQ-4d part two: retired is not OUT **[ANSWERED 2026-09-04, same conversation]**
+
+Scott, after the first refresh on the live site: "the players that it took out of the game
+for misspellings or whatever reason, it has them listed as OUT... so when a team manager
+looks at the free agent pool and clicks on the OUT tab, they will see james cook there.
+whilst the real updated roster james cook III could be listed on someones starting roster.
+those players that are replaced, probably should just be removed in a pool that only the
+commissioner can see."
+
+The first fix that day only cleaned up the COMMISSIONER's pool screen. `FreeAgentsTab` -
+what every manager sees - gives OUT, IR and BYE a tab each and listed every player with
+that status, so retiring somebody by setting him OUT put him in front of the whole league.
+
+> **Scott's answer: retired players belong to the commissioner alone.** `players.retired`
+> is now a column of its own, and the two ideas are kept apart:
+>
+> - **OUT / IR / BYE** are football statements about a player who is IN the pool. Managers
+>   see them, and should - that is what the tabs are for.
+> - **retired** means a refresh dropped him: no longer a listed starter, or a misspelling
+>   the feed replaced. Hidden from managers entirely; shown to the commissioner under
+>   "Retired" on his pool screen, with **Restore** to put one back.
+>
+> **Still not deleted.** `legacyOf` resolves a missing player to null, so deleting one
+> would silently blank a starter slot in a week that has already been played.
+>
+> **And not derived from `status` + `status_source` either**, though that pair identifies
+> exactly these rows today and is what the migration backfills on. The moment the
+> commissioner touched a retired player's status dropdown, `decompose.js` would record
+> `status_source = 'manual'` and the player would quietly reappear for everybody.
+
+**One loose end, worth checking.** Scott's own example was "James Cook" retired beside an
+active "James Cook III" - but `normalizeName` strips suffixes, so those two match and the
+feed's spelling simply wins. They should never both be in a pool. The only way they can is
+if the pool already held the same man twice; both cases are now asserted in
+`tests/pool.test.js`. If he is genuinely seeing both on the live site, that is a second
+bug and this fix hides the symptom rather than curing it.
+
 ### OQ-5. Join codes, or real accounts? **[ANSWERED: both - accounts authenticate, codes invite]**
 
 No auth primitives existed in the sandbox, so join codes were the only option.
@@ -484,6 +589,7 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | **league visibility** (new, from OQ-10) | Phase 3d | Members-only or link-public, per league. Recommended: a setting, defaulting to members-only, with the existing league set public so nothing changes for it. |
 | **OQ-4c** what counts as "yards"? | **Done - answered 2026-08-28** | Split into passing / rushing / receiving, each customizable. A rules change; built in `docs/PHASE-4-PLAN.md` stage 1. |
 | **OQ-4b** is `TEAM_ROWS` curated or typed? | **Done - answered 2026-08-28** | Typed out of necessity. The pool is rebuilt from live starters; `teamRows.js` becomes a test fixture. |
+| **OQ-4d** who owns the coaches, and are injuries tracked? | **Done - answered 2026-09-04** | Coaches are the commissioner's - the refresh never touches one. Injuries come from roster status; a hurt starter is marked IR and the next healthy man takes his place. |
 | **OQ-3** history depth | Phase 2 | Schema already preserves it; this is about what we surface. |
 | **OQ-C / OQ-D / OQ-E** rules quirks | Anytime | All preserved as-is; each is a small, reversible behaviour question. |
 | **OQ-F** per-slot vs. per-player locks | Anytime | Behaviour-preserving; noted so it is not discovered later. |

@@ -180,7 +180,10 @@ export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
  * nothing and "Kalil Shakir is Khalil Shakir" tells him the pool was wrong. */
 export function PoolRefreshReport({ report }) {
   if (!report) return null;
-  const { added = [], renamed = [], retired = 0, updated = 0, untouched = [], gaps = [] } = report;
+  const {
+    added = [], renamed = [], retired = 0, updated = 0, untouched = [], gaps = [],
+    sidelined = [], injuries = null, coachesKept = 0,
+  } = report;
   const when = report.at ? String(report.at).replace("T", " ").replace("Z", " UTC") : "just now";
   return (
     <div className="pp-card pp-card-tight">
@@ -189,7 +192,31 @@ export function PoolRefreshReport({ report }) {
       <ul className="pp-rule-list">
         <li>{updated} player{updated === 1 ? "" : "s"} confirmed or corrected.</li>
         <li>{added.length} added, {retired} retired from the deal.</li>
+        {coachesKept > 0 && (
+          <li>{coachesKept} head coach{coachesKept === 1 ? "" : "es"} left exactly as you have {coachesKept === 1 ? "it" : "them"}.</li>
+        )}
+        {/* Whether the injury half ran is worth saying either way: a refresh that
+          * quietly skipped it looks identical to one that found nobody hurt. */}
+        {injuries && injuries.ok && <li>Injury statuses read from week {injuries.week}.</li>}
+        {injuries && !injuries.ok && (
+          <li>
+            <strong>Injury statuses could not be read</strong> ({injuries.reason}). The pool
+            is still current on depth-chart order, which is usually a day or two behind an
+            injury. Refreshing again later will pick them up.
+          </li>
+        )}
       </ul>
+      {sidelined.length > 0 && (
+        <>
+          <p className="pp-sub" style={{ marginBottom: 4 }}><strong>Listed as starters but hurt - skipped, next man up</strong></p>
+          <ul className="pp-rule-list">
+            {sidelined.slice(0, 12).map((s, i) => (
+              <li key={i}>{s.name} - {s.position}{s.depthRank ? String(s.depthRank) : ""}, {s.team} <span style={{ color: "var(--text-faint)" }}>({s.status})</span></li>
+            ))}
+            {sidelined.length > 12 ? <li>...and {sidelined.length - 12} more.</li> : null}
+          </ul>
+        </>
+      )}
       {renamed.length > 0 && (
         <>
           <p className="pp-sub" style={{ marginBottom: 4 }}><strong>Names corrected</strong></p>
@@ -236,22 +263,103 @@ export function PoolRefreshReport({ report }) {
 
 const ARROW_R = String.fromCodePoint(0x2192);
 
-export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeletePlayer, onRefreshPool, poolReport, phase }) {
+/* One player in the pool, with the correction the refresh cannot make for you.
+ *
+ * Renaming exists because head coaches became yours on 2026-09-04. A list nobody may
+ * edit is not a list you maintain, and delete-then-add-again is a poor way to fix a
+ * spelling. Renaming a player the feed owns is fine too - the next refresh matches him
+ * by his provider id and puts its own spelling back, which is the feed correcting its
+ * own work exactly as it should. */
+function PoolPlayerRow({ player, dimmed, onSetStatus, onDeletePlayer, onRenamePlayer, onRestorePlayer }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(player.name);
+  const [team, setTeam] = useState(player.team);
+  const save = () => {
+    const n = name.trim();
+    const t = team.trim();
+    if (n && t && (n !== player.name || t !== player.team)) onRenamePlayer(player.id, n, t);
+    setEditing(false);
+  };
+  return (
+    <div className="pp-roster-slot" style={{ flexWrap: "wrap", opacity: dimmed ? 0.55 : 1 }}>
+      <SuitBadge position={player.position} />
+      {editing ? (
+        <div style={{ flex: 1, minWidth: 180, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input className="pp-input" style={{ flex: 2, minWidth: 120 }} value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="pp-input" style={{ flex: 2, minWidth: 120 }} value={team} onChange={(e) => setTeam(e.target.value)} />
+          <button className="pp-btn pp-btn-gold" onClick={save}>Save</button>
+          <button className="pp-btn" onClick={() => { setName(player.name); setTeam(player.team); setEditing(false); }}>Cancel</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ flex: 1, minWidth: 120 }}>
+            <div className="pp-roster-slot-name">{player.name}</div>
+            <div className="pp-roster-slot-meta">{player.team}</div>
+          </div>
+          <button className="pp-btn" onClick={() => setEditing(true)}>Edit</button>
+        </>
+      )}
+      {onRestorePlayer ? (
+        <button className="pp-btn" onClick={() => onRestorePlayer(player.id)}>Restore</button>
+      ) : (
+        <select className="pp-select" style={{ width: 100 }} value={player.status} onChange={(e) => onSetStatus(player.id, e.target.value)}>
+          <option value="Active">Active</option>
+          <option value="OUT">OUT</option>
+          <option value="IR">IR</option>
+          <option value="BYE">BYE</option>
+        </select>
+      )}
+      <ConfirmButton label="Delete" confirmLabel="Yes, delete" danger onConfirm={() => onDeletePlayer(player.id)} />
+    </div>
+  );
+}
+
+export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeletePlayer, onRenamePlayer, onRestorePlayer, onRefreshPool, poolReport, phase }) {
   const [name, setName] = useState("");
   const [position, setPosition] = useState("QB");
   const [team, setTeam] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showRetired, setShowRetired] = useState(false);
   const canRefresh = phase === "pre-deal";
-  const grouped = POSITIONS.reduce((acc, pos) => { acc[pos] = state.playerPool.filter((p) => p.position === pos).sort((a, b) => a.name.localeCompare(b.name)); return acc; }, {});
+  /* THREE GROUPS, NOT ONE LIST. Retiring a player never deletes him - a deleted player
+   * would break the rosters and results that already reference him - so the pool keeps
+   * every mistake the hand-typed list ever had. Listing those beside the live players is
+   * what made a working refresh look broken on 2026-09-04: the WR card said 75 when only
+   * 64 could be dealt, and "Derek Henry (OUT)" sat one line from "Derrick Henry".
+   *
+   * `sidelined` and `retired` are deliberately different things, and only this screen
+   * shows the second one:
+   *   sidelined - in the pool, not playing this week. OUT / IR / BYE. Every manager sees
+   *               these on the Free Agents screen, and should.
+   *   retired   - dropped from the pool by a refresh. Nobody but the commissioner sees
+   *               them; showing "James Cook" to a league whose rosters have "James Cook
+   *               III" in them reads as a duplicate or a bug. */
+  const grouped = POSITIONS.reduce((acc, pos) => {
+    const all = state.playerPool.filter((p) => p.position === pos);
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    acc[pos] = {
+      dealable: all.filter((p) => !p.retired && p.status === "Active").sort(byName),
+      sidelined: all.filter((p) => !p.retired && p.status !== "Active").sort(byName),
+      retired: all.filter((p) => p.retired).sort(byName),
+    };
+    return acc;
+  }, {});
+  const retiredTotal = POSITIONS.reduce((n, pos) => n + grouped[pos].retired.length, 0);
   return (
     <div>
       <div className="pp-card">
         <h3 className="pp-h3">Refresh From Live Rosters</h3>
         <p className="pp-sub">
-          Pulls every team's current starters - 1 QB, 2 RB, 2 WR, 1 TE and the head coach -
-          from the live depth charts, so injuries and depth-chart moves are in before you
-          deal. It never changes a player you added or a status you set by hand, and it
-          never touches a roster that has already been dealt.
+          Pulls every team's current starters - 1 QB, 2 RB, 2 WR and 1 TE - from the live
+          depth charts, so injuries and depth-chart moves are in before you deal. A
+          starter who is on injured reserve is marked IR and the next healthy man takes
+          his place, so every NFL team still contributes a full set. It never changes a
+          player you added or a status you set by hand, and it never touches a roster that
+          has already been dealt.
+        </p>
+        <p className="pp-sub">
+          <strong>Head coaches are yours.</strong> The refresh does not add, rename or
+          retire a single one - use Edit below to correct them.
         </p>
         {!canRefresh ? (
           <p className="pp-sub">
@@ -292,25 +400,58 @@ export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeleteP
         <div className="pp-field"><label className="pp-label">NFL Team</label><input className="pp-input" value={team} onChange={(e) => setTeam(e.target.value)} /></div>
         <button className="pp-btn pp-btn-gold" disabled={!name.trim() || !team.trim()} onClick={() => { onAddPlayer(name.trim(), position, team.trim()); setName(""); setTeam(""); }}>Add Player</button>
       </div>
+      {retiredTotal > 0 && (
+        <div className="pp-card pp-card-tight">
+          <p className="pp-sub" style={{ marginBottom: 8 }}>
+            <strong>{retiredTotal} retired player{retiredTotal === 1 ? "" : "s"} - only you can see {retiredTotal === 1 ? "him" : "them"}.</strong>
+            {" "}A refresh dropped {retiredTotal === 1 ? "him" : "them"}: no longer a listed
+            starter, or a misspelling the feed replaced with the real man. They are kept
+            rather than deleted so the weeks they already played still make sense, and
+            they are hidden from your managers so a retired name never turns up beside the
+            player who replaced him. <strong>Restore</strong> puts one back in the pool.
+          </p>
+          <button className="pp-btn" onClick={() => setShowRetired((v) => !v)}>
+            {showRetired ? "Hide retired players" : "Show retired players"}
+          </button>
+        </div>
+      )}
+
       {POSITIONS.map((pos) => (
         <div key={pos} className="pp-card">
-          <h3 className="pp-h3">{pos} <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>({grouped[pos].length})</span></h3>
-          {grouped[pos].map((p) => (
-            <div key={p.id} className="pp-roster-slot" style={{ flexWrap: "wrap" }}>
-              <SuitBadge position={p.position} />
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <div className="pp-roster-slot-name">{p.name}</div>
-                <div className="pp-roster-slot-meta">{p.team}</div>
-              </div>
-              <select className="pp-select" style={{ width: 100 }} value={p.status} onChange={(e) => onSetStatus(p.id, e.target.value)}>
-                <option value="Active">Active</option>
-                <option value="OUT">OUT</option>
-                <option value="IR">IR</option>
-                <option value="BYE">BYE</option>
-              </select>
-              <ConfirmButton label="Delete" confirmLabel="Yes, delete" danger onConfirm={() => onDeletePlayer(p.id)} />
-            </div>
+          <h3 className="pp-h3">
+            {pos}{" "}
+            <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>
+              ({grouped[pos].dealable.length} in the deal
+              {grouped[pos].sidelined.length ? ", " + grouped[pos].sidelined.length + " sidelined" : ""}
+              {grouped[pos].retired.length ? ", " + grouped[pos].retired.length + " retired" : ""})
+            </span>
+          </h3>
+          {grouped[pos].dealable.map((p) => (
+            <PoolPlayerRow key={p.id} player={p} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer} onRenamePlayer={onRenamePlayer} />
           ))}
+          {/* Sidelined players stay in the main list: they are in the pool, your managers
+            * can see them on Free Agents, and hiding them from you would be a lie. */}
+          {grouped[pos].sidelined.map((p) => (
+            <PoolPlayerRow key={p.id} player={p} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer} onRenamePlayer={onRenamePlayer} />
+          ))}
+          {showRetired && grouped[pos].retired.length > 0 && (
+            <>
+              <p className="pp-sub" style={{ margin: "12px 0 4px" }}>
+                <strong>Retired</strong> - not in the pool, and not shown to your managers.
+              </p>
+              {grouped[pos].retired.map((p) => (
+                <PoolPlayerRow
+                  key={p.id}
+                  player={p}
+                  dimmed
+                  onSetStatus={onSetStatus}
+                  onDeletePlayer={onDeletePlayer}
+                  onRenamePlayer={onRenamePlayer}
+                  onRestorePlayer={onRestorePlayer}
+                />
+              ))}
+            </>
+          )}
         </div>
       ))}
     </div>
@@ -564,7 +705,7 @@ export function CommissionerTab(props) {
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
       {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
-      {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
+      {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
       {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
       {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onStart={props.onStartPlayoffs} />}

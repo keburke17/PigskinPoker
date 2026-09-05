@@ -948,8 +948,12 @@ export async function setNflWeek(db, { leagueId, token, nflWeek, expect }) {
  * Rebuild the player pool from each NFL team's current starters.
  *
  * The designer's answer to OQ-4b: the hand-typed pool was typed out of necessity, so the
- * pool becomes 1 QB, 2 RB, 2 WR, 1 TE and 1 head coach per team - 224 rows - and tracks
- * depth-chart moves and injuries instead of going stale.
+ * pool becomes 1 QB, 2 RB, 2 WR and 1 TE per team - 192 rows - and tracks depth-chart
+ * moves and injuries instead of going stale.
+ *
+ * HEAD COACHES ARE NOT IN THAT NUMBER. Scott looked at what the free coach data actually
+ * said on 2026-09-04, did not recognise half of it, and made coaches his (OQ-4d). The
+ * league still holds 224 rows; the refresh is responsible for 192 of them.
  *
  * Commissioner-pressed, pre-deal only, never automatic and never mid-week. It writes
  * over its own work and never over a person's: see server/pool.js for that rule, which
@@ -970,17 +974,38 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
   const season = ctx.rows.seasons[0]?.year ?? new Date().getUTCFullYear();
 
   let snapshot;
+  let injuries = { ok: false, reason: "not read" };
   try {
     /* `feed` is injected by tests. Otherwise the environment chooses, and it can only
      * ever choose the recorded fixture against a local database - see server/feed/index.js. */
     const source = feed || (await selectFeed());
-    const [chart, coachData] = await Promise.all([
+
+    /* TWO FILES, ONE OF THEM OPTIONAL. The depth chart is the pool and a failure there
+     * is fatal to the refresh. The roster file only adds injury status, is fifteen times
+     * the size, and cannot be read a piece at a time (see ROSTER_URL) - so it is allowed
+     * to fail on its own. Losing it costs a day or two of lag on a player ESPN has not
+     * demoted yet; treating it as fatal would cost the refresh entirely.
+     *
+     * A source that cannot report roster status at all - the recorded fixture - simply
+     * returns none, and every depth-chart player is treated as healthy. */
+    const [chart, rosterStatus] = await Promise.all([
       source.fetchDepthChart({ season }),
-      source.fetchHeadCoaches({ season }),
+      source.fetchRosterStatus
+        ? source.fetchRosterStatus({ season }).then(
+            (r) => {
+              injuries = { ok: true, week: r.week };
+              return r;
+            },
+            (err) => {
+              injuries = { ok: false, reason: err.message };
+              return null;
+            }
+          )
+        : Promise.resolve(null),
     ]);
     snapshot = {
       at: chart.snapshotAt,
-      ...source.buildPool({ depthPlayers: chart.players, coaches: coachData.coaches }),
+      ...source.buildPool({ depthPlayers: chart.players, rosterStatus }),
     };
   } catch (err) {
     /* A feed that is down, late, or has changed shape must not take the league with it.
@@ -1031,7 +1056,13 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
 
   return good({
     view: hydrate(await fetchLeagueRows(db, leagueId)),
-    report: { ...plan.report, gaps: snapshot.gaps, season },
+    report: {
+      ...plan.report,
+      gaps: snapshot.gaps,
+      sidelined: snapshot.sidelined ?? [],
+      injuries,
+      season,
+    },
   });
 }
 

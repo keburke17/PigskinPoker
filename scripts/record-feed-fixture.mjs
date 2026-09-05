@@ -133,8 +133,12 @@ write("results-week.csv", toCsv(RESULT_COLUMNS, resultRows.map((r) => ({ ...r, s
 /* Filtered to the players the recorded pool actually contains, because a stat line for
  * somebody no league can deal is noise in a fixture. */
 const chart = await fetchDepthChart({ season });
+/* Still fetched, and games.csv is still recorded above - the Coach slot scores off its
+ * results. Its COACH columns stopped feeding the pool on 2026-09-04 (OQ-4d), so the pool
+ * is 192 players and the 32 head coaches are the commissioner's. `coachSeason` below
+ * records which season the recording read, which is still worth knowing. */
 const { coaches } = await fetchHeadCoaches({ season });
-const { players: pool, gaps } = buildPool({ depthPlayers: chart.players, coaches });
+const { players: pool, gaps } = buildPool({ depthPlayers: chart.players });
 const poolGsis = new Set(pool.map((p) => p.externalIds && p.externalIds.gsis).filter(Boolean));
 
 const statsRes = await fetch(WEEKLY_STATS_URL(statsSeason));

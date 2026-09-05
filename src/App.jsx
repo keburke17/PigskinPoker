@@ -315,6 +315,30 @@ export default function App() {
       const p = s.playerPool.find((x) => x.id === playerId);
       if (p) p.status = status;
     });
+  /* Correcting a name or an NFL team. Head coaches are the commissioner's outright since
+   * 2026-09-04, and the free coach data had them wrong, so he needs to be able to fix one
+   * without deleting and re-adding him. Goes through the ordinary blob write, which
+   * carries `source` and the provider ids forward - see src/storage/decompose.js. */
+  const onRenamePlayer = (playerId, name, team) =>
+    ops.mutate("renamePlayer:" + playerId, (s) => {
+      const p = s.playerPool.find((x) => x.id === playerId);
+      if (p) {
+        p.name = name;
+        p.team = team;
+      }
+    });
+  /* Putting a retired player back in the pool. The undo for a refresh that dropped
+   * somebody it should not have - he becomes visible to the managers again and dealable
+   * from the next deal. Marked Active by hand, so `status_source` records that the
+   * decision was yours and the next refresh will not quietly retire him again. */
+  const onRestorePlayer = (playerId) =>
+    ops.mutate("restorePlayer:" + playerId, (s) => {
+      const p = s.playerPool.find((x) => x.id === playerId);
+      if (p) {
+        p.retired = false;
+        p.status = "Active";
+      }
+    });
   const onDeletePlayer = (playerId) =>
     ops.mutate("deletePlayer:" + playerId, (s) => {
       s.playerPool = s.playerPool.filter((p) => p.id !== playerId);
@@ -635,7 +659,7 @@ export default function App() {
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               submittedTeamIds={submittedTeamIds}
               onSwap={onSwap} onSubmitScheme={onSubmitScheme}
-              onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer}
+              onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer} onRenamePlayer={onRenamePlayer} onRestorePlayer={onRestorePlayer}
               onRefreshPool={onRefreshPool} poolReport={poolReport}
               onSetNflWeek={onSetNflWeek}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}

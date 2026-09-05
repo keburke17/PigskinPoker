@@ -883,10 +883,15 @@ gate()("the pool refresh writes in batches", () => {
 
     /* Everything the feed did not claim is retired, except the rows the seed plants to
      * be protected: one the commissioner added himself, one whose status he set, one the
-     * feed had already retired. See the fixture suite below for what each of them means. */
+     * feed had already retired. See the fixture suite below for what each of them means.
+     *
+     * HEAD COACHES JOINED THAT LIST on 2026-09-04 (OQ-4d). The refresh does not touch a
+     * Coach row whatever its source, so the unclaimed coaches here are not retired
+     * either - which is most of the difference this assertion used to count. */
     const protectedRows = players.filter(
       (p) => !claimed.includes(p) &&
-        (p.source === "manual" || p.status_source === "manual" || p.feed_status === "OUT")
+        (p.position === "Coach" ||
+          p.source === "manual" || p.status_source === "manual" || p.feed_status === "OUT")
     ).length;
     expect(r.body.report.retired).toBe(players.length - claimed.length - protectedRows);
     expect(r.body.report.retired).toBeGreaterThan(100); // it really did do the work

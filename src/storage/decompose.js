@@ -203,6 +203,12 @@ export function decomposeLeague(state, opts) {
        * nothing to match on. They are carried forward from the row already in the
        * database instead. A genuinely new player has none yet, which is correct. */
       external_ids: knownPlayerRow.get(p.id)?.external_ids ?? {},
+      /* Carried, not reset. The commissioner CAN clear this from his own screen - the
+       * Restore button on a retired player - so the blob's value wins when it has one,
+       * and the row already in the database fills in for a caller that has never heard
+       * of the field. Resetting it to false here would un-retire the whole pool on the
+       * first ordinary edit. */
+      retired: p.retired ?? knownPlayerRow.get(p.id)?.retired ?? false,
       legacy_id: p.id,
       active: true,
     });
