@@ -13,14 +13,34 @@
  *
  * The "your next step" line at the top comes from the same nextStep() the welcome
  * overlay uses, so the short version and the long version cannot disagree.
+ *
+ * THE LOCK CARD READS THIS LEAGUE'S POLICY, it does not describe one. Lineup lock
+ * became a league option in #34 (OQ-11) and this card was missed - it still said
+ * "nothing locks automatically", which stopped being true the day that shipped and is
+ * the single fact a manager most needs right. It now branches the way the Rules tab's
+ * "Lineup Lock & Injury Swaps" card does, off the same lineupLockMode(). Whichever of
+ * these two screens someone reads, they get their own league's rule.
  */
 
+import {
+  LINEUP_LOCK,
+  firstKickoff,
+  formatKickoff,
+  kickoffsFor,
+  lineupLockMode,
+} from "../engine/index.js";
 import { nextStep } from "./guidance.js";
 import { RuleCard } from "./RulesTab.jsx";
 
 export function HelpTab({ state, role, team, onGoTo }) {
   const step = nextStep(state, role, team);
   const isCommissioner = role === "commissioner";
+  /* The league's lineup-lock policy, read the same way RulesTab reads it. `first` is
+   * null until the week's kickoffs have been fetched, which is a real state - a league
+   * whose schedule has not been read locks on nothing but the commissioner's own
+   * buttons, and saying so is better than naming a deadline that is not there. */
+  const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
+  const first = firstKickoff(kickoffsFor(state));
 
   return (
     <div>
@@ -73,10 +93,21 @@ export function HelpTab({ state, role, team, onGoTo }) {
       </RuleCard>
 
       <RuleCard title="When something locks">
-        <li><strong>Nothing locks automatically.</strong> There is no Thursday cutoff and no kickoff timer in this app. Both locks are buttons your commissioner presses.</li>
-        <li><strong>Schemes close</strong> when the commissioner processes the week, and stay closed once rosters are locked.</li>
-        <li><strong>A player freezes</strong> only when the commissioner locks that player - the convention is to do it as their real game starts. A locked player shows a LOCKED pill and cannot be swapped.</li>
-        <li><strong>Everything else stays editable.</strong> A bench player whose game has not started can still come into your lineup after the rosters are locked.</li>
+        <li><strong>Schemes close when your commissioner processes the week.</strong> There is no clock on that one - it happens when they press the button, so get yours in early.</li>
+        {weekly ? (
+          <>
+            <li><strong>Your whole lineup closes at the week&apos;s first kickoff</strong>{first ? ", which is " + formatKickoff(first) + " this week" : ""}. What you have set then is what plays, all weekend.</li>
+            <li>Injury news after that is bad luck rather than something to fix - the same as starting a player who turns out to be ruled out.</li>
+          </>
+        ) : (
+          <>
+            <li><strong>Each player freezes when his own game kicks off</strong>{first ? ", starting with " + formatKickoff(first) + " this week" : ""}. Everyone else stays swappable, so a late-window receiver can still come in on Sunday evening.</li>
+            <li>That is why a player can show a LOCKED pill while the rest of your lineup is still open.</li>
+          </>
+        )}
+        {!first ? <li><strong>This week&apos;s kickoff times have not been read yet</strong>, so nothing is locking on the clock right now - only the commissioner&apos;s own locks apply.</li> : null}
+        <li><strong>Your commissioner can lock any player by hand</strong>, at any time - a late scratch, say - and that lock always wins.</li>
+        <li>Rules spells this out in full, in your league&apos;s own terms, under Lineup Lock &amp; Injury Swaps.</li>
       </RuleCard>
 
       <RuleCard title="Words we use">
