@@ -250,16 +250,54 @@ describe("parity with the original artifact", () => {
     });
   });
 
-  it("ranks identically across the whole tiebreak chain", () => {
+  /* RULES CHANGE, 2026-09-06 - OQ-A, answered by Scott: the sixth tiebreaker applies.
+   *
+   * This is the second recorded difference from the artifact (the first is the
+   * 2026-08-28 scoring split). The artifact compared only tb[0..4], so two teams level
+   * on the first five tiebreakers but differing on best single-player score sorted by
+   * input order - team creation order - and were then given DIFFERENT ranks by the
+   * grouping check, which compares all six. Standings points followed the rank, so the
+   * older team quietly won the tiebreak.
+   *
+   * The engine now compares all six, matching the rules screen. So this case can no
+   * longer be asserted equal, and is asserted DIFFERENT on purpose: legacy puts "a"
+   * ahead of "b" because it was listed first; the engine puts "b" ahead because its
+   * best single-player score is 31 to 22.
+   *
+   * Everything outside this tie is unchanged, which is the point of the second half:
+   * strip the one contested pair and legacy and engine still agree exactly. Both full
+   * simulated seasons below also still match the artifact object-for-object - the tie
+   * never fires in either, which is a fair measure of how rare it is. */
+  it("ranks identically except where the sixth tiebreaker now decides it (OQ-A)", () => {
     const rows = [
       { teamId: "a", rawScore: 50, tb: [10, 2, 3, 5, 400, 22] },
-      { teamId: "b", rawScore: 50, tb: [10, 2, 3, 5, 400, 31] }, // differs only on tb[5] (OQ-A)
+      { teamId: "b", rawScore: 50, tb: [10, 2, 3, 5, 400, 31] }, // differs only on tb[5]
       { teamId: "c", rawScore: 50, tb: [10, 2, 3, 5, 390, 40] },
       { teamId: "d", rawScore: 60, tb: [1, 0, 0, 0, 0, 0] },
       { teamId: "e", rawScore: 50, tb: [10, 2, 3, 5, 400, 22] }, // exact duplicate of a
       { teamId: "f", rawScore: 50, tb: [10, 2, 1, 9, 999, 5] },
     ];
-    expect(N.rankTeamsWithTiebreak(rows)).toEqual(L.rankTeamsWithTiebreak(rows));
+
+    const legacy = L.rankTeamsWithTiebreak(rows);
+    const engine = N.rankTeamsWithTiebreak(rows);
+
+    // The artifact ranked "a" first purely because it was listed first.
+    expect(legacy.map((r) => r.teamId).slice(0, 3)).toEqual(["d", "a", "b"]);
+    // The engine ranks "b" first on the sixth tiebreaker: 31 beats 22.
+    expect(engine.map((r) => r.teamId).slice(0, 3)).toEqual(["d", "b", "a"]);
+
+    /* The sharpest illustration of what was wrong. "a" and "e" are identical on all
+     * six tiebreakers, so they must share a rank. In the artifact they did NOT: "b"
+     * sorted between them on input order, and the grouping check - which compares all
+     * six - then broke the run, handing two identical teams ranks 2 and 4 and different
+     * standings points. The engine now ranks them 3 and 3. */
+    const rankOf = (out, id) => out.find((r) => r.teamId === id).rank;
+    expect(rankOf(engine, "a")).toBe(rankOf(engine, "e"));
+    expect(rankOf(legacy, "a")).not.toBe(rankOf(legacy, "e"));
+
+    /* Outside the contested pair nothing moved: drop "b" and the two agree exactly. */
+    const uncontested = rows.filter((r) => r.teamId !== "b");
+    expect(N.rankTeamsWithTiebreak(uncontested)).toEqual(L.rankTeamsWithTiebreak(uncontested));
   });
 
   /* Still exact, and it must stay that way. These lines carry the artifact's combined

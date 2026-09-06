@@ -71,45 +71,21 @@ describe("rankTeamsWithTiebreak", () => {
   });
 
   /* ===================================================================== *
-   *  OQ-A - see docs/OPEN-QUESTIONS.md and the comment on
-   *  rankTeamsWithTiebreak in src/engine/standings.js.
+   *  OQ-A - ANSWERED 2026-09-06 by Scott: the sixth tiebreaker applies.
    *
-   *  The comparator loops `i < 5` over a SIX-element tb array, so the sixth
-   *  documented tiebreaker never breaks a tie - while the rank-grouping check
-   *  compares all six. Two teams level on the first five but differing on the
-   *  sixth therefore sort by INPUT ORDER yet receive DIFFERENT ranks.
+   *  Until then the comparator looped `i < 5` over a SIX-element tb array, so
+   *  best single-player score never broke a tie - while the rank-grouping check
+   *  compared all six. Two teams level on the first five but differing on the
+   *  sixth sorted by INPUT ORDER (team creation order) yet received DIFFERENT
+   *  ranks, and so different standings points.
    *
-   *  This is preserved on purpose, pending a decision from the original
-   *  designer. The test below asserts the CURRENT behaviour so that anyone who
-   *  "fixes" the engine sees this fail and finds the explanation. The skipped
-   *  test underneath encodes the documented behaviour: when the designer says
-   *  go, change `i < 5` to `i < 6`, unskip that one, and delete this one.
+   *  The two now agree. See src/engine/standings.js and docs/OPEN-QUESTIONS.md.
    * ===================================================================== */
   describe("OQ-A: sixth tiebreaker (best single-player score)", () => {
     const worseBest = [5, 5, 5, 5, 5, 10];
     const betterBest = [5, 5, 5, 5, 5, 99];
 
-    it("documents current behaviour: the 6th tiebreaker is NOT applied", () => {
-      // 'worse' is listed first and wins purely because of input order.
-      const out = rankTeamsWithTiebreak([
-        row("worse", 42, worseBest),
-        row("better", 42, betterBest),
-      ]);
-      expect(order(out)).toEqual(["worse", "better"]);
-      // ...and they do NOT share a rank, so this costs real standings points.
-      expect(ranks(out)).toEqual([1, 2]);
-    });
-
-    it("documents current behaviour: reversing the input reverses the result", () => {
-      const out = rankTeamsWithTiebreak([
-        row("better", 42, betterBest),
-        row("worse", 42, worseBest),
-      ]);
-      expect(order(out)).toEqual(["better", "worse"]);
-      expect(ranks(out)).toEqual([1, 2]);
-    });
-
-    it.skip("DESIRED (pending OQ-A): the better best-player score wins the tie", () => {
+    it("the better best-player score wins the tie, whatever the input order", () => {
       const fromWorseFirst = rankTeamsWithTiebreak([
         row("worse", 42, worseBest),
         row("better", 42, betterBest),
@@ -120,6 +96,24 @@ describe("rankTeamsWithTiebreak", () => {
       ]);
       expect(order(fromWorseFirst)).toEqual(["better", "worse"]);
       expect(order(fromBetterFirst)).toEqual(["better", "worse"]);
+    });
+
+    it("team creation order no longer decides it", () => {
+      // The old behaviour ranked whichever team was listed first as #1.
+      const out = rankTeamsWithTiebreak([
+        row("worse", 42, worseBest),
+        row("better", 42, betterBest),
+      ]);
+      expect(ranks(out)).toEqual([1, 2]);
+      expect(order(out)).toEqual(["better", "worse"]);
+    });
+
+    it("teams level on all six still share a rank", () => {
+      const out = rankTeamsWithTiebreak([
+        row("a", 42, worseBest),
+        row("b", 42, worseBest),
+      ]);
+      expect(ranks(out)).toEqual([1, 1]);
     });
   });
 });

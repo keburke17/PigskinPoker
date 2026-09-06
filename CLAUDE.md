@@ -125,12 +125,12 @@ in a league that is actually being played is worse than a bug everyone has adapt
 
 ### Specific things that look wrong and must stay
 
-- **`rankTeamsWithTiebreak` compares only 5 of its 6 tiebreakers** (`src/engine/standings.js`,
-  the `i < 5` loop). The sixth documented tiebreaker never applies, and teams level on the
-  first five get ranked by input order instead. **This is OQ-A, deliberately preserved,
-  pending the designer's decision.** `tests/standings.test.js` asserts the current
-  behaviour on purpose and carries a skipped test for the fix. Changing the loop bound
-  changes the league's standings.
+- **`rankTeamsWithTiebreak` now compares all 6 tiebreakers** (`src/engine/standings.js`).
+  It used to compare five. **OQ-A was answered by Scott on 2026-09-06: the sixth applies**
+  - best single-player score in a week, exactly as the rules screen has always said. This
+  is a real rules change and `tests/parity.test.js` records it as a deliberate difference
+  from the artifact. It is listed here because the old behaviour is still in
+  `LegacyProject/`: do not "restore" it, and do not read the parity difference as a bug.
 - **`CP()` / `String.fromCodePoint` for every glyph** (`src/engine/constants.js`). The
   source is deliberately 100% ASCII. The original author hit real bugs with escapes in
   JSX text rendering literally. Do not "simplify" this to raw unicode or `\u` escapes.

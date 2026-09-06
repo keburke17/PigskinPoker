@@ -473,9 +473,11 @@ the one that should not slip**, because it is the only one that changes what a s
 | # | Question | Whose |
 |---|---|---|
 | 1 | ~~**How much of this has to be in before the reset?**~~ **Settled 2026-08-29: stages 0-4 are all in and live, with a week to spare.** The reset can happen whenever Scott wants it. | Closed |
-| 2 | Backfield committees: does the commissioner want a standing override list for teams whose depth chart is wrong, or is per-refresh correction enough? | Scott |
-| 3 | A head coach fired mid-season: the refresh picks up the interim, nothing until the next deal. Consistent with the rostered-player answer - confirm it reads right. | Scott |
+| 2 | ~~Backfield committees: standing override list?~~ **Answered 2026-09-06: no override list.** "A lot nfl teams do have a committee backfield, so that isn't much of a worry there, plus the play schemes should allow teams to try to upgrade their position if need be." The schemes are the fix, and the commissioner can still add or remove pool players by hand. | Closed |
+| 3 | ~~A head coach fired mid-season~~ **Answered 2026-09-06: reads right.** "if a coach is dealt to a team when the weekly deal takes place, and then the coach is fired that week, it will remain until the following week when the new coach or interrim takes over." Note the standing caveat: since 2026-09-04 a refresh does not touch Coach rows at all, so the interim only appears when the commissioner enters him - unless a live coach source is found (see the row below). | Closed |
 | 4 | The two scoring paths in 3.2 - now purely about keeping `parity.test.js` intact, since no live data will carry the old shape. Confirm that is worth six frozen lines. | Kyle |
+| 5 | **A live source for head coaches.** Scott, 2026-09-06: "unless there is a way to get coach data live, the commish will have to do it himself." That is the standing arrangement and it works - but it is a standing arrangement, not a preference. nflverse's `games.csv` was rejected on 2026-09-04 for spelling ("Klint Kubliak"), having agreed on 28 of 32. Worth re-checking rather than treating as settled: if a maintained source appears, coaches go back on the refresh and question 3 above resolves itself. | Open - nobody yet |
+| 6 | **Should the pool refresh itself at the weekly rollover?** New request, 2026-09-06 - see section 9. | Scott + Kyle |
 
 **Closed since the first draft:**
 
@@ -491,3 +493,56 @@ the one that should not slip**, because it is the only one that changes what a s
 **Also still on the standing agenda, unrelated to this phase:** OQ-A (the sixth tiebreaker),
 OQ-B (blocks validated server-side), OQ-E (stat writes while the roster is unlocked), and
 the season archive.
+
+---
+
+## 9. Should the pool refresh itself at the weekly rollover? (new, 2026-09-06)
+
+**Scott, 2026-09-06:** "I feel like the roster should refresh automatically with new live
+rosters before each deal when a new week is about to begin. [...] when a week ends after the
+monday night game and the stats and standings are updated, the rosters clear as it prepares
+for a new week. the player pool should refresh as well to follow the newest and latest
+rosters to prepare for the new deal. once dealt, you are dealt whatever you are dealt, but
+the comissioner once again has the ability to view the player pool and make any adjustments
+to out IR bye add or remove if they need to make those changes themselves."
+
+**This is a reasonable request and it fits the existing safety argument rather than fighting
+it.** Refresh is already gated to `pre-deal` (`PHASE_RULES.refreshPlayerPool`), and finalize
+already lands the league in exactly that phase with the rosters cleared. So the moment he is
+describing is a moment the code already recognises. Nothing about *what* a refresh may do
+changes: it still writes over its own work and never over a person's, still never touches a
+Coach row, still marks rather than deletes.
+
+**What changes is who presses it, and that is the part worth being deliberate about.**
+
+| | Commissioner-pressed (today) | Automatic at rollover (requested) |
+|---|---|---|
+| When it runs | When he decides, having seen the week end | Immediately after finalize, unattended |
+| If the feed is wrong that day | He sees the result before dealing | The bad pool is in place before anyone looks |
+| If the feed is down | He tries again, or deals on the current pool | Needs a defined answer: skip silently? block the deal? |
+| Who is accountable | A person pressed a button | Nobody - and the league still changed |
+
+The last row is the whole question. Section 6's rule - **"commissioner-pressed, never
+automatic"** - was not written to keep him out of it; it was written because an unattended
+refresh is the first thing in this project that can change a live league with nobody
+watching. Stage 7 ("scheduled polling") carries the same warning, and is Kyle's for that
+reason: *first piece that can fail silently at 3am.*
+
+**Three ways to build it, cheapest first:**
+
+1. **Prompt, do not act.** Finalize leaves a banner on the pre-deal screen: "The pool has
+   not been refreshed since Week 3. Refresh now?" One click. The rollover becomes the
+   reminder it currently lacks, the feed can be down without consequence, and a person is
+   still the one who pressed it. **Recommended, and it is a small change.**
+2. **Refresh on finalize, report loudly.** Finalize runs the refresh itself and writes what
+   it did into the activity log - "pool refreshed: 4 players retired, 6 added, 2 marked IR" -
+   with the commissioner able to review and correct before dealing, exactly as he describes.
+   Needs a defined failure path: a refresh that throws must not fail the finalize, because
+   finalize is the thing that must always work.
+3. **Scheduled polling** (stage 7). Genuinely unattended, needs new infrastructure, and is
+   the one that can go wrong at 3am. Not what he is asking for.
+
+**Held for a conversation, not built.** Option 1 gets nearly all of what he wants for very
+little risk, and option 2 is the honest reading of what he actually asked for. The choice
+between them is his; the failure path in option 2 is Kyle's.
+

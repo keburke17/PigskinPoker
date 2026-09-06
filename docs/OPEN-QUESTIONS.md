@@ -29,6 +29,17 @@ Each has a recommendation so you have something to say yes or no to.
 > **the pool was typed out of necessity; rebuild it from live NFL starters**. Both are
 > recorded in full below and planned in `docs/PHASE-4-PLAN.md`. **OQ-4c is a real rules
 > change**, the first in the port; nothing already on the board moves.
+>
+> **Answered 2026-09-06 by Scott - the standing agenda, cleared.** OQ-A **yes, the sixth
+> tiebreaker applies**, built the same day: the first change to how standings are decided
+> since the port. OQ-B **confirmed** - Block protects one of your own players from being
+> stolen, nobody else's. OQ-C **confirmed** - weekly ties use the same tiebreakers as the
+> standings, which is what the code already does. OQ-D **confirmed** - the Coach is part of
+> your roster, so he can be your best player. OQ-E **confirmed** - keep the guard. The
+> **season archive is tabled**, not declined: he likes it, and wants the smaller cleanups
+> done first. Two Phase 4 questions closed, and **one new request opened - the pool should
+> refresh itself at the weekly rollover** rather than waiting to be pressed. See
+> `docs/PHASE-4-PLAN.md` section 8.
 
 ---
 
@@ -466,7 +477,7 @@ league, and nothing in it blocks the multi-league path later.
 
 I have not changed any of these.
 
-### OQ-A. The sixth tiebreaker never applies, and ties are broken by team creation order instead. **[DEFERRED - for the original designer]**
+### OQ-A. The sixth tiebreaker never applied, and ties were broken by team creation order instead. **[ANSWERED 2026-09-06: it applies]**
 
 The most concrete thing I found. `RulesTab` (line 1784) documents six tiebreakers:
 
@@ -493,25 +504,37 @@ Rare - it needs an exact tie across score plus five cumulative stats - but it is
 standings-points difference when it happens, and it is the kind of thing that surfaces as an
 argument in Week 15.
 
-**Decision: held for a future change made with the original designer.** It is his rule set
-and it is a live league, so it is his call, not ours - and it is a one-character fix plus a
-test whenever he wants it.
+**ANSWERED 2026-09-06. Scott: "yes that should be a 6th tiebreaker if at all necessary.
+it does already keep track of that if i am not mistaken? so it should matter as a 6th
+tiebreaker if needed."** It does keep track of it - every team carries a season-long
+`cumulative.bestPlayer` record: name, position, points, and the week it happened. It was
+recorded and displayed all along, and simply never consulted.
 
-Deferring a known defect needs a plan or the next person silently "fixes" it, so:
+**Built the same day.** `rankTeamsWithTiebreak` now loops `i < 6`, so the comparator and the
+rank-grouping check agree. Three consequences worth writing down:
 
-- The engine keeps the current behaviour, moved verbatim.
-- A Phase 1 test **asserts the current behaviour**, named
-  `documents current behaviour: 6th tiebreaker is not applied (see OQ-A)`. A test that just
-  passed quietly would read as endorsement; this one reads as a flag.
-- A second, `skip`ped test encodes the documented six-tiebreaker behaviour. When he decides:
-  change one character, unskip one test, delete the other.
-- `CLAUDE.md` lists it under known deviations, so his Claude does not correct it by reflex.
+- **Weekly ties are fixed by the same change.** There is one ranking function and one
+  tiebreaker list; the weekly result and the season standings both run through it. See OQ-C.
+- **Two identical teams now genuinely share a rank.** Under the old bound they might not: if
+  a third team sorted between them on input order, the grouping check broke the run and
+  handed two teams level on all six different ranks, and different standings points. That is
+  the case `tests/parity.test.js` now asserts as a deliberate difference from the artifact.
+- **Both full simulated seasons still match the artifact object-for-object.** The tie never
+  fires in either, which is a fair measure of how rare it is - and of why nobody in the
+  league would have noticed until the week it decided something.
 
-Worth raising with him directly rather than letting him find it here: it is rare, but when
-it fires it silently moves standings points, and the beneficiary is whichever team was
-created first.
+The original decision is kept below, because it explains the shape of the tests.
 
-### OQ-B. Blocks are not validated engine-side. **[PROVISIONAL: yes - confirm with the original designer]**
+Deferring a known defect needed a plan, or the next person silently "fixes" it. So through
+Phases 1-4 the engine kept the artifact behaviour verbatim, one test asserted that behaviour
+so a reflex "fix" would fail loudly and land the reader here, and a second skipped test
+encoded the documented six-tiebreaker rule ready to be unskipped.
+
+That is exactly how the change was made on 2026-09-06: one character, unskip one, delete the
+other. **Both of those tests are now gone**, replaced by tests of the real rule. The plan
+worked; it does not need preserving.
+
+### OQ-B. Blocks are not validated engine-side. **[ANSWERED 2026-09-06: confirmed]**
 
 `SchemeForm` (line 1295) only offers your own **starters** when the scheme type is `block`.
 `processSchemes` (line 565) does not re-check: it adds whatever `playerId` it is given to
@@ -526,10 +549,22 @@ validate exactly that, which preserves today's real behaviour (the form already 
 nothing else). Flagged as a **final confirmation item for the original designer**, since it
 is his rule: the code has never enforced it, so the only evidence of intent is the form.
 
-Nothing depends on this before Phase 3, and if he says otherwise it is a one-line change to
-the validator - not a schema change.
+**ANSWERED 2026-09-06. Scott: "when you choose to protect/block when selecting a play
+scheme, that means you can protect one player from your roster so they are not stolen from
+you. It does not protect someone else's player, that would not make sense. It only protects
+one player from your roster, whatever one you select, can not be stolen by another
+managers team."**
 
-### OQ-C. Weekly ties are broken by season-to-date standing.
+**No code change.** The server already enforces exactly that, and the wording gap between
+his "one player from your roster" and the validator's "one of your own starters" turns out
+to be no gap at all: `processSchemes` only ever considers `roster.starters` when picking a
+steal target, so a bench player cannot be stolen in the first place. Blocking one would
+protect a man who was never at risk. Starters are the only players the rule can mean.
+
+If bench players are ever made stealable, this answer has to be re-read before that ships -
+at that point "one player from your roster" and "one of your own starters" stop agreeing.
+
+### OQ-C. Weekly ties are broken by season-to-date standing. **[ANSWERED 2026-09-06: confirmed]**
 
 In `finalizeCurrentPeriod` (line 740) the `tb` array is the team's **cumulative** totals
 *before* this week is added. So when two teams tie on raw score in a given week, the tie goes
@@ -539,13 +574,30 @@ This one is consistent with how `RulesTab` describes it, so I think it is delibe
 it because it is a design choice worth being sure about rather than an accident.
 **Recommendation: leave as-is.** Confirm.
 
-### OQ-D. The Coach can be your "best player."
+**ANSWERED 2026-09-06. Scott: "weekly ties should follow the same tiebreaker rules as the
+standings."** That is what the code does, so nothing changed here directly - there is one
+ranking function and one tiebreaker list, and both the weekly result and the season
+standings go through it. Worth being explicit about what that means in play: the tiebreakers
+are *season-to-date* totals as they stood before this week was added, so a weekly tie goes
+to whoever is already ahead in the season.
+
+**OQ-A changed this indirectly and he should know it did**: because they share the function,
+best single-player score is now the sixth tiebreaker for a *weekly* tie too, not only for
+the standings. That follows from his answer rather than cutting against it.
+
+### OQ-D. The Coach can be your "best player." **[ANSWERED 2026-09-06: leave as-is]**
 
 `bestThisPeriod` (line 735) considers all six starters including the Coach, so a Coach win
 (2 pts by default) can be recorded as your best single-player performance - and given
 default scoring, in a low-scoring week it sometimes will be. Elsewhere the rules treat the
 Coach as a special case ("Coaches can never be stolen, redrawn, or blocked").
 **Recommendation: leave as-is unless you meant best *player*, excluding the Coach.**
+
+**ANSWERED 2026-09-06. Scott: "A coach can technically be your best player I guess.
+technically the coach is a part of your roster, so we can just leave it as 'best player' if
+somehow that ever happens that your coach got you the most points by a position on your
+roster."** Left as-is. Note this now has slightly more weight than when it was written:
+since OQ-A, best single-player score actually breaks ties, so a Coach can decide one.
 
 ### OQ-E. Stats stay with the slot, not the player.
 
@@ -559,7 +611,7 @@ My schema keys `stat_lines` the same way for behavioural fidelity, but also reco
 and additionally have the server reject stat writes while the roster is unlocked**, which
 closes the gap without changing anything you would notice.
 
-**[IMPLEMENTED PROVISIONALLY IN PHASE 3a - still yours to confirm.]** `setStatLine` now
+**[IMPLEMENTED IN PHASE 3a; CONFIRMED 2026-09-06 - Scott asked for it in plainer terms, and once it was described as "stats are filed against the slot, not the man, so the server refuses stat entry whenever rosters are not frozen", kept the guard.]** `setStatLine` now
 returns 409 if the roster is unlocked. The slot-keyed rule itself is untouched; only the
 window in which it can misattribute points is closed. The rosters are already locked
 throughout the stats phase in normal play, so this rejects only requests the weekly flow
@@ -583,27 +635,29 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 
 | Question | Needed before | Why it can wait |
 |---|---|---|
-| **OQ-B** blocks validated server-side | **Done (Phase 2c)** | Enforced in `submitScheme`. Provisionally yes; still awaiting the designer's final confirmation. |
-| **OQ-E** reject stat writes while unlocked | **Done (Phase 3a)** | Enforced in `setStatLine`, and in `pullStats` since 2026-08-29 for the same reason - a pull is stat entry done quickly, and a lineup change after one would move the numbers to a different player. Same conversation as OQ-B; it is his rule to confirm. |
+| **OQ-B** blocks validated server-side | **Done and confirmed 2026-09-06** | Enforced in `submitScheme`. Block protects one of your own players from being stolen - and since only starters are stealable, "your own starters" is the same rule. |
+| **OQ-E** reject stat writes while unlocked | **Done (Phase 3a)** | Enforced in `setStatLine`, and in `pullStats` since 2026-08-29 for the same reason - a pull is stat entry done quickly, and a lineup change after one would move the numbers to a different player. Confirmed 2026-09-06. |
 | **OQ-6** notifications | Phase 3c | Now nearly free: magic-link sign-in needs the same SMTP provider notifications would. |
 | **league visibility** (new, from OQ-10) | Phase 3d | Members-only or link-public, per league. Recommended: a setting, defaulting to members-only, with the existing league set public so nothing changes for it. |
 | **OQ-4c** what counts as "yards"? | **Done - answered 2026-08-28** | Split into passing / rushing / receiving, each customizable. A rules change; built in `docs/PHASE-4-PLAN.md` stage 1. |
 | **OQ-4b** is `TEAM_ROWS` curated or typed? | **Done - answered 2026-08-28** | Typed out of necessity. The pool is rebuilt from live starters; `teamRows.js` becomes a test fixture. |
 | **OQ-4d** who owns the coaches, and are injuries tracked? | **Done - answered 2026-09-04** | Coaches are the commissioner's - the refresh never touches one. Injuries come from roster status; a hurt starter is marked IR and the next healthy man takes his place. |
 | **OQ-3** history depth | Phase 2 | Schema already preserves it; this is about what we surface. |
-| **OQ-C / OQ-D / OQ-E** rules quirks | Anytime | All preserved as-is; each is a small, reversible behaviour question. |
+| **OQ-C / OQ-D / OQ-E** rules quirks | **All confirmed 2026-09-06** | Weekly ties use the standings tiebreakers (unchanged); the Coach can be your best player (unchanged); the roster-lock guard on stat writes stays. |
 | **OQ-F** per-slot vs. per-player locks | Anytime | Behaviour-preserving; noted so it is not discovered later. |
 
-**OQ-B is provisionally answered** (yes, Block protects your own starters) and is on the
-list to confirm with the original designer, alongside **OQ-A**. Those two are the standing
-agenda for that conversation.
+**The standing agenda is cleared.** OQ-A, OQ-B, OQ-C, OQ-D and OQ-E were all answered by
+Scott on 2026-09-06 and are recorded in full above. OQ-A was the only one that changed the
+game; the rest confirmed what the code already did.
 
 **OQ-10 is answered: many.** What that changed is recorded in `docs/PHASE-3-PLAN.md` -
 accounts, an `invites` table replacing `team_secrets`, league-scoped read policies, and a
 landing page with three doors (sign in / redeem a code / create a league).
 
-**The standing agenda for the designer is now OQ-A, OQ-B and OQ-E**, plus the season
-archive, which is held for him rather than built.
+**What is left for the designer is the season archive**, which is held rather than built.
+**Tabled 2026-09-06, not declined** - "i do kind of like that? but maybe we table that one
+for now until we hash out all the other small issues we need to clean up first." Raise it
+again when the Phase 4 stage list is empty.
 
 **OQ-4c and OQ-4b were answered on 2026-08-28 and no longer block anything.** Yards and
 touchdowns split into passing / rushing / receiving at customizable rates, and the player
