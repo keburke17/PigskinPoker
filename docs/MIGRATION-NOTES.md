@@ -1522,3 +1522,66 @@ checks passed, including `RLS enabled on site_admins` and `no browser-role grant
 site_admins` - the hosted `GRANT ALL` default confirmed undone on the new table.
 
 Recorded as **OQ-4e**.
+
+---
+
+## The roster row became a playing card (2026-09-07)
+
+Issue #33 and a marked-up screenshot from Scott the same day. Presentation only: nothing
+in `src/engine/` decides anything differently, and **`parity.test.js` is untouched and was
+never expected to move.**
+
+### What the row was
+
+One line of facts strung together with pipe characters - `QB - Detroit Lions | 400 pass
+yds, 9 rush yds, 2 TD` - to the right of a small grey `QB` label and a coloured suit
+badge. Three things said the position (label, badge, meta line), and the stat line, which
+is the part that changes every few hours during a week, trailed off the end of the
+sentence at 11px in the faintest colour on the page.
+
+### What it is now
+
+- **The label and the badge are one miniature playing card** (`PositionCard` in
+  `atoms.jsx`): the slot as the rank, the player's own position as the pip and the ink, on
+  an ivory face. The suits keep the colours the badges had, so nothing about the theme
+  moved - the row just stopped saying the same word twice next to itself.
+- **The position appears once.** It leads the meta line only where the slot is not already
+  saying it: FLEX and the bench, where "RB" beside "BN" is information rather than an echo.
+- **The player's own kickoff, day and time**, read from `periods.kickoffs` through the new
+  `playerKickoff` and rendered by `formatKickoffDay`. Two consequences worth stating: it is
+  the same map the lineup lock reads, so a card cannot name a time the lock disagrees with;
+  and a bye week, a team the schedule did not name, or a week whose times were never read
+  produces no text at all rather than a guess. The date is on it, not just the weekday,
+  because a roster can be read weeks later and a bare "Sun" names no particular Sunday.
+- **Status and LOCKED are pills on the name line**, and the stat line has a line of its own.
+- **Points stay hard right**, in a column that lines up down the card.
+
+### One thing was deleted
+
+`SlotLockHint` - "Locks Sun 1:00 PM (Detroit Lions)" under every row of a `gametime`
+league. The row now carries that time itself; under `gametime` the kickoff IS when the slot
+closes, and `LineupLockNote` above the lineup already says so once. It was three sayings of
+one fact on a 375px screen.
+
+### Five callers, one component
+
+`MyTeamTab`, `lineup.jsx`, `rosterTabs.jsx`, `scoreboard.jsx` and the commissioner's
+`stats.jsx` all render `RosterSlotRow`, and the issue's caution was that a row which reads
+well on My Team still has to work above a row of number inputs. It does, and the
+commissioner's own variant (which builds its header by hand, because the inputs sit inside
+the row) shares the second line through `slotMetaLine` rather than describing the same
+player differently. No variant was needed.
+
+### What was measured
+
+Rendered at 375x812 and screenshotted, because the whole change is visual: no horizontal
+overflow, no rank text overhanging its card (`COACH` is the long one and set the type
+size), names ellipsing rather than pushing the points off the row. A starter row is 70px
+where it was about 44, and a bench row 64 - denser in facts per row, taller in pixels,
+which is the trade issue #33 asked for and **OQ-J** puts back to Scott along with whether
+the bench should have been included at all.
+
+`npm test`: **360 passed, 160 skipped, 27 files** with no local stack - Docker was not
+available in the session this was built in, so `rls`, `server` and `bootstrap` did not run.
+The change touches no storage, no schema and no authorization; the 5 new engine tests for
+`playerKickoff` and `formatKickoffDay` run anywhere and pass.

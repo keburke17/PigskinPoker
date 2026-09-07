@@ -25,8 +25,8 @@ import {
   periodTeams,
   teamPeriodScore,
 } from "../engine/index.js";
-import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge } from "./atoms.jsx";
-import { RosterSlotRow } from "./roster.jsx";
+import { ConfirmButton, EmptyState, ErrorBanner, PositionCard } from "./atoms.jsx";
+import { RosterSlotRow, slotMetaLine } from "./roster.jsx";
 
 /* The stat boxes for one non-Coach starter.
  *
@@ -105,11 +105,13 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
 
   return (
     <div className="pp-roster-slot" style={{ flexWrap: "wrap" }}>
-      <span className="pp-roster-slot-label">{slot}</span>
-      <SuitBadge position={player.position} />
-      <div style={{ flex: 1, minWidth: 120 }}>
-        <div className="pp-roster-slot-name">{player.name}</div>
-        <div className="pp-roster-slot-meta">{player.position} - {player.team}</div>
+      <PositionCard slot={slot} position={player.position} />
+      <div className="pp-roster-slot-body" style={{ minWidth: 120 }}>
+        <div className="pp-roster-slot-top">
+          <span className="pp-roster-slot-name">{player.name}</span>
+          {player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
+        </div>
+        <div className="pp-roster-slot-meta">{slotMetaLine(state, slot, player)}</div>
       </div>
       {player.position === "Coach" ? (
         <select className="pp-select" style={{ width: 120 }} value={stats.result || ""} onChange={(e) => onChange(team.id, slot, { result: e.target.value || null })}>
