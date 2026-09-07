@@ -260,3 +260,143 @@
 .pp-login-card{ max-width:400px; width:100%; }
 
 .pp-badge-role{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-dim); }
+
+/* ---------------------------------------------------------------- scoreboard --
+   The week in progress (issues #29 and #30). Everything here is one of three jobs:
+   make a score readable at arm's length, mark the row that is yours, and let a roster
+   card be one line until you ask for twelve. */
+
+.pp-num{ text-align:right; font-family: var(--font-mono); }
+.pp-num-gold{ font-weight:700; color: var(--gold-bright); }
+
+/* Your team, wherever it appears in a league-wide list. A gold left edge rather than a
+   background, so it reads as "this one is yours" without competing with the rank-1 row
+   highlight that the standings table already uses. */
+.pp-my-row td{ background: rgba(217,182,76,0.07); }
+.pp-my-row td:first-child{ box-shadow: inset 3px 0 0 var(--gold); }
+.pp-my-card{ border-color: var(--gold-dim); }
+.pp-you-tag{
+  font-size:9px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase;
+  color:#22200f; background: var(--gold); border-radius:3px;
+  padding:1px 5px; margin-left:7px; vertical-align:1px;
+}
+
+/* The headline number. Big enough to read one-thumbed on a Sunday without opening
+   anything, which is the whole point of the card it sits on. */
+.pp-score-hero{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.pp-score-big{
+  font-family: var(--font-mono); font-weight:700; font-size:40px; line-height:1;
+  color: var(--gold-bright); flex:none;
+}
+.pp-score-mid{ font-family: var(--font-mono); font-weight:700; font-size:22px; color: var(--gold-bright); }
+
+/* A collapsed roster card: the whole league on one phone screen, twelve rows a tap away.
+   A <button> rather than a div, so it is reachable by keyboard and announced as a
+   disclosure - the rest of this app's controls are real buttons too. */
+.pp-roster-head{
+  display:flex; align-items:center; gap:8px; width:100%;
+  background:transparent; border:none; padding:0; cursor:pointer; text-align:left;
+  color: var(--text); font-family: var(--font-display); font-weight:700; font-size:15px;
+  min-height:34px;
+}
+.pp-roster-head-static{ cursor:default; }
+.pp-roster-head-caret{ color: var(--gold-dim); font-size:12px; width:12px; flex:none; }
+.pp-roster-head-name{ flex:1; min-width:0; }
+.pp-roster-head-pts{ font-family: var(--font-mono); font-weight:700; color: var(--gold-bright); flex:none; }
+
+/* The total under a roster's six starters - the number the card used to make you add up
+   yourself. Sits above the bench heading, because the bench does not score. */
+.pp-roster-total{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:8px 10px; margin-top:2px;
+  border:1px solid var(--gold-dim); border-radius: var(--radius-sm);
+  background: rgba(217,182,76,0.08);
+  font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px;
+  color: var(--text-dim);
+}
+.pp-roster-total-pts{ font-family: var(--font-mono); font-size:16px; color: var(--gold-bright); letter-spacing:0; }
+
+/* THE CLIPPED TAB (issue #30). The nav is one flex row that scrolls sideways with a
+   deliberately zero-height scrollbar, so a pill that does not fit is cut mid-word with
+   nothing on screen saying it can be scrolled - "Weekly Results" rendered as "Weekly R"
+   on a phone, on the tab that issue wanted to be the primary one.
+
+   Shorter labels helped and did not fix it: measured at 375px, five manager pills need
+   410px against 347px of room, and the commissioner has six. So below 560px the nav WRAPS
+   instead of scrolling - two short rows, nothing hidden, no gesture to discover. Above
+   that it fits on one line and the fade is there for the day a seventh tab arrives. */
+.pp-nav-wrap{ position:relative; }
+.pp-nav-wrap::after{
+  content:""; position:absolute; right:0; top:0; bottom:0; width:26px;
+  pointer-events:none;
+  background: linear-gradient(90deg, rgba(13,42,32,0) 0%, var(--bg) 85%);
+}
+@media (max-width: 560px){
+  .pp-nav{ flex-wrap:wrap; overflow-x:visible; }
+  .pp-nav-wrap::after{ display:none; }
+}
+
+/* ------------------------------------------------------- first-run guidance --
+   Issues #24, #25, #26 and #27. The welcome card, the persistent "next step" line,
+   the commissioner's setup checklist, and the acknowledgement beside the scheme
+   button. No UI kit and no new dependency (CLAUDE.md, Conventions) - this is the
+   first overlay in the app, and it is a positioned div rather than anything
+   portal-based, in keeping with the rest. */
+
+.pp-overlay{
+  position:fixed; inset:0; z-index:50;
+  background: rgba(0,0,0,0.62);
+  display:flex; align-items:center; justify-content:center;
+  padding:16px; overflow-y:auto;
+}
+.pp-overlay-card{
+  position:relative; width:100%; max-width:440px;
+  background: var(--surface-2); border:1px solid var(--gold-dim);
+  border-radius: var(--radius); padding:18px 16px;
+  max-height: calc(100vh - 32px); overflow-y:auto;
+}
+/* A real close affordance, at 44px, because #26 asked for one and OQ-8 found every
+   other target in the app under the minimum. This one is not going to repeat that. */
+.pp-overlay-x{
+  position:absolute; top:4px; right:4px; width:44px; height:44px;
+  background:none; border:none; color:var(--text-dim);
+  font-size:16px; font-weight:700; cursor:pointer; line-height:1;
+}
+.pp-overlay-x:hover{ color: var(--gold-bright); }
+.pp-overlay-step{
+  border:1px solid var(--gold-dim); background: rgba(217,182,76,0.09);
+  border-radius: var(--radius-sm); padding:10px 12px; margin-bottom:12px;
+}
+.pp-overlay-step-head{ font-weight:700; color: var(--gold-bright); margin-bottom:4px; font-size:14px; }
+.pp-overlay-list{ margin-bottom:14px; }
+.pp-overlay-actions{ display:flex; flex-wrap:wrap; gap:8px; }
+.pp-overlay-actions .pp-btn{ min-height:44px; }
+
+.pp-nextstep{
+  display:flex; align-items:center; gap:8px;
+  border:1px solid var(--border-soft); border-radius: var(--radius-sm);
+  padding:8px 10px; margin-bottom:12px; font-size:13px;
+}
+.pp-nextstep-label{
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px;
+  color: var(--gold-dim);
+}
+.pp-nextstep-text{ flex:1; color: var(--text-dim); }
+.pp-nextstep-link{
+  background:none; border:none; color: var(--gold-bright);
+  font-size:12px; font-weight:700; cursor:pointer; padding:6px 4px;
+}
+
+.pp-checkstep{ display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border-soft); }
+.pp-checkstep-label{ font-weight:600; font-size:13px; }
+.pp-checkbox{
+  flex:none; width:22px; height:22px; border-radius:50%;
+  border:1px solid var(--border-soft); color: var(--text-faint);
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:800;
+}
+.pp-checkbox.done{ border-color: var(--ok); color: var(--ok); }
+
+/* Sits directly under the submit button, which is the whole of issue #27 - the durable
+   confirmation is the summary above it; this is the "that registered" flicker. */
+.pp-scheme-ack{ display:inline-block; margin-left:10px; font-size:12px; font-weight:700; color: var(--ok); }

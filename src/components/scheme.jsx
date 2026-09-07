@@ -1,10 +1,23 @@
 /* Pigskin Poker UI - extracted verbatim from
  * LegacyProject/PigskinPokerCode.jsx lines 1273-1357.
  * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ * declaration. No component body was edited - until issue #27.
+ *
+ * ISSUE #27. The confirmation existed and was several screens away from the button that
+ * produced it: SchemeSummary rendered at the top of the FIRST card, the submit button at
+ * the bottom of the SECOND, with six starters and six bench rows in between. On a phone
+ * there is no window size where both are visible, so submitting looked like nothing
+ * happening. Worse, the only in-view evidence was a label reading "Update Scheme" above a
+ * dropdown reading "No Action" - correct, and unreadable as confirmation.
+ *
+ * The fix is #27's own first option, plus its third: the summary is rendered a SECOND
+ * time inside the Play Scheme card, immediately above the button, and the button now has
+ * a busy state and a short-lived "Scheme submitted" acknowledgement. The original summary
+ * at the top of My Team stays where the artifact put it - it is not in the way, and
+ * removing it would be a layout change nobody asked for.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   POSITIONS,
   SCHEME_POSITIONS,
@@ -27,6 +40,10 @@ export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) 
   const [type, setType] = useState(existing ? existing.type : "noaction");
   const [position, setPosition] = useState(existing ? existing.position : "");
   const [playerId, setPlayerId] = useState(existing ? existing.playerId : "");
+  const [busy, setBusy] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const ackTimer = useRef(null);
+  useEffect(() => () => clearTimeout(ackTimer.current), []);
 
   useEffect(() => {
     setType(existing ? existing.type : "noaction");
@@ -43,6 +60,35 @@ export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) 
     .filter((p) => p && position && p.position === position);
 
   const canSubmit = type === "noaction" || (position && playerId);
+
+  /* #27's third direction. `onSubmitScheme` is async (src/hooks/useLeague.js), and the
+   * button did not disable, spin or acknowledge - so a slow save was indistinguishable
+   * from a dead button, which invites a second press. `justSaved` is the short-lived
+   * "taken" state; the summary below it is the durable one. */
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await onSubmit({
+        type,
+        position: type === "noaction" ? null : position,
+        playerId: type === "noaction" ? null : playerId,
+        submittedAt: nowStamp(),
+      });
+      /* MUST check the result, not merely that the promise settled. A rejected write
+       * resolves perfectly happily with { ok: false } - the server refuses a scheme in
+       * any phase but `dealt` (PHASE_RULES in server/operations.js) - and an
+       * acknowledgement on top of that would be the exact lie issue #27 is about, only
+       * worse: silence at least left you suspicious. A failure surfaces through the
+       * error banner the app already has; this just declines to claim success. */
+      if (r && r.ok === false) return;
+      setJustSaved(true);
+      clearTimeout(ackTimer.current);
+      ackTimer.current = setTimeout(() => setJustSaved(false), 4000);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div>
@@ -77,13 +123,18 @@ export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) 
           )}
         </>
       )}
+      {/* THE POINT OF #27. The confirmation now sits against the control that produces
+        * it, so the answer to "did that register?" is one line above your thumb rather
+        * than five screens up. */}
+      {existing ? <SchemeSummary state={state} team={team} /> : null}
       <button
         className="pp-btn pp-btn-gold"
-        disabled={disabled || !canSubmit}
-        onClick={() => onSubmit({ type, position: type === "noaction" ? null : position, playerId: type === "noaction" ? null : playerId, submittedAt: nowStamp() })}
+        disabled={disabled || !canSubmit || busy}
+        onClick={submit}
       >
-        {existing ? "Update Scheme" : "Submit Scheme"}
+        {busy ? "Saving..." : existing ? "Update Scheme" : "Submit Scheme"}
       </button>
+      {justSaved && !busy ? <span className="pp-scheme-ack">Scheme submitted</span> : null}
     </div>
   );
 }

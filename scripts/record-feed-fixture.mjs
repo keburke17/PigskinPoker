@@ -98,9 +98,13 @@ write("depth-charts.csv", toCsv(Object.keys(depthRows[0]), depthRows));
 const gamesRes = await fetch(GAMES_URL);
 if (!gamesRes.ok) throw new Error("games: HTTP " + gamesRes.status);
 const gameRows = parseCsv(await gamesRes.text());
-const GAME_COLUMNS = ["season", "week", "home_team", "away_team", "home_coach", "away_coach"];
+const GAME_COLUMNS = [
+  "season", "week", "gameday", "weekday", "gametime",
+  "home_team", "away_team", "home_coach", "away_coach",
+];
 /* games.csv carries every season back to 1999 and forty columns. The fixture keeps the
- * one season and the six columns coachesFromGames actually reads. */
+ * one season and the nine columns that are actually read: six for coachesFromGames, and
+ * gameday/weekday/gametime for the lineup lock (kickoffsFromGames). */
 const wantedSeason = gameRows.some((r) => r.season === String(season))
   ? String(season)
   : gameRows.reduce((a, r) => (Number(r.season) > Number(a) ? r.season : a), "0");

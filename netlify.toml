@@ -23,6 +23,30 @@
 [functions]
   node_bundler = "esbuild"
 
+# Stage 7: automatic stats pulls, for leagues that opted in (leagues.auto_pull_stats).
+#
+# EVERY THREE HOURS, and the reasoning is worth writing down because the obvious
+# schedules are both wrong.
+#
+# nflverse publishes player stats after each game WINDOW rather than continuously -
+# nightly, plus points through a game day (post-TNF, post-early, post-late, post-SNF,
+# post-MNF). Chasing those exact times would mean six crons, and Netlify allows one
+# schedule per function; it would also hardcode a publisher's timetable that is not a
+# contract and has already moved once. Polling hourly instead would re-download an
+# 8.6 MB file 168 times a week from a free, community-run source to save at most an
+# hour of staleness on numbers nobody reads until the morning.
+#
+# Every three hours sits between the two: each publish point is picked up within one
+# cycle, the schedule survives nflverse changing theirs, and it is one line.
+#
+# THE COST IS LOWER THAN 8x/DAY SUGGESTS. The eligibility guards run BEFORE the feed is
+# fetched, and most of the week every league fails them - a league in 'pre-deal' on a
+# Tuesday makes no outbound request at all. The file is only pulled for a league whose
+# week is dealt, locked and mapped, which is the window the numbers are actually
+# arriving in. See server/autoPull.js.
+[functions."pull-stats-scheduled"]
+  schedule = "0 */3 * * *"
+
 # The old address, sent to the new one.
 #
 # This is FIRST on purpose. Rules are evaluated top to bottom, and the SPA fallback

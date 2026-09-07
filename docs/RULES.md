@@ -22,7 +22,10 @@ Between the deal and kickoff each manager plays **one scheme** - a single move t
 the hand he was dealt, or to protect it. Then the real NFL weekend happens, the stats come
 in, the week is finalized into standings, and everyone is dealt a fresh 12.
 
-The commissioner drives the week. Nothing advances on a timer.
+The commissioner drives the week: he deals it, resolves the schemes and finalizes it, and
+**no week ever advances itself**. Two things do run on the clock inside a week - lineups
+lock at real kickoff times (section 10), and a league can opt in to having its stats pulled
+on a schedule (section 2) - but neither moves the week on.
 
 ---
 
@@ -40,6 +43,12 @@ Five phases, in order, each moved along by the commissioner:
 
 Enforced by `PHASE_RULES` in `server/operations.js`. A step out of order is refused, not
 guessed at.
+
+**Where the stat lines come from.** The commissioner can type them, or press *Pull Stats* to
+fill every starter's boxes from the real NFL week. **A pull never overwrites a number he
+typed** - his line stands and the feed's opinion is recorded beside it. A league can also
+opt in to having that pull run on a schedule, which is the one thing in the game that
+happens with nobody pressing anything; it still cannot finalize the week.
 
 ---
 
@@ -259,13 +268,32 @@ Implemented in `server/pool.js` and `src/engine/pool.js`.
 After schemes are processed the commissioner can **lock rosters** for the weekend, which
 closes scheme submission.
 
-Even while locked:
+**When lineups stop being changeable is a league option** `[configurable]`, set once by the
+commissioner and then fired by the real NFL kickoff times rather than by anyone pressing a
+button (OQ-11):
 
-- The commissioner can **lock individual players** as their real games kick off.
-- Managers can still **freely move any non-locked player** between the starting lineup and
-  the bench, right up until that player's game begins.
+| Setting | The rule |
+|---|---|
+| **Each player at his own kickoff** (default) | A player freezes when *his* game starts. You can keep changing your lineup all day using players who have not kicked off yet - a 1pm starter is frozen at 1pm, a Sunday-night receiver can still come in at 7. |
+| **Every lineup at the week's first kickoff** | The whole lineup freezes at the earliest game of the week. What you have in then is what plays, and injuries announced afterwards are your bad luck. |
+
+The default is what the rules have always described and what every existing league is
+already playing, so choosing it changes nothing - it only means the clock enforces it
+instead of the commissioner.
+
+Either way:
+
+- **The commissioner can lock any individual player by hand at any time** - a late scratch,
+  say - and that lock always holds, outranking the schedule.
+- Managers can **freely move any non-locked player** between the starting lineup and the
+  bench.
 - **A lineup swap always routes a starter through the bench.** You can never directly swap
   two starters.
+- A team whose kickoff time is not known - a bye, or a week whose schedule was never read -
+  **never locks on the clock**, and only the commissioner's own locks apply.
+
+Kickoff times are read when the week is dealt, from the same NFL schedule the Coach results
+come from, and can be re-read on demand because flex scheduling moves Sunday games.
 
 Stats are filed against the **slot**, not the player, so the server refuses stat entry while
 rosters are unlocked - which stops a late lineup change from silently moving one player's
@@ -277,7 +305,8 @@ numbers onto another (OQ-E). Nothing in normal play can trigger it.
 
 **The commissioner** advances every phase, deals the week, refreshes and edits the player
 pool, enters or pulls the stats, locks rosters, sets the scoring rates and standings points,
-and configures the playoff bracket. Nothing happens on a schedule; he presses everything.
+chooses when lineups lock, and configures the playoff bracket. **Every phase change is his**
+- nothing moves the week along on its own.
 
 **A manager** submits one scheme a week, and manages his starting lineup.
 
@@ -288,9 +317,12 @@ and configures the playoff bracket. Nothing happens on a schedule; he presses ev
 - **Stats disagreements.** The stats pull never overwrites a line the commissioner typed,
   but there is no view showing where his number and the feed's differ - stage 6 in
   `docs/PHASE-4-PLAN.md`.
-- **Unattended updates.** The pool refreshes when the commissioner deals, but nothing runs
-  on a schedule - if a starter changes on Wednesday, the pool learns about it at the next
-  deal. Stage 7 in `docs/PHASE-4-PLAN.md`.
+- **Unattended pool updates.** Stats can be pulled on a schedule, but the *pool* refreshes
+  only when the commissioner deals - so if a starter changes on Wednesday, the pool learns
+  about it at the next deal, which is also the only moment it could safely act on it.
+- **Whether the clock may open the stats window.** Under the weekly lock, lineups freeze on
+  the clock but the stats phase still waits on the commissioner pressing a button, so a
+  scheduled pull can sit idle. Recorded as OQ-12; it is a rules decision, not a bug.
 - **Season archive.** Past seasons are preserved in the schema but there is no way to browse
   them. Tabled 2026-09-06.
 

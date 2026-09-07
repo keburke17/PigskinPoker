@@ -37,7 +37,18 @@ if (!fs.existsSync(bin)) {
   process.exit(1);
 }
 
-const child = spawn(process.execPath, [bin, "run", ...process.argv.slice(2)], { stdio: "inherit" });
+/* THE SUITE READS THE RECORDED FEED, NEVER THE NETWORK.
+ *
+ * Some operations reach the feed without a test injecting one - dealing a week reads
+ * that week's kickoff times, for instance. Left to the default that would download
+ * nflverse's games file inside a unit test, which is slow, flaky, and asserts nothing.
+ * Asking for the fixture is enough: feed/index.js still refuses to serve it against
+ * anything but a local database, so this cannot leak into a real environment, and a run
+ * with no local stack skips those tests anyway. An explicit setting is honoured. */
+const env = { ...process.env };
+if (!env.PIGSKIN_FEED) env.PIGSKIN_FEED = "fixture";
+
+const child = spawn(process.execPath, [bin, "run", ...process.argv.slice(2)], { stdio: "inherit", env });
 
 child.on("exit", async (code, signal) => {
   /* `optional` - a suite run with no local stack has nothing to restore, and should say

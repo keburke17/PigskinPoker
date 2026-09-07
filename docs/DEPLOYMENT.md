@@ -223,6 +223,13 @@ npm run db:push
 new one. `db:push` runs `verify:grants` for you, because a newly created table is born
 with permissive grants on hosted Supabase and that is not a thing to leave to memory.
 
+**`db:push` does not touch your local database.** The reset above is not a formality: it
+is the only thing that puts the migration into the stack your tests run against. The same
+applies to a migration you did not write - after pulling a branch that adds one, `npm run
+dev` applies whatever your local database is missing, or `npm run db:reset` rebuilds it.
+Skip that and every query touching the new columns fails with "column does not exist",
+which arrives as a page of failing assertions rather than one obvious error.
+
 **If your migration adds a table that must be unreachable from a browser**, add its name
 to `SECRETS` in `scripts/verify-grants.mjs` in the same change. The verifier only checks
 the tables it is told about, so a new secret table it does not know about passes

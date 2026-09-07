@@ -210,6 +210,26 @@ protection is not there.
 These are yours, not ours. They are written up in full in `docs/OPEN-QUESTIONS.md`; here
 is what they are and why they matter.
 
+### OQ-11 - when lineups lock *(built 2026-09-05; the choice is yours)*
+
+Your league now has a switch on the **Commissioner -> Weeks** screen, and it is worth two
+minutes of your time because the two settings play like different games:
+
+- **Each player at his own kickoff** *(what your league is set to, and what it has always
+  done)*. You can keep changing your lineup all Sunday, as long as the player coming in
+  has not kicked off yet. Watching the injury news at 11:30 is worth something.
+- **Everyone at the week's first kickoff**. Thursday night, usually. Whatever is in your
+  lineup then is what plays, inactives and all - the way most fantasy leagues run.
+
+Nothing changed for you unless you change it: the first one is the default and it is the
+rule your Rules page has always described. What is new is that **the computer enforces
+it now** - it reads the real NFL kickoff times, so you no longer have to sit there
+pressing Lock on twelve players through the afternoon. You still can, for a late scratch,
+and your own lock always wins.
+
+**If you switch it, tell the league before the week starts.** Someone who thinks he has
+until Sunday, in a league that locked on Thursday, finds out by losing a week.
+
 ### OQ-A - a real bug in the tiebreakers *(most important)*
 
 The Rules page lists six tiebreakers. The code only ever applies **five**. The sixth -
@@ -257,8 +277,8 @@ disagree rather than quietly changing it.
 Scoring Settings. This was a real rules change and it is the reason a quarterback no
 longer decides the week on his own.
 
-**The weekly stats now fill themselves in.** On the Live Stats screen there is a **Pull
-Stats** button beside Lock Rosters. Press it after the games and every starter's boxes
+**The weekly stats now fill themselves in.** Under **Commissioner -> Enter Stats**
+there is a **Pull Stats** button beside Lock Rosters. Press it after the games and every starter's boxes
 fill in from that week's real NFL numbers - including each coach's Win or Loss, read off
 his team's game.
 
@@ -369,8 +389,8 @@ limits its own sign-in.
 
 ## About the test suite
 
-There are 317 tests. Three of the nineteen files need the local database and **skip
-themselves silently when it is not running** - 114 of them, getting on for half. They are
+There are 462 tests. Three of the twenty-six files need the local database and **skip
+themselves silently when it is not running** - 148 of them, a third of the suite. They are
 not incidental:
 
 - every Row Level Security assertion (what a visitor's browser can read, and that it can
@@ -401,7 +421,7 @@ permissions at all. One mode, and it is the real one.
 | **Node.js** | Running the app at all | Yes |
 | **Git** | Getting the code, and keeping it up to date | Yes |
 | **Claude Code** | Working on it with Claude | Yes, in practice |
-| **Docker Desktop** | The database, and the 108 tests that need one | Yes - the app does not start without it |
+| **Docker Desktop** | The database, and the 148 tests that need one | Yes - the app does not start without it |
 | **GitHub CLI** (`gh`) | Letting Claude save and publish for you | Recommended |
 
 ### About Git and GitHub

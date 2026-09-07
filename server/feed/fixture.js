@@ -22,6 +22,7 @@ import {
   buildPool,
   fetchDepthChart as fetchDepthChartFrom,
   fetchHeadCoaches as fetchHeadCoachesFrom,
+  kickoffsFromGames,
   parseCsv,
   parseWeeklyStats,
   resultsFromGames,
@@ -82,6 +83,26 @@ export async function fetchGameResults({ season, week } = {}) {
     season,
     week: Number(week),
     results: resultsFromGames(parseCsv(read("results-week.csv")), { season, week }),
+  };
+}
+
+/**
+ * The recorded season's kickoff times, for the lineup lock.
+ *
+ * Read from games.csv rather than results-week.csv, and that is the point: games.csv is
+ * THIS fixture season's real schedule, so a locally dealt week locks on the days and
+ * times that week is genuinely played. The relabelled past week the stat lines come
+ * from would put Sunday's kickoffs in the wrong season entirely.
+ *
+ * A WEEK WITH NO TIMES COMES BACK EMPTY, exactly as the live feed does for a schedule
+ * that has not been published - so "nothing to lock on" is reachable locally instead of
+ * only in production.
+ */
+export async function fetchKickoffs({ season, week } = {}) {
+  return {
+    season,
+    week: Number(week),
+    kickoffs: kickoffsFromGames(parseCsv(read("games.csv")), { season, week }),
   };
 }
 
