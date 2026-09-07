@@ -136,7 +136,11 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
       {phase === "pre-deal" && (
         <>
           <p className="pp-sub">Deal a fresh roster to {teams.length} team{teams.length === 1 ? "" : "s"} for {periodLabel(state.currentPeriod)}.</p>
-          <button className="pp-btn pp-btn-gold" disabled={teams.length === 0} onClick={onDeal}>Deal Rosters</button>
+          {/* Says what the button does now that it does two things. If the feed is down
+              the deal still goes ahead on the current pool and the activity log says so
+              - see dealPeriod in server/operations.js. */}
+          <p className="pp-sub">This pulls the latest depth charts first, so you deal from live rosters. If the feed can't be reached, it deals from the pool as it stands.</p>
+          <button className="pp-btn pp-btn-gold" disabled={teams.length === 0} onClick={onDeal}>Refresh Pool &amp; Deal Rosters</button>
         </>
       )}
       {phase === "dealt" && (

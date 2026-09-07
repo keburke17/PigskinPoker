@@ -255,7 +255,7 @@ gate()("stat entry: versioning and phase guards", () => {
 
   it("refuses to deal while the week is in 'stats'", async () => {
     const token = await asCommissioner();
-    const r = await ops.dealPeriod(db, { leagueId, token });
+    const r = await ops.dealPeriod(db, { leagueId, token, refresh: false });
     expect(r.status).toBe(409);
     expect(r.body.reason).toBe("phase");
   });
@@ -271,7 +271,7 @@ gate()("the weekly cycle, server-side", () => {
     expect(fin.status).toBe(200);
     expect(fin.body.view.currentPeriod).toEqual({ type: "week", number: 3, phase: "pre-deal" });
 
-    const dealt = await ops.dealPeriod(db, { leagueId, token });
+    const dealt = await ops.dealPeriod(db, { leagueId, token, refresh: false });
     expect(dealt.status).toBe(200);
     expect(dealt.body.view.currentPeriod.phase).toBe("dealt");
     expect(dealt.body.view.teams.every((t) => t.roster !== null)).toBe(true);
@@ -1032,6 +1032,118 @@ gate()("the pool refresh, against the recorded fixture", () => {
 });
 
 /* ------------------------------------------------------------------------ *
+ * The deal refreshes the pool first.
+ *
+ * Scott, 2026-09-06: "when a deal is dealt, i want the rosters to be live each time."
+ * The refresh runs BEFORE the lifecycle rather than inside it, because persistBlob
+ * rewrites the whole players table from a blob built before the refresh - so a refresh
+ * inside the callback would be silently reverted. That is what the first test here
+ * actually guards: not that the refresh was called, but that the deal DEALT FROM IT.
+ * ------------------------------------------------------------------------ */
+gate()("the deal refreshes the pool first", () => {
+  beforeEach(() => resetDemo());
+
+  const preDeal = async () => {
+    const { data: season } = await db
+      .from("seasons").select("id").eq("league_id", leagueId).single();
+    await db.from("periods").update({ phase: "pre-deal" })
+      .eq("season_id", season.id).eq("number", 2);
+  };
+
+  const dealLogText = (view) =>
+    view.activityLog.filter((a) => a.type === "deal").slice(-1)[0].text;
+
+  it("survives the blob write - a player the feed retired is not dealt", async () => {
+    const token = await asCommissioner();
+    await preDeal();
+
+    const { data: before } = await db
+      .from("players").select("*").eq("league_id", leagueId).order("legacy_id");
+    /* A feed that claims everything EXCEPT five ordinary players. Those five are the
+     * only ones it retires, so the pool stays deep enough to deal a full 12 to every
+     * team - and those five must not appear on any roster. Retiring most of the pool
+     * would just make the deal fail for want of players, which proves nothing. */
+    const droppable = before.filter(
+      (pl) => pl.position !== "Coach" && pl.source !== "manual" && pl.status_source !== "manual"
+    );
+    const dropped = droppable.slice(-5);
+    const droppedIds = new Set(dropped.map((pl) => pl.id));
+    const claimed = before.filter((pl) => !droppedIds.has(pl.id));
+    expect(dropped).toHaveLength(5);
+    const feed = {
+      fetchDepthChart: async () => ({
+        snapshotAt: "2026-09-06T12:00:00Z",
+        players: claimed.map((pl, i) => ({
+          name: pl.name, position: pl.position, team: pl.nfl_team,
+          depthRank: 1, externalIds: { gsis: "deal" + i },
+        })),
+      }),
+      buildPool: ({ depthPlayers }) => ({ players: depthPlayers, gaps: [] }),
+    };
+
+    const r = await ops.dealPeriod(db, { leagueId, token, feed });
+    expect(r.status).toBe(200);
+
+    const { data: after } = await db.from("players").select("*").eq("league_id", leagueId);
+    const byId = new Map(after.map((pl) => [pl.id, pl]));
+    for (const pl of dropped) expect(byId.get(pl.id).status).toBe("OUT");
+
+    /* THE ASSERTION THAT MATTERS. If the refresh ran inside the lifecycle, persistBlob
+     * would have put these statuses back to Active from a blob built before the refresh,
+     * and they would be dealable again - retired, then silently un-retired. */
+    const retiredIds = new Set(dropped.map((pl) => pl.legacy_id));
+    const dealtIds = [];
+    for (const t of r.body.view.teams) {
+      if (!t.roster) continue;
+      dealtIds.push(...Object.values(t.roster.starters).filter(Boolean));
+      dealtIds.push(...t.roster.bench.filter(Boolean));
+    }
+    expect(dealtIds.length).toBeGreaterThan(0);
+    expect(dealtIds.filter((id) => retiredIds.has(id))).toEqual([]);
+  });
+
+  it("says what the refresh did, so the pool never changes invisibly", async () => {
+    const token = await asCommissioner();
+    await preDeal();
+    const feed = await import("../server/feed/fixture.js");
+
+    const r = await ops.dealPeriod(db, { leagueId, token, feed });
+    expect(r.status).toBe(200);
+    expect(dealLogText(r.body.view)).toMatch(/Pool refreshed first/);
+  });
+
+  it("deals anyway when the feed is down, and says so", async () => {
+    const token = await asCommissioner();
+    await preDeal();
+    const feed = {
+      fetchDepthChart: async () => { throw new Error("nflverse is having a bad morning"); },
+      buildPool: () => ({ players: [], gaps: [] }),
+    };
+
+    const r = await ops.dealPeriod(db, { leagueId, token, feed });
+    /* The week starts. A feed outage must never be able to stop it - that is the whole
+     * reason the refresh is allowed to fail on its own. */
+    expect(r.status).toBe(200);
+    expect(r.body.view.currentPeriod.phase).toBe("dealt");
+    expect(r.body.view.teams.every((t) => t.roster !== null)).toBe(true);
+    expect(dealLogText(r.body.view)).toMatch(/Pool NOT refreshed/);
+    expect(dealLogText(r.body.view)).toMatch(/bad morning/);
+  });
+
+  it("refuses the deal outright if the refresh fails for any other reason", async () => {
+    await preDeal();
+    /* A manager, not the commissioner. The refresh refuses first and the deal is not
+     * attempted - one error rather than two, and no half-refreshed pool dealt from. */
+    const token = await asManager(T1);
+    const r = await ops.dealPeriod(db, { leagueId, token, feed: await import("../server/feed/fixture.js") });
+    expect(r.status).toBe(403);
+
+    const { data: periods } = await db.from("periods").select("phase, number, type");
+    expect(periods.find((x) => x.number === 2 && x.type === "week").phase).toBe("pre-deal");
+  });
+});
+
+/* ------------------------------------------------------------------------ *
  * Stage 3: which NFL week a league period plays.
  *
  * League week is not NFL week, and until now nothing in the app wrote the mapping -
@@ -1089,7 +1201,7 @@ gate()("the NFL week mapping", () => {
     expect(before).toBe(2);
 
     await ops.finalizePeriod(db, { leagueId, token });   // rewrites week 2 as historical
-    await ops.dealPeriod(db, { leagueId, token });       // rewrites the new week
+    await ops.dealPeriod(db, { leagueId, token, refresh: false }); // rewrites the new week
     await ops.processSchemes(db, { leagueId, token });   // and again
 
     expect((await current()).nfl_week).toBe(before);

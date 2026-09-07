@@ -223,8 +223,15 @@ override survives the next refresh (section 4.5).
 "Marvin Harrison Jr is OUT" lives, and that is a statement about one league, never shared.
 
 So the refresh writes into **the league's `players`**, triggered by the commissioner from
-his own screen. Never automatic, never mid-week. The template is refreshed separately so
-new leagues start current.
+his own screen, and **never mid-week**. The template is refreshed separately so new leagues
+start current.
+
+**Since 2026-09-06 the deal does it for him** (section 9): pressing *Refresh Pool & Deal
+Rosters* pulls the depth charts and then deals from what it pulled, so a week always starts
+from live rosters without him having to remember two presses. The standalone button is
+still there for when he wants to look at the pool and correct it before dealing. It is not
+a schedule and not a background job - it is still a commissioner pressing a button in
+pre-deal, and it writes what it did into the activity log every time.
 
 ### 4.5 What a refresh may and may not do
 
@@ -334,7 +341,9 @@ Carried forward from `LIVE-DATA.md` section 7, and still true under these answer
 
 - **The commissioner stays the source of truth.** A feed proposes; a person finalizes. The
   `pre-deal -> dealt -> schemes-processed -> stats -> finalized` flow is untouched, and no
-  week ever finalizes itself.
+  week ever finalizes itself. The deal carrying a refresh with it (section 9) does not bend
+  this: the press is his, the phase is the same, and the pool never changes without a line
+  in the activity log saying what changed.
 - **A manual entry is never overwritten.** Stats and player status both.
 - **The engine does not learn about feeds.** A feed writes stat lines; `src/engine/` scores
   them. If `parity.test.js` ever fails, the feed has changed the game rather than fed it.
@@ -496,7 +505,7 @@ the season archive.
 
 ---
 
-## 9. Should the pool refresh itself at the weekly rollover? (new, 2026-09-06)
+## 9. The deal refreshes the pool (asked 2026-09-06, BUILT the same day)
 
 **Scott, 2026-09-06:** "I feel like the roster should refresh automatically with new live
 rosters before each deal when a new week is about to begin. [...] when a week ends after the
@@ -528,7 +537,7 @@ refresh is the first thing in this project that can change a live league with no
 watching. Stage 7 ("scheduled polling") carries the same warning, and is Kyle's for that
 reason: *first piece that can fail silently at 3am.*
 
-**Three ways to build it, cheapest first:**
+**Three ways it could have been built, cheapest first:**
 
 1. **Prompt, do not act.** Finalize leaves a banner on the pre-deal screen: "The pool has
    not been refreshed since Week 3. Refresh now?" One click. The rollover becomes the
@@ -542,7 +551,31 @@ reason: *first piece that can fail silently at 3am.*
 3. **Scheduled polling** (stage 7). Genuinely unattended, needs new infrastructure, and is
    the one that can go wrong at 3am. Not what he is asking for.
 
-**Held for a conversation, not built.** Option 1 gets nearly all of what he wants for very
-little risk, and option 2 is the honest reading of what he actually asked for. The choice
-between them is his; the failure path in option 2 is Kyle's.
+**BUILT 2026-09-06, and none of the three is quite what shipped.** Put to Scott, his answer
+sharpened the question: option 1 is still him pressing a button, and option 2 refreshes at
+the wrong moment - finalize on Monday night, deal on Thursday, and the pool is three days
+stale at the only moment that matters. **The deal is the moment, so the refresh went on the
+deal.** One button: *Refresh Pool & Deal Rosters* pulls the depth charts and deals from what
+it pulled.
+
+What is in `dealPeriod` (server/operations.js), and why each piece is there:
+
+- **The refresh runs BEFORE the lifecycle, not inside it.** `persistBlob` rewrites the whole
+  `players` table from a blob built before the refresh, so a refresh inside the callback
+  would be performed and then silently reverted. `tests/server.test.js` guards exactly that:
+  it retires five players through the feed and asserts none of them is dealt.
+- **A feed failure does not stop the week.** 502 means the pool is untouched; the deal goes
+  ahead on the pool he has and the log says so. A week that cannot start because nflverse is
+  having a bad morning is a far worse failure than a stale pool.
+- **Any other failure does stop it**, unchanged. A wrong phase, a stale version or a
+  non-commissioner would fail the deal identically a moment later, so there is one error
+  rather than two - and a 500 mid-refresh leaves the pool half-written, which is precisely
+  the silent damage section 6 exists to prevent.
+- **It always says what it did**, in the activity log: "Pool refreshed first: 25 added, 23
+  retired." Including when nothing changed, because "no changes" means the depth charts
+  agree with the pool - not that the refresh failed to run.
+- **The standalone Refresh Player Pool button is untouched**, for looking before dealing.
+
+Stage 7, scheduled polling, is still not built and is still Kyle's: that is the one that
+runs with nobody there at all.
 

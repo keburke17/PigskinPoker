@@ -213,8 +213,13 @@ anyone else's.
 ### Where the players come from
 
 The pool is built from **the live NFL depth charts** - each NFL team's current 1 QB, 2 RB,
-2 WR and 1 TE, plus its head coach. The commissioner refreshes it with a button, and **only
-in pre-deal**, when there are no rosters to disturb.
+2 WR and 1 TE, plus its head coach, and it is refreshed **only in pre-deal**, when there are
+no rosters to disturb.
+
+**Dealing the week refreshes the pool first**, so every deal comes off live rosters. If the
+feed cannot be reached the deal still goes ahead on the pool as it stands, and says so. The
+commissioner also has a standalone refresh button, for looking at the pool and correcting it
+before he deals. Either way the activity log records what the refresh changed.
 
 A refresh may:
 
@@ -283,9 +288,9 @@ and configures the playoff bracket. Nothing happens on a schedule; he presses ev
 - **Stats disagreements.** The stats pull never overwrites a line the commissioner typed,
   but there is no view showing where his number and the feed's differ - stage 6 in
   `docs/PHASE-4-PLAN.md`.
-- **Automatic pool refresh.** Today the commissioner presses refresh, then presses deal.
-  Scott has asked for the refresh to happen as part of the deal; see section 9 of
-  `docs/PHASE-4-PLAN.md`.
+- **Unattended updates.** The pool refreshes when the commissioner deals, but nothing runs
+  on a schedule - if a starter changes on Wednesday, the pool learns about it at the next
+  deal. Stage 7 in `docs/PHASE-4-PLAN.md`.
 - **Season archive.** Past seasons are preserved in the schema but there is no way to browse
   them. Tabled 2026-09-06.
 
