@@ -94,6 +94,16 @@ export const NFL_TEAMS = {
   WAS: "Washington Commanders",
 };
 
+/* The 32, as the player pool spells them. Derived from the map above rather than typed
+ * again, so a rename there cannot leave two lists disagreeing - and de-duplicated,
+ * because NFL_TEAMS carries the alternate abbreviations the file uses in different
+ * seasons (JAX/JAC, LA/LAR) pointing at one team each.
+ *
+ * The head-coach screen (issue #40) is the reason this is exported: it lists teams, not
+ * players, so it needs the canonical set even for a team whose coach row has gone
+ * missing. Sorted, because it is rendered in this order. */
+export const NFL_TEAM_NAMES = [...new Set(Object.values(NFL_TEAMS))].sort();
+
 /* How deep the pool goes at each position, decided by the designer on 2026-08-28.
  * 1 QB, 2 RB, 2 WR, 1 TE per NFL team = 192 rows. Deliberately no WR3s, no second tight
  * ends, and no ranking step. Two backs because of committee backfields.
@@ -531,7 +541,7 @@ export function buildPool({ depthPlayers, rosterStatus }) {
     byTeamPos.get(key).push(p);
   }
 
-  const teams = [...new Set(Object.values(NFL_TEAMS))].sort();
+  const teams = NFL_TEAM_NAMES;
   for (const team of teams) {
     for (const [position, depth] of Object.entries(POOL_DEPTH)) {
       const list = (byTeamPos.get(team + "|" + position) || [])

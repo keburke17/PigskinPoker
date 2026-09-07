@@ -143,8 +143,12 @@ Becomes native Postgres arrays (not `jsonb`):
 > stat columns and their `feed_*` mirrors, `players.depth_rank` / `.source` /
 > `.status_source` / `.feed_status` / `.feed_updated_at`, the `gsis` unique indexes and
 > `periods.nfl_week` (Phase 4, `20260828*`); `player_pool`, rebuilt from live depth
-> charts in `20260829000000`; and `seasons.lineup_lock` with `periods.kickoffs` /
-> `.kickoffs_read_at` (`20260905000000`, the lineup-lock option).
+> charts in `20260829000000`; `seasons.lineup_lock` with `periods.kickoffs` /
+> `.kickoffs_read_at` (`20260905000000`, the lineup-lock option); `players.retired`
+> (`20260906000000`); and `site_admins` (`20260907000000`) - the only table in the schema
+> that is not scoped to a league, holding the two people who maintain the shared
+> head-coach list. See `docs/AUTH.md` for why it is keyed on email, and note that it is a
+> SECRETS-class table: RLS on, no policy, no grant to a browser role.
 > `docs/MIGRATION-NOTES.md` explains each of them.
 
 Proposed as a single migration. Every table has its policies in the same migration, per

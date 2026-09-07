@@ -286,6 +286,51 @@ if the pool already held the same man twice; both cases are now asserted in
 `tests/pool.test.js`. If he is genuinely seeing both on the live site, that is a second
 bug and this fix hides the symptom rather than curing it.
 
+#### OQ-4e: the coaches are wrong in every league at once **[ANSWERED 2026-09-07]**
+
+Three days after OQ-4d, Scott again: the coaches are still off. They were. OQ-4d settled
+*who owns* a head coach - not the feed - and stopped there, so nothing ever corrected the
+ones already written. Issue #40 lays out the state: `player_pool`, the template every new
+league is copied from, still holds the six names Scott rejected (Jesse Minter at Baltimore,
+John Harbaugh at the **Giants**, "Klint Kubliak"), `copy_player_pool_into` hands them to
+every league created since 2026-08-29, and the only correction path was the commissioner's
+Edit button - seven edits, in every league separately, by every commissioner separately.
+
+**Scott's answer, 2026-09-07, and it is two answers.**
+
+> **First: the Coach card is the TEAM.** It scores its NFL team's result - Win, Tie or Loss
+> - and the coach's name has never been part of that arithmetic. The name is on the card
+> because it is more fun than reading the team twice. So a wrong coach is a cosmetic
+> annoyance and cannot cost anybody a point.
+>
+> This was already how the code worked and is now pinned as a promise rather than left as
+> a property: `feedValuesFor` matches the Coach slot by `nfl_team` and never by name
+> (`server/stats.js`), `computeStarterPoints` reads only `result`, and
+> `tests/coaches.test.js` asserts a rename changes nothing - including against a real
+> database, in `tests/server.test.js`. **If a rule ever starts reading a coach's name,
+> everything below becomes unsafe.**
+>
+> **Second: the 32 names are ONE list, kept by the game's admins.** Not the feed, and not
+> the commissioner either. A head coach is one fact about the NFL - wrong in every league
+> at once - so correcting him should be one edit, not one edit per league.
+
+**What that changed.** A role above the league, which this schema had never had: a
+`site_admins` table (Scott and Kyle, by email) and a `/admin` screen listing the 32 teams.
+Editing one there writes the template AND renames that team's live coach row in every
+league already playing. That crosses a boundary the app otherwise never crosses - one
+league's `players` rows are its own, and `tests/server.test.js` asserts it - and the first
+answer above is the entire reason it is allowed to: nothing scores off the name.
+
+**What it deliberately will not do.** Add or delete a coach; touch a retired coach row;
+or pick between two live coach rows for one team when a league has both. Each is reported
+on screen instead. And a commissioner may still rename a coach in his own league - it just
+stops being the last word.
+
+**A loose end, unchanged by this.** `player_pool` never got the 09-06 retired-duplicates
+backfill, so it still carries both spellings of the Raiders coach where a live league has
+one retired. The screen shows the retired count per team and leaves them alone; tidying
+them is a separate, smaller decision.
+
 ### OQ-5. Join codes, or real accounts? **[ANSWERED: both - accounts authenticate, codes invite]**
 
 No auth primitives existed in the sandbox, so join codes were the only option.

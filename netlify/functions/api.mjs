@@ -44,6 +44,15 @@ const ROUTES = {
   setMemberRole: (db, p) => ops.setMemberRole(db, p),
   setLeagueVisibility: (db, p) => ops.setLeagueVisibility(db, p),
 
+  /* Issue #40. The only routes authorized by `site_admins` rather than by a
+   * league_members row - the head-coach list is one table shared by every league, so it
+   * has no league to resolve a role against. They take an accountToken like createLeague
+   * does. */
+  adminWhoami: (db, p) => ops.adminWhoami(db, p),
+  listCoaches: (db, p) => ops.listCoaches(db, p),
+  setCoach: (db, p) => ops.setCoach(db, p),
+  syncCoaches: (db, p) => ops.syncCoaches(db, p),
+
   setStatLine: (db, p) => ops.setStatLine(db, p),
   swapLineupSlot: (db, p) => ops.swapLineupSlot(db, p),
   submitScheme: (db, p) => ops.submitScheme(db, p),

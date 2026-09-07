@@ -50,13 +50,22 @@ describe("Help names every screen the app actually has", () => {
      * that merely happens to appear as a word in some other sentence does not count. */
     const app = read("src", "App.jsx");
     const nav = app.slice(app.indexOf("const NAV = ["), app.indexOf("];", app.indexOf("const NAV = [")));
-    const labels = [...nav.matchAll(/label:\s*"([^"]+)"/g)].map((m) => m[1]);
+    /* Line by line, because an entry may carry a `route` and that is what decides
+     * whether it is a tab at all - see the exemption below. */
+    const entries = nav.split("\n")
+      .map((line) => ({ line, label: (line.match(/label:\s*"([^"]+)"/) || [])[1] }))
+      .filter((e) => e.label);
 
-    expect(labels.length).toBeGreaterThan(4);
-    for (const label of labels) {
+    expect(entries.length).toBeGreaterThan(4);
+    for (const { line, label } of entries) {
       /* Help itself is the one exemption: the screen you are already reading does not
        * need a line telling you what it is for. */
       if (label === "Help") continue;
+      /* And a pill carrying a `route` is not a tab - it navigates OUT of the league.
+       * "Admin" is the only one (issue #40), it is drawn for two people on the whole
+       * deployment, and listing it in a card every manager reads would advertise a
+       * screen nobody else can open. */
+      if (/route:/.test(line)) continue;
       expect(SCREENS_CARD, "the screen list has no entry for the '" + label + "' tab")
         .toContain("<strong>" + label + "</strong>");
     }

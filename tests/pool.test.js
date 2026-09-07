@@ -9,6 +9,9 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   NFL_TEAMS,
   POOL_DEPTH,
@@ -135,7 +138,11 @@ describe("head coaches, which depth charts do not carry", () => {
  * at all: Scott read that file's answers on 2026-09-04 - John Harbaugh with the Giants,
  * Todd Monken at Cleveland, Klint Kubiak spelled "Kubliak" - and made head coaches
  * commissioner-maintained (OQ-4d). A league still holds 224 players. The feed is
- * responsible for 192 of them and must not touch the other 32. */
+ * responsible for 192 of them and must not touch the other 32.
+ *
+ * CHANGED AGAIN 2026-09-07 (issue #40): those 32 moved from the commissioner to the site
+ * admins, who maintain one shared list on /admin. Nothing here changes - the feed had
+ * already stopped producing coaches, and this is still what proves it. */
 describe("building the pool", () => {
   const everyTeamToDepth = (extra = 2) => {
     const depthPlayers = [];
@@ -158,7 +165,7 @@ describe("building the pool", () => {
     expect(gaps).toEqual([]);
   });
 
-  it("produces no head coaches at all - they are the commissioner's", () => {
+  it("produces no head coaches at all - they are the site admins'", () => {
     const { players, gaps } = buildPool({ depthPlayers: everyTeamToDepth() });
     expect(players.some((p) => p.position === "Coach")).toBe(false);
     expect(gaps.some((g) => g.position === "Coach")).toBe(false);
@@ -716,5 +723,35 @@ describe("batching the writes", () => {
       chunkSize: 0,
     });
     expect(chunks).toHaveLength(3);
+  });
+});
+
+/* The generator, checked as SOURCE rather than run.
+ *
+ * `npm run pool:sql:feed` reaches the network for a 45MB depth chart and a games file,
+ * so it cannot run in a unit test - which is exactly how it came to be broken without
+ * anybody noticing (issue #40, step 5): it passed a `coaches` argument that buildPool
+ * had silently stopped accepting, never passed `rosterStatus`, and would have emitted a
+ * 192-row template with ZERO coaches and every status hardcoded Active, under a header
+ * claiming 224 rows and 32 coaches. It would have exited 0.
+ *
+ * Two properties are worth pinning even from the outside, because both failures are
+ * silent and both destroy a list a person maintains by hand. */
+describe("the pool migration generator", () => {
+  const src = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "generate-pool-migration.mjs"),
+    "utf8"
+  );
+
+  it("never emits an unfiltered delete of the template", () => {
+    // `delete from player_pool;` would take the 32 admin-maintained coaches with it.
+    expect(src).not.toMatch(/delete\s+from\s+player_pool\s*;/i);
+    expect(src).toMatch(/delete from player_pool where position <> 'Coach'/);
+  });
+
+  it("does not read coaches from the feed at all", () => {
+    expect(src).not.toMatch(/fetchHeadCoaches/);
+    // And it passes the argument buildPool actually takes.
+    expect(src).toMatch(/buildPool\(\{ depthPlayers: chart\.players, rosterStatus \}\)/);
   });
 });

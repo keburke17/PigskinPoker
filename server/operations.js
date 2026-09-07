@@ -54,7 +54,9 @@ import {
   isCommissioner,
   verifyAccount,
   verifySession,
+  verifySiteAdmin,
 } from "./auth.js";
+import { planCoachUpdate, summarizeCoaches, NFL_TEAM_NAMES } from "./coaches.js";
 
 const PHASE_RULES = {
   dealPeriod: ["pre-deal"],
@@ -1596,4 +1598,161 @@ export async function replaceLeague(db, { leagueId, token, blob }) {
     newPlayerSource: "manual",
   });
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/* ======================================================================== */
+/*  SITE ADMIN - the head-coach list                                        */
+/* ======================================================================== */
+/*
+ * The only operations in this file that are not scoped to one league, and the only ones
+ * authorized by anything other than a `league_members` row. They exist because
+ * `player_pool` is shared by every league and its 32 Coach rows are one fact about the
+ * NFL rather than 32 decisions each league gets to make - issue #40, and the reasoning
+ * is written out at the top of server/coaches.js.
+ *
+ * Every one of them takes an ACCOUNT token, like createLeague and myLeagues, because
+ * there is no league to resolve a role against.
+ */
+
+/** Everything the coaches screen needs to read the whole picture. */
+async function coachTables(db) {
+  const [template, leagues, coaches] = await Promise.all([
+    db.from("player_pool").select("legacy_id, name, nfl_team").eq("position", "Coach"),
+    db.from("leagues").select("id, name"),
+    db.from("players").select("id, league_id, name, nfl_team, retired").eq("position", "Coach").eq("active", true),
+  ]);
+  for (const r of [template, leagues, coaches]) {
+    if (r.error) throw new Error(r.error.message);
+  }
+  return {
+    templateRows: template.data ?? [],
+    leagueRows: coaches.data ?? [],
+    leagueNames: new Map((leagues.data ?? []).map((l) => [l.id, l.name])),
+  };
+}
+
+/**
+ * Am I a site admin?
+ *
+ * Answers for the CALLER ALONE and never lists anybody. That is what lets `site_admins`
+ * be unreadable from the browser: the client needs one boolean to decide whether to
+ * draw the Admin pill, not the table.
+ *
+ * Not folded into `whoami`, which resolves a role inside one league and would then need
+ * a league it does not have.
+ */
+export async function adminWhoami(db, { accountToken }) {
+  const user = await verifyAccount(db, accountToken);
+  if (!user) return fail(401, AUTH_ERRORS.noSession.error);
+  const admin = await verifySiteAdmin(db, accountToken);
+  return good({ admin: !!admin, email: user.email ?? null });
+}
+
+/** The 32 teams, the master name for each, and wherever a league disagrees. */
+export async function listCoaches(db, { accountToken }) {
+  const admin = await verifySiteAdmin(db, accountToken);
+  if (!admin) return fail(AUTH_ERRORS.notSiteAdmin.status, AUTH_ERRORS.notSiteAdmin.error);
+  const tables = await coachTables(db);
+  return good(summarizeCoaches(tables));
+}
+
+/**
+ * Set one team's head coach, everywhere.
+ *
+ * The template so new leagues are born right, and every existing league's live Coach row
+ * so the season being played right now is right too. Reaching into another league's
+ * `players` rows is a boundary this app otherwise never crosses; server/coaches.js
+ * carries the argument for why a coach NAME is the one thing on the far side of it, and
+ * the short version is that nothing scores off it.
+ *
+ * ONE CAVEAT WORTH KNOWING, because it will look like a bug. A commissioner with the
+ * league already open on his screen holds a whole copy of the pool, and his next save
+ * writes it back - old coach name included. He sees the new name as soon as he reloads,
+ * and pressing it again fixes it. That is the same last-writer-wins the pool has always
+ * had for a name (see replaceLeague); it is not worth a version column for a field that
+ * cannot affect a point.
+ */
+export async function setCoach(db, { accountToken, team, name }) {
+  const admin = await verifySiteAdmin(db, accountToken);
+  if (!admin) return fail(AUTH_ERRORS.notSiteAdmin.status, AUTH_ERRORS.notSiteAdmin.error);
+
+  const tables = await coachTables(db);
+  const plan = planCoachUpdate({ team, name, ...tables });
+  if (plan.error) return fail(400, plan.error);
+
+  if (plan.template) {
+    const { error } = await db
+      .from("player_pool").update({ name: plan.report.name })
+      .eq("legacy_id", plan.template.legacy_id);
+    if (error) return fail(500, "Updating the shared pool failed: " + error.message);
+  }
+
+  if (plan.updates.length) {
+    /* One statement for every league at once. The rows differ only in the column being
+     * set, so there is nothing to upsert row by row - and an update by id list cannot
+     * touch anything the plan did not choose. */
+    const { error } = await db
+      .from("players").update({ name: plan.report.name })
+      .in("id", plan.updates.map((u) => u.id));
+    if (error) return fail(500, "Updating the leagues failed: " + error.message);
+  }
+
+  const after = await coachTables(db);
+  return good({ report: plan.report, ...summarizeCoaches(after) });
+}
+
+/**
+ * Push the whole master list into every league.
+ *
+ * The one-press fix for a league that was born wrong - it is 32 setCoach calls with the
+ * names already in the template, so it changes nothing that already agrees and reports
+ * every league it could not touch. Nothing here reads a feed: the list is the admin's.
+ */
+export async function syncCoaches(db, { accountToken }) {
+  const admin = await verifySiteAdmin(db, accountToken);
+  if (!admin) return fail(AUTH_ERRORS.notSiteAdmin.status, AUTH_ERRORS.notSiteAdmin.error);
+
+  const tables = await coachTables(db);
+  const ids = [];
+  const byName = new Map();
+  const skipped = [];
+  const teamsChanged = [];
+
+  for (const team of NFL_TEAM_NAMES) {
+    const tpl = tables.templateRows.find((r) => r.nfl_team === team);
+    if (!tpl) {
+      skipped.push({ team, reason: "the shared pool has no coach for this team" });
+      continue;
+    }
+    const plan = planCoachUpdate({ team, name: tpl.name, ...tables });
+    if (plan.error) {
+      skipped.push({ team, reason: plan.error });
+      continue;
+    }
+    for (const u of plan.updates) {
+      ids.push(u.id);
+      byName.set(u.id, tpl.name);
+    }
+    if (plan.updates.length) teamsChanged.push({ team, name: tpl.name, count: plan.updates.length });
+    for (const s of plan.report.skipped) skipped.push({ team, ...s });
+  }
+
+  /* Grouped by the name being written, so this is at most 32 statements rather than one
+   * per row - and usually far fewer, because most teams already agree everywhere. */
+  const groups = new Map();
+  for (const id of ids) {
+    const n = byName.get(id);
+    if (!groups.has(n)) groups.set(n, []);
+    groups.get(n).push(id);
+  }
+  for (const [n, list] of groups) {
+    const { error } = await db.from("players").update({ name: n }).in("id", list);
+    if (error) return fail(500, "Updating the leagues failed: " + error.message);
+  }
+
+  const after = await coachTables(db);
+  return good({
+    report: { rowsUpdated: ids.length, teamsChanged, skipped },
+    ...summarizeCoaches(after),
+  });
 }

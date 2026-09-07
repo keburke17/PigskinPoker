@@ -1844,3 +1844,169 @@ gate()("the stats pull", () => {
     await setAutoPull(false);
   });
 });
+
+/* ======================================================================== */
+/*  SITE ADMIN - the head-coach list (issue #40)                            */
+/* ======================================================================== */
+/*
+ * The first authorization in this app that is not a `league_members` row, and the first
+ * write that deliberately crosses a league boundary. Both need proving here rather than
+ * in a unit test: the rule is enforced by a table and a query, not by a pure function.
+ *
+ * The safety argument for crossing the boundary is that a coach's NAME cannot move a
+ * point - see server/coaches.js and tests/coaches.test.js. The last test in this block
+ * is that claim checked against a real database rather than asserted.
+ */
+gate()("site admin: head coaches", () => {
+  const ADMIN = "site-admin@example.test";
+  const templateBefore = new Map();
+
+  const asAdmin = async () => {
+    const acct = await accountFor(ADMIN);
+    await db.from("site_admins").upsert({ email: ADMIN, note: "test" }, { onConflict: "email" });
+    return acct.token;
+  };
+
+  beforeEach(async () => {
+    await resetDemo();
+    if (!templateBefore.size) {
+      const { data } = await db.from("player_pool").select("legacy_id, name").eq("position", "Coach");
+      for (const r of data ?? []) templateBefore.set(r.legacy_id, r.name);
+    }
+  });
+
+  /* `player_pool` is GLOBAL - resetDemo rebuilds the demo league and does not touch it -
+   * so a test that renames a coach would otherwise leave the template changed for every
+   * later run. Put back exactly what was there. */
+  afterAll(async () => {
+    for (const [legacy_id, name] of templateBefore) {
+      await db.from("player_pool").update({ name }).eq("legacy_id", legacy_id);
+    }
+    await db.from("site_admins").delete().eq("email", ADMIN);
+    /* And rebuild the demo league, because the LAST test in this block leaves a coach
+     * renamed in it - beforeEach cleans up for the next test but not for the developer
+     * who runs the suite and then opens the app. */
+    if (available) await resetDemo().catch(() => {});
+  });
+
+  const coachRow = async (team) => {
+    const { data } = await db
+      .from("players").select("id, name, retired")
+      .eq("league_id", leagueId).eq("position", "Coach").eq("nfl_team", team).eq("active", true);
+    return (data ?? []).filter((r) => !r.retired)[0] ?? null;
+  };
+  const teamOfSomeCoach = async () => {
+    const { data } = await db
+      .from("players").select("nfl_team").eq("league_id", leagueId).eq("position", "Coach").limit(1);
+    return data[0].nfl_team;
+  };
+
+  it("tells an ordinary account it is not an admin, and never lists the admins", async () => {
+    const acct = await accountFor("nobody-special@example.test");
+    const r = await ops.adminWhoami(db, { accountToken: acct.token });
+    expect(r.status).toBe(200);
+    expect(r.body.admin).toBe(false);
+    // The answer is about the caller. Nothing here names anybody else.
+    expect(JSON.stringify(r.body)).not.toContain("@pigskin");
+  });
+
+  it("refuses a signed-out caller", async () => {
+    expect((await ops.adminWhoami(db, { accountToken: null })).status).toBe(401);
+    expect((await ops.listCoaches(db, { accountToken: null })).status).toBe(403);
+  });
+
+  it("A COMMISSIONER IS NOT AN ADMIN", async () => {
+    /* The whole point of the new role. Running a league is not the same as owning the
+     * list every league is built from. */
+    const acct = await accountFor("commissioner@example.test");
+    await db.from("league_members").upsert(
+      { league_id: leagueId, user_id: acct.userId, role: "commissioner", team_id: null },
+      { onConflict: "league_id,user_id" }
+    );
+    expect((await ops.adminWhoami(db, { accountToken: acct.token })).body.admin).toBe(false);
+    expect((await ops.listCoaches(db, { accountToken: acct.token })).status).toBe(403);
+    expect((await ops.setCoach(db, { accountToken: acct.token, team: "Chicago Bears", name: "X" })).status).toBe(403);
+    expect((await ops.syncCoaches(db, { accountToken: acct.token })).status).toBe(403);
+  });
+
+  it("lists all 32 teams for an admin", async () => {
+    const token = await asAdmin();
+    expect((await ops.adminWhoami(db, { accountToken: token })).body.admin).toBe(true);
+    const r = await ops.listCoaches(db, { accountToken: token });
+    expect(r.status).toBe(200);
+    expect(r.body.coaches).toHaveLength(32);
+    expect(r.body.leagueCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renames the template AND the league in one call", async () => {
+    const token = await asAdmin();
+    const team = await teamOfSomeCoach();
+    const before = await coachRow(team);
+
+    const r = await ops.setCoach(db, { accountToken: token, team, name: "Norman Testington" });
+    expect(r.status).toBe(200);
+    expect(r.body.report.templateChanged).toBe(true);
+    expect(r.body.report.leaguesUpdated).toBe(1);
+
+    const { data: tpl } = await db
+      .from("player_pool").select("name").eq("position", "Coach").eq("nfl_team", team).single();
+    expect(tpl.name).toBe("Norman Testington");
+    expect((await coachRow(team)).name).toBe("Norman Testington");
+    expect((await coachRow(team)).id).toBe(before.id); // renamed, never replaced
+  });
+
+  it("refuses a name that is blank and a team that is not in the NFL", async () => {
+    const token = await asAdmin();
+    expect((await ops.setCoach(db, { accountToken: token, team: "Chicago Bears", name: "   " })).status).toBe(400);
+    expect((await ops.setCoach(db, { accountToken: token, team: "London Jaguars", name: "Y" })).status).toBe(400);
+  });
+
+  it("pushes the whole list into a league a commissioner had edited", async () => {
+    const token = await asAdmin();
+    const team = await teamOfSomeCoach();
+    const { data: tpl } = await db
+      .from("player_pool").select("name").eq("position", "Coach").eq("nfl_team", team).single();
+
+    const row = await coachRow(team);
+    await db.from("players").update({ name: "Wrong Man" }).eq("id", row.id);
+
+    const r = await ops.syncCoaches(db, { accountToken: token });
+    expect(r.status).toBe(200);
+    expect(r.body.report.rowsUpdated).toBeGreaterThanOrEqual(1);
+    expect((await coachRow(team)).name).toBe(tpl.name);
+
+    /* And the whole league now agrees, which is the actual promise. The demo seed's
+     * coaches are the artifact's hand-typed names and the template's are the 08-29
+     * ones, so this legitimately corrects several teams at once - that mismatch is
+     * exactly the state issue #40 describes in the leagues people are playing. */
+    const { data: after } = await db
+      .from("players").select("name, nfl_team, retired")
+      .eq("league_id", leagueId).eq("position", "Coach").eq("active", true);
+    const { data: master } = await db
+      .from("player_pool").select("name, nfl_team").eq("position", "Coach");
+    const byTeam = new Map(master.map((m) => [m.nfl_team, m.name]));
+    for (const row of after.filter((x) => !x.retired)) {
+      expect(row.name).toBe(byTeam.get(row.nfl_team));
+    }
+  });
+
+  it("A RENAME CANNOT MOVE A POINT", async () => {
+    /* The claim the whole cross-league write rests on, checked rather than asserted:
+     * every stat line and every finalized result in the league is byte-identical either
+     * side of a coach being renamed. Scoring reads `nfl_team`, never the name. */
+    const token = await asAdmin();
+    const team = await teamOfSomeCoach();
+    const snapshot = async () => {
+      const [lines, results, totals] = await Promise.all([
+        db.from("stat_lines").select("*").order("id"),
+        db.from("period_results").select("*").order("id"),
+        db.from("team_totals").select("*").order("id"),
+      ]);
+      return JSON.stringify([lines.data, results.data, totals.data]);
+    };
+
+    const before = await snapshot();
+    await ops.setCoach(db, { accountToken: token, team, name: "Somebody Else Entirely" });
+    expect(await snapshot()).toBe(before);
+  });
+});

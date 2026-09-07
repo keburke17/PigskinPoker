@@ -120,9 +120,10 @@ export function RulesTab({ state }) {
       </RuleCard>
 
       <RuleCard title="Coaches">
+        <li><strong>The Coach card is really the team.</strong> It scores the NFL team's result that week - Win, Tie or Loss - and the coach's name has nothing to do with the points. His name is on the card because it is more fun that way.</li>
         <li>Coaches can never be stolen, redrawn, or blocked.</li>
         <li>They only move between your own starting lineup and bench.</li>
-        <li>The live roster pull never touches a Coach - the commissioner adds, edits and removes them by hand.</li>
+        <li>No feed writes a coach's name. The game's admins keep one list of all 32 and correct it by hand, so a wrong name is a typo to report rather than anything that can cost you a point.</li>
       </RuleCard>
 
       <RuleCard title="The Player Pool">

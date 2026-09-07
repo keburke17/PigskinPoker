@@ -65,7 +65,7 @@ be able to say "save this" or "put it live" and have it happen.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **491 passed, 26 files**. If the output says
+2. `npm test` before committing: **520 passed, 27 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -169,6 +169,25 @@ MANUAL half, so ask `isPlayerLocked(state, playerId, now)` rather than indexing 
 
 ---
 
+### One role sits above the leagues, and it owns exactly one list
+
+**Head coaches** (`server/coaches.js`, `/admin`, added 2026-09-07). A `site_admins` table -
+Scott and Kyle, keyed on email - and a screen listing the 32 NFL teams. Everything else in
+this app is scoped to one league; editing a coach there writes the shared `player_pool`
+template **and renames that team's live coach row in every league already playing**.
+
+That crosses a boundary nothing else crosses, and `tests/server.test.js` asserts the
+boundary holds everywhere else. **The reason it is allowed here is the whole of the
+justification, so do not weaken it: the Coach card scores its NFL TEAM's Win, Tie or Loss,
+matched on `nfl_team`, and no rule anywhere reads a coach's name.** Scott's framing on
+2026-09-07 is that the card is really the team and the name is on it for fun. If a rule
+ever starts reading that name, the cross-league write has to go. `tests/coaches.test.js`
+pins it, and OQ-4e records the decision.
+
+What the screen deliberately will not do: add or delete a coach, touch a retired coach row,
+or choose between two live coach rows for one team. Each is reported instead. A
+commissioner may still rename a coach in his own league; the admins' next push wins.
+
 ## Layout
 
 ```
@@ -183,7 +202,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          26 suites
+tests/          27 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -288,7 +307,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-491 tests. Three groups worth knowing about:
+520 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -297,7 +316,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 152 of the 491
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 160 of the 520
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

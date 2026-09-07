@@ -306,6 +306,52 @@ had just created and be shown a login screen for it.
 
 ---
 
+### The one role that is NOT a league role (2026-09-07)
+
+Everything above is true with one exception, added for issue #40: **`site_admins`**.
+
+`server/auth.js` says there is no league-independent answer to "what is this person", and
+that held until something had to be edited that no league owns. `player_pool` is a single
+template table shared by every league, and its 32 head-coach rows are one fact about the
+NFL rather than 32 decisions each commissioner makes. Somebody has to own that list, and
+it is not a role a league can grant.
+
+```
+site_admins (email primary key, note, created_at)
+```
+
+**Keyed on EMAIL, not on `auth.users(id)`,** which is the opposite of `profiles` and
+`league_members` and is deliberate:
+
+- it has to be seedable in a forward-only migration, before either person has signed in on
+  that database - a `user_id` column would need a lookup against an `auth.users` that is
+  empty on a fresh local stack;
+- a magic link proves an **email**. That is the fact Supabase actually verified, and an
+  account deleted and recreated is the same admin;
+- the list is legible in the repository rather than only in a table nobody reads.
+
+The cost, written down rather than discovered: changing your email address changes who you
+are here.
+
+**How it is enforced.** `verifySiteAdmin(db, token)` verifies the account the ordinary way
+and then looks the address up. It is deliberately NOT part of `verifySession` - a site
+admin is nobody in a league he has not joined, and the coaches screen is the whole of what
+the role unlocks. Four operations use it (`adminWhoami`, `listCoaches`, `setCoach`,
+`syncCoaches`) and every one takes an `accountToken`, like `createLeague`, because there is
+no league to resolve a role against.
+
+**The table is unreadable from a browser.** RLS is on with no policy at all, `anon` and
+`authenticated` are granted nothing, and it is listed in `SECRETS` in
+`scripts/verify-grants.mjs` so the hosted `GRANT ALL` default is actually checked. Not
+because the addresses are secret - one is in the git log - but because "the list of people
+who can edit every league" is a target and nothing in the app needs it. A client asks
+`adminWhoami`, which answers **for the caller alone** and never names anybody.
+
+`/admin` is a route rather than a league tab for the same reason the table is not
+league-scoped. Anyone may type the URL; the screen asks the server.
+
+---
+
 ### When a link does NOT work
 
 This was the worst bug the project has had, and every piece of it worked.

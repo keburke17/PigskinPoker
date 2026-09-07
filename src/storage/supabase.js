@@ -387,6 +387,15 @@ export function createSupabaseStore(config) {
     myLeagues: () => callWithAccount("myLeagues", {}),
     redeemInvite: (code) => callWithAccount("redeemInvite", { code }),
 
+    /* The site-admin screen (issue #40). Account-scoped for the same reason: the head
+     * coaches are ONE list shared by every league, so there is no league to be a
+     * commissioner of. `adminWhoami` answers only for the caller - the list of admins
+     * is never sent to a browser. */
+    adminWhoami: () => callWithAccount("adminWhoami", {}),
+    listCoaches: () => callWithAccount("listCoaches", {}),
+    setCoach: (team, name) => callWithAccount("setCoach", { team, name }),
+    syncCoaches: () => callWithAccount("syncCoaches", {}),
+
     createInvite: (teamId, role, opts = {}) =>
       call("createInvite", { teamId, role, expiresAt: opts.expiresAt ?? null, maxUses: opts.maxUses ?? null }),
     listInvites: () => call("listInvites", {}),

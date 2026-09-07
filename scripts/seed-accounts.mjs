@@ -211,6 +211,26 @@ export async function seedAccounts({ log = console.log, optional = false } = {})
     if (!memberOf.has(userId)) restored++;
   }
 
+  /* THE COMMISSIONER IS ALSO A SITE ADMIN HERE, and only here.
+   *
+   * `site_admins` is seeded by its migration with two real addresses (issue #40), neither
+   * of which has an account on a local stack - so without this line the /admin screen
+   * would be unreachable in local development and the only way to try it would be hand-
+   * written SQL. That is exactly the undocumented setup step this script exists to
+   * remove. Local by construction: `assertLocal` has already refused to run anywhere
+   * else, and `.test` addresses cannot resolve.
+   *
+   * It also makes the distinction visible rather than theoretical - the same account is a
+   * commissioner AND an admin, and the tests that matter (a commissioner is NOT an admin,
+   * tests/server.test.js) use their own addresses. */
+  const { error: adminErr } = await db
+    .from("site_admins")
+    .upsert({ email: COMMISSIONER_EMAIL, note: "local development" }, { onConflict: "email" });
+  if (adminErr && !optional) {
+    console.error("\n  Could not seed the local site admin: " + adminErr.message + "\n");
+    process.exit(1);
+  }
+
   /* The standing invitation for the unclaimed team. Re-created from scratch each run so
    * a reset - or a redemption during testing - leaves it usable again. */
   let invite = null;
