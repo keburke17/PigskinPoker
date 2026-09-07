@@ -16,12 +16,14 @@ import {
   DEFAULT_LINEUP_LOCK,
   LINEUP_LOCK,
   firstKickoff,
+  formatKickoffDay,
   isPlayerLocked,
   lineupLockMode,
   lockReason,
   lockTimeFor,
   lockedByClock,
   normalizeLineupLock,
+  playerKickoff,
 } from "../src/engine/lineupLock.js";
 import { kickoffIso, kickoffsFromGames } from "../server/feed/nflverse.js";
 
@@ -143,6 +145,38 @@ describe("the manual lock outranks the schedule", () => {
   it("holds a player nobody's clock would lock", () => {
     const s = state({ lockedPlayerIds: { p4: true } });
     expect(isPlayerLocked(s, "p4", at("2026-09-09T00:00:00Z"))).toBe(true);
+  });
+});
+
+/* The roster row shows each player's own game beside his NFL team (issue #33). It reads
+ * the same `periods.kickoffs` the lock reads, so the card cannot name a time the lock
+ * disagrees with - and it stays silent rather than guessing one. */
+describe("the kickoff a roster row shows", () => {
+  const s = state();
+
+  it("gives a player his own team's game", () => {
+    expect(playerKickoff(s, s.playerPool[1])).toBe(EARLY);
+    expect(playerKickoff(s, s.playerPool[2])).toBe(LATE);
+  });
+
+  it("says nothing for a bye week, a missing player, or a week never read", () => {
+    expect(playerKickoff(s, s.playerPool[3])).toBe(null);
+    expect(playerKickoff(s, null)).toBe(null);
+    expect(playerKickoff(state({ _meta: { kickoffs: {} } }), s.playerPool[1])).toBe(null);
+  });
+
+  it("refuses a half-written time rather than rendering Invalid Date", () => {
+    const broken = state({ _meta: { kickoffs: { "Chicago Bears": "not a date" } } });
+    expect(playerKickoff(broken, s.playerPool[1])).toBe(null);
+  });
+
+  it("carries the date as well as the weekday, because a card can be read weeks later", () => {
+    /* Local timezone by design, so this asserts the SHAPE - weekday, m/d, and a clock -
+     * rather than a wall time that would only hold in whichever zone CI runs in. */
+    const text = formatKickoffDay(EARLY);
+    expect(text).toMatch(/^[A-Za-z]{3}, \d{1,2}\/\d{1,2} \d{1,2}:\d{2}/);
+    expect(formatKickoffDay(null)).toBe("");
+    expect(formatKickoffDay("not a date")).toBe("");
   });
 });
 

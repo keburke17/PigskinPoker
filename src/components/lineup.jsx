@@ -30,8 +30,6 @@ import { eligibleBenchForSlot } from "./scheme.jsx";
 export function LineupEditor({ state, team, onSwap, showStats }) {
   /* The deadline arrives on its own, so the screen has to notice it on its own too. */
   const now = useNow();
-  const mode = lineupLockMode(state);
-  const kickoffs = kickoffsFor(state);
   const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
   if (!team.roster) {
     return (
@@ -58,9 +56,6 @@ export function LineupEditor({ state, team, onSwap, showStats }) {
         return (
           <div key={slot} style={{ marginBottom: 8 }}>
             <RosterSlotRow slot={slot} player={player} state={state} statLine={stats[slot]} locked={starterLocked} showStats={!!showStats} />
-            {mode === LINEUP_LOCK.GAMETIME && player && !starterLocked ? (
-              <SlotLockHint at={lockTimeFor(mode, kickoffs, player.team)} team={player.team} />
-            ) : null}
             {options.length > 0 ? (
               <SwapRow
                 disabled={starterLocked || open.length === 0}
@@ -117,15 +112,11 @@ export function LineupLockNote({ state, now = Date.now() }) {
   );
 }
 
-/** When this particular slot closes. Silent when there is no time to name. */
-export function SlotLockHint({ at, team }) {
-  if (!at) return null;
-  return (
-    <div className="pp-sub" style={{ marginLeft: 8, marginTop: 2 }}>
-      Locks {formatKickoff(at)} ({team})
-    </div>
-  );
-}
+/* SlotLockHint - "Locks Sun 1:00 PM (Detroit Lions)" under every gametime row - was
+ * deleted with issue #33. The roster row itself now carries each player's kickoff
+ * (src/components/roster.jsx), which under `gametime` IS the moment that slot closes,
+ * and LineupLockNote above says once what the league locks on. Three sayings of one
+ * fact was two too many on a phone. */
 
 export function SwapRow({ options, onSwap, disabled }) {
   return (

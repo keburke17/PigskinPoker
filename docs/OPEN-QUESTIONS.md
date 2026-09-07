@@ -906,6 +906,45 @@ all, which is most of the value.
 
 ---
 
+### OQ-J. The roster row is a playing card now. **[BUILT 2026-09-07 - two calls left for Scott]**
+
+Issue #33 asked for a denser player row - position chip left, points hard right, three
+tight lines - and Scott's screenshot on 2026-09-07 marked up the same row with two
+specific notes: make the position the loud thing, and put the game's date and time where
+the repetition was.
+
+Built, and presentation only. **No engine behaviour changed and `parity.test.js` is
+untouched.** What a row says now:
+
+- **The slot label and the suit badge are one miniature playing card**, rank in the
+  corner and the position's pip under it. It was two objects saying nearly the same word
+  next to a meta line that said it a third time.
+- **The position is said once.** Beside the NFL team it is gone - except on FLEX and the
+  bench, where the slot and the position are different facts (a running back in the FLEX)
+  and dropping one would lose information rather than remove a duplicate.
+- **This player's own kickoff, day and time**, in the reader's timezone. It is
+  `periods.kickoffs` - the same schedule the lineup lock reads - so the card cannot name
+  a time the lock disagrees with, and it says nothing at all for a bye week or a week
+  whose times have not been read yet. **This answers question 3 on the issue: yes to the
+  kickoff, no to the opponent** - the kickoff map is keyed by team, and two teams sharing
+  a 1:00 PM slot are not thereby playing each other, so an opponent would be a guess.
+- **Status (OUT, IR, BYE) is a pill on the name line**, beside LOCKED, instead of buried
+  after a pipe in the middle of a sentence.
+- **"Locks Sun 1:00 PM (Detroit Lions)" under every gametime row is gone.** The row now
+  carries that time itself, and the note above the lineup already says what the league
+  locks on. Three sayings of one fact.
+
+**The two questions the issue left open, and what was assumed:**
+
+1. **The bench got the same treatment** - same card, same kickoff line - because deciding
+   a swap is exactly when a bench player's game time matters. It does not get points or a
+   stat line, because a bench player has neither. **Send back if you want the bench thin.**
+2. **A row is 70px tall where it was about 44** (64px on the bench), carrying two more
+   facts. That is the trade the issue asked for - more per player - but it is the opposite
+   of "shorter", so it is worth seeing on your own phone before it is settled. It does at
+   least move every roster row past the 44px touch target **OQ-8** measured everything
+   under.
+
 ## What is still open
 
 Nothing blocks Phase 1. Remaining, in the order they are needed:
@@ -938,6 +977,9 @@ answered:
 
 - **OQ-G**, the scoreboard-first layout - built 2026-09-04, three parts to confirm or send
   back rather than a decision to make.
+- **OQ-J**, the roster row as a playing card - built 2026-09-07 from issue #33 and your
+  own screenshot. Two calls left: whether the bench gets the same row, and whether the
+  taller row is the trade you wanted.
 - **OQ-12**, whether the clock should be allowed to open the stats window. Raised while
   building the scheduled pull; it is a rules decision, not a tidy-up.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
