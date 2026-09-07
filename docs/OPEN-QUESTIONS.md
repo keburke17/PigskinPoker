@@ -602,6 +602,69 @@ second option later is a small change.
 It only bites a league playing `weekly`. Under `gametime` - the default - the two locks
 are answering different questions anyway.
 
+### OQ-13. Is "Standings Point Values by Rank" a rule anyone wants? **[FOR SCOTT]**
+
+Raised 2026-09-07 by Kyle, who opened the panel, could not work out what it was for, and
+still could not once it was explained. Nothing is broken. The question is whether a knob
+you built in the artifact is one you actually want on the board.
+
+**What it does.** It sets what each finishing position is paid in standings points. First
+number to whoever wins the week, second to the runner-up, and so on down. Left alone it is
+team count down to 1 - in a six-team league, `6, 5, 4, 3, 2, 1`.
+
+It is read in exactly one place, `currentStandingsPointsArray` (`src/engine/scoring.js:93`),
+and used by two: `finalizeCurrentPeriod`, which adds the number to a team's season total,
+and `projectCurrentPeriod`, which shows the same number mid-week on the Scoreboard. The
+Rules tab prints the ladder as a quick-reference tile.
+
+**Why it is not nothing.** Standings points are the first thing the standings sort on, and
+the playoff bracket is seeded off them, so this ladder decides how much a big week is
+worth. `6, 5, 4, 3, 2, 1` is nearly flat: winning a week by 80 points earns one more point
+than finishing second by two. Something top-heavy like `100, 50, 20, 5, 2, 1` makes a
+single dominant week close to decisive, and makes a bad week survivable in a way the flat
+ladder does not. That is a genuine feel decision about the season - it is just one nobody
+has ever made, because the default has never been changed.
+
+**The question:** is that a lever you want a commissioner to have, or was it something you
+put in because it was easy to put in?
+
+- **Keep it.** It costs nothing while unused - `null` means "derive from team count" - and
+  it is the only way to change the shape of a season without touching per-play scoring.
+- **Hide it.** Take the button out of the commissioner nav and leave the engine field
+  where it is. The nav is eleven buttons wrapping onto two rows inside a sticky header
+  that already eats 217px of an 812px phone (**OQ-8**), and this is the least-used of the
+  eleven, sitting next to Enter Stats. Nothing about the game changes; the ladder stays at
+  the default it has always been at.
+- **Remove it properly.** Every league is permanently on `teamCount .. 1`. This is the
+  expensive one: the field is part of the artifact's state shape, so `tests/parity.test.js`
+  compares it field by field, `tests/roundtrip.test.js` asserts it survives a save, and
+  `seasons.standings_points_override` would need a forward-only migration to drop. Worth
+  doing only if the answer is a firm no.
+
+**My recommendation: hide it.** It keeps the option in the engine for the day you want a
+top-heavy season, and it takes a button off a crowded phone nav today.
+
+**One thing to fix if it stays**, and it argues for hiding rather than keeping. **A saved
+ladder silently stops applying if it is shorter than the team count.** The override is
+honoured only when it has at least as many entries as there are teams
+(`src/engine/scoring.js:94`), and is discarded whole otherwise - back to `teamCount .. 1`,
+with nothing on any screen saying so. That bites twice:
+
+- Save `6, 5, 4, 3, 2, 1` for six teams, add a seventh, and the league quietly returns to
+  the default ladder mid-season.
+- In a league with no teams yet the panel shows `1`, because it falls back to
+  `state.teams.length || 1`. Pressing Save there stores `[1]`, which is then ignored
+  forever - harmless, but it is a setting that accepts a value and does nothing with it.
+  Kyle's screenshot is this case.
+
+The guard is doing something sensible - a ladder with no entry for last place would leave
+somebody unpaid - it just does it silently, and it is the only setting in the app that can
+be saved and then disregarded.
+
+**Nothing has been changed.** This is the boundary `CLAUDE.md` protects - the panel is
+yours, it came over from the artifact working exactly as it does now, and taking a rule off
+the board is still a rules change. Tracked as issue #48.
+
 ---
 
 ## Part 2 - Code that disagrees with the rules
@@ -963,6 +1026,7 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | **OQ-F** per-slot vs. per-player locks | Anytime | Behaviour-preserving; noted so it is not discovered later. |
 | **OQ-H** first-run guidance | **Built 2026-09-04** | Presentation only. Four reversible calls for Scott, and one finding: nothing in the app freezes on a clock. |
 | **OQ-I** you cannot see your own scheme | **Soon** | A real bug, not a preference. Needs a migration (Kyle) and a nod on OQ-9's intent (Scott). |
+| **OQ-13** is the standings-points ladder a rule anyone wants? | Anytime | Nothing depends on it - the default has never been changed. Raised because the panel is a button on a crowded phone nav for a lever nobody has pulled. |
 
 **The standing agenda is cleared.** OQ-A, OQ-B, OQ-C, OQ-D and OQ-E were all answered by
 Scott on 2026-09-06 and are recorded in full above. OQ-A was the only one that changed the
@@ -982,6 +1046,8 @@ answered:
   taller row is the trade you wanted.
 - **OQ-12**, whether the clock should be allowed to open the stats window. Raised while
   building the scheduled pull; it is a rules decision, not a tidy-up.
+- **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
+  button and leave the engine field, or take the rule off the board. Recommendation: hide.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
   kind of like that? but maybe we table that one for now until we hash out all the other
   small issues we need to clean up first." Raise it again when the Phase 4 stage list is
