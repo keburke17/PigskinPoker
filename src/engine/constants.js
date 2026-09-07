@@ -38,6 +38,9 @@ export const ICON = {
    * other glyph here, for the same reason - see the note above CP(). */
   caretRight: CP(0x25b8),
   caretDown: CP(0x25be),
+  /* The separator between the facts on a roster row - team, kickoff, position. A
+   * middot rather than a hyphen because the parts are a list, not a phrase. */
+  dot: CP(0x00b7),
 };
 
 export const SUIT_GLYPH = {

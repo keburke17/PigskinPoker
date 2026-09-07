@@ -192,16 +192,64 @@
 .pp-standings-first td{ background: rgba(217,182,76,0.08); }
 .pp-crown{ margin-right:4px; }
 
+/* THE ROSTER ROW, DEALT AS A HAND (issue #33, 2026-09-07).
+   Three tight lines against a playing card: name and points, then who he plays for and
+   when he plays, then the stat line. `.pp-roster-slot-label` is gone - the slot is the
+   rank on the card now, and the grey word beside the badge was the duplicate Scott
+   circled. */
 .pp-roster-slot{
-  display:flex; align-items:center; gap:10px; padding:9px 10px;
+  display:flex; align-items:center; gap:9px; padding:8px 10px;
   border:1px solid var(--border-soft); border-radius: var(--radius-sm);
   background: rgba(0,0,0,0.15); margin-bottom:6px;
 }
-.pp-roster-slot-label{ font-size:10px; font-weight:800; color:var(--text-faint); width:38px; flex:none; text-transform:uppercase; }
-.pp-roster-slot-name{ font-weight:700; font-size:13.5px; flex:1; min-width:0; }
-.pp-roster-slot-meta{ font-size:11px; color:var(--text-faint); }
-.pp-roster-slot-pts{ font-family: var(--font-mono); font-weight:700; color:var(--gold-bright); font-size:13px; }
-.pp-locked-pill{ font-size:9px; font-weight:800; color:#ffb4a8; border:1px solid #7a2e29; border-radius:4px; padding:1px 5px; }
+.pp-roster-slot-body{ flex:1; min-width:0; }
+.pp-roster-slot-top{ display:flex; align-items:baseline; gap:6px; }
+.pp-roster-slot-name{
+  font-weight:700; font-size:14px; flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pp-roster-slot-meta{ font-size:11px; color:var(--text-faint); margin-top:3px; line-height:1.35; }
+.pp-roster-slot-stats{ font-size:11.5px; color:var(--text-dim); margin-top:2px; line-height:1.35; }
+.pp-roster-slot-pts{ font-family: var(--font-mono); font-weight:700; color:var(--gold-bright); font-size:13px; flex:none; }
+.pp-locked-pill{ font-size:9px; font-weight:800; color:#ffb4a8; border:1px solid #7a2e29; border-radius:4px; padding:1px 5px; flex:none; }
+/* OUT, IR, BYE. Never Active - a healthy player says nothing. */
+.pp-status-pill{
+  font-size:9px; font-weight:800; letter-spacing:0.4px; flex:none;
+  color:#f0cf6b; border:1px solid var(--gold-dim); border-radius:4px; padding:1px 5px;
+  text-transform:uppercase;
+}
+
+/* THE SLOT AS A CARD. The rank sits top-left and the pip bottom-right, the way a card
+   in a fanned hand shows itself, on an ivory face that reads as a card on the felt
+   rather than as another coloured chip. The position keeps its own ink, so the six
+   suits stay colour-coded exactly as the badges were.
+
+   50px wide: the position is now the loudest thing on the row (what Scott asked for),
+   and the row's own tap target clears the 44px minimum OQ-8 measured everything under. */
+.pp-pos-card{
+  flex:none; width:50px; min-height:46px; box-sizing:border-box;
+  display:flex; flex-direction:column; justify-content:space-between;
+  padding:3px 4px; line-height:1;
+  border-radius:5px; border:1px solid rgba(0,0,0,0.4);
+  background: linear-gradient(158deg, #f6f2e6 0%, #e3dbc6 100%);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  color: var(--pip-ink, #171717);
+}
+/* 10.5px is not a fussy number: COACH is the longest rank and at 11px it hangs over
+   the edge of the card. */
+.pp-pos-card-rank{ font-size:10.5px; font-weight:800; text-transform:uppercase; text-align:left; }
+.pp-pos-card-pip{ font-size:20px; text-align:right; }
+.pp-pos-Coach{ --pip-ink:#171717; }
+.pp-pos-QB{ --pip-ink:#a3261d; }
+.pp-pos-WR{ --pip-ink:#1c3a63; }
+.pp-pos-RB{ --pip-ink:#17513c; }
+.pp-pos-TE{ --pip-ink:#4a327a; }
+.pp-pos-FLEX{ --pip-ink:#7a5410; }
+/* A slot with nobody in it is the shape of a card and nothing else. */
+.pp-pos-empty{
+  background:transparent; box-shadow:none; color:var(--text-faint);
+  border:1px dashed var(--border-soft);
+}
 
 .pp-error-banner{
   background: var(--danger-dim); border:1px solid #7a2e29; color:#ffdcd7;

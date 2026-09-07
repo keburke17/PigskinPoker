@@ -142,3 +142,36 @@ export function formatKickoff(iso) {
     return "";
   }
 }
+
+/**
+ * The same kickoff with its DATE on the front: "Sun, 9/14 1:00 PM".
+ *
+ * `formatKickoff` says "Sun 1:00 PM" because it is answering "how long have I got",
+ * and the answer is always about this week. The roster card is answering a different
+ * question - "when does this guy play" - on a screen that can be read weeks later,
+ * where a bare weekday names no particular Sunday. Local timezone, for the same reason
+ * as above: the manager is looking at the clock on his wall.
+ */
+export function formatKickoffDay(iso) {
+  if (!iso) return "";
+  try {
+    const at = new Date(iso);
+    /* A string that is not a time reads out as "Invalid Date Invalid Date" rather than
+     * throwing, so say nothing instead - the same answer this file gives everywhere
+     * else it does not know something. */
+    if (!Number.isFinite(at.getTime())) return "";
+    const day = at.toLocaleDateString([], { weekday: "short", month: "numeric", day: "numeric" });
+    const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return day + " " + time;
+  } catch (e) {
+    return "";
+  }
+}
+
+/** This player's own kickoff, whatever the league locks on. Null when the week's times
+ * have not been read, or his team is not playing - never a guess. */
+export function playerKickoff(state, player) {
+  if (!player || !player.team) return null;
+  const iso = kickoffsFor(state)[player.team];
+  return stamp(iso) == null ? null : iso;
+}

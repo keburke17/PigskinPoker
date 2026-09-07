@@ -11,6 +11,31 @@ export function SuitBadge({ position }) {
   return <span className={"pp-suit-badge pp-suit-" + position} title={position}>{SUIT_GLYPH[position] || "?"}</span>;
 }
 
+/* THE SLOT, DEALT AS A CARD (issue #33).
+ *
+ * A roster row used to open with two separate things saying nearly the same word: a
+ * small grey "QB" label, then a coloured suit badge, then "QB - Detroit Lions" again in
+ * the meta line. Scott's note on 2026-09-07 was that the position deserves to be the
+ * loud thing on the left and should be said once. So the label and the badge are one
+ * object now - a miniature playing card, rank in the corner and the position's own pip
+ * under it, which is what this game has been calling these all along.
+ *
+ * `slot` is the lineup place (COACH, QB, WR, RB, TE, FLEX, BN) and is the rank. The pip
+ * and the ink come from the PLAYER'S position, so a running back in the FLEX deals as a
+ * club under a FLEX rank and the two facts stay distinguishable. An empty slot gets the
+ * outline of a card with no pip on it, which is exactly what it is.
+ */
+export function PositionCard({ slot, position }) {
+  const suited = position && SUIT_GLYPH[position] ? position : null;
+  const title = position ? (position === slot ? slot : slot + " - " + position) : slot;
+  return (
+    <span className={"pp-pos-card " + (suited ? "pp-pos-" + suited : "pp-pos-empty")} title={title}>
+      <span className="pp-pos-card-rank">{slot}</span>
+      <span className="pp-pos-card-pip">{position ? SUIT_GLYPH[position] || "?" : ""}</span>
+    </span>
+  );
+}
+
 export function Tag({ children }) {
   return <span className="pp-tag">{children}</span>;
 }
