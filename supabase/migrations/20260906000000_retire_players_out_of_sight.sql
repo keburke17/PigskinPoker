@@ -26,6 +26,15 @@
 --
 -- Forward-only. Adds one defaulted column and backfills it. No row is deleted, and no
 -- player's `status` is changed.
+--
+-- WHY THE FILENAME SAYS 09-06 AND THE TEXT SAYS 09-04. This was written on the 4th,
+-- against a database whose last migration was 20260829000000. Lineup lock and the
+-- scheduled stats pull (20260905*) reached the hosted project first, which left this
+-- file sorting BEFORE two migrations already applied - and `supabase db push` refuses
+-- that rather than inserting into the middle of a history. It had never been applied
+-- anywhere hosted, so it was restamped on 2026-09-06 rather than pushed with
+-- --include-all: a monotonic history is what lets `npm run db:push` stay the one
+-- command, and that command is also what runs verify-grants afterwards.
 
 alter table players
   -- True when the pool refresh dropped this player: he stopped being one of his team's

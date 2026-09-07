@@ -169,7 +169,8 @@ export function planPoolRefresh({ existing, wanted, at }) {
      * only from Active. `retired` keeps him out of the MANAGERS' sight, which OUT could
      * not: the Free Agents screen gives OUT its own tab, so a misspelling the feed
      * replaced - "James Cook" beside a starting "James Cook III" - was on show to
-     * everybody in the league. See the migration of 2026-09-04 for the whole of it. */
+     * everybody in the league. See the migration
+     * 20260906000000_retire_players_out_of_sight.sql for the whole of it. */
     retires.push({
       id: row.id,
       status: "OUT",
