@@ -1921,7 +1921,12 @@ async function advanceOneLeague(db, { league, now, feed }) {
   steps.push(...finalize.steps);
   if (finalize.failure) return { steps, failure: finalize.failure };
 
-  const deal = await dealIfDue(db, { league, now, feed });
+  /* Re-read ONLY if the finalize actually moved something. On an ordinary hour - which
+   * is almost every hour - nothing did, so the league we just read is still current and
+   * the deal step is one more pure comparison rather than a second full read of every
+   * table. That matters at 24 runs a day, per league, for a job that acts twice a week. */
+  const acted = finalize.steps.some((st) => st.did);
+  const deal = await dealIfDue(db, { league, now, feed, ctx: acted ? null : ctx });
   steps.push(...deal.steps);
   if (deal.failure) return { steps, failure: deal.failure };
 
@@ -1987,8 +1992,8 @@ async function finalizeIfReady(db, { league, ctx, now, feed }) {
 }
 
 /** Deal the week in front of the league, if this is the morning to do it. */
-async function dealIfDue(db, { league, now, feed }) {
-  const ctx = await systemContext(db, league.id);
+async function dealIfDue(db, { league, now, feed, ctx: known = null }) {
+  const ctx = known ?? (await systemContext(db, league.id));
   if (ctx.error) return { steps: [{ step: "deal", did: false, why: "no such league" }] };
 
   const verdict = dealEligibility({
