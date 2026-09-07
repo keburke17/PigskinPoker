@@ -24,6 +24,16 @@ import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
 import { planStatsPull, statWriteRows } from "./stats.js";
 import { pullEligibility, summarize } from "./autoPull.js";
+import {
+  DEADLINES,
+  advanceEligibility,
+  dealEligibility,
+  deadlineWords,
+  schemesEligibility,
+  summarize as summarizeCycle,
+  zoneOf,
+} from "./autoCycle.js";
+import { isValidTimeZone } from "./tz.js";
 import { isValidNflWeek, nextNflWeek } from "./schedule.js";
 import { selectFeed } from "./feed/index.js";
 import {
@@ -95,6 +105,25 @@ async function context(db, leagueId, token) {
   return { session, rows, view, period };
 }
 
+/**
+ * The same context, for a caller that is not a person.
+ *
+ * The SCHEDULED weekly cycle (issue #52) runs inside our own deployment on the secret
+ * key, with no session to verify and nobody to return a 401 to. It gets the rows and
+ * the view the same way every other operation does; what it does NOT get is a way past
+ * any check - `server/autoCycle.js` re-asks every question `PHASE_RULES` asks, and the
+ * league has to have opted in before it is even considered.
+ *
+ * Not exported. Nothing outside this file may build a context without a token.
+ */
+async function systemContext(db, leagueId) {
+  const rows = await fetchLeagueRows(db, leagueId);
+  if (!rows) return { error: fail(404, "League not found.") };
+  const view = hydrate(rows);
+  const period = rows.periods.find((p) => p.id === view?._meta?.periodId) ?? null;
+  return { session: null, rows, view, period };
+}
+
 function guard(ctx, opName, expect, keys) {
   const { view, period } = ctx;
   const allowed = PHASE_RULES[opName];
@@ -148,6 +177,26 @@ const playerRow = (rows, legacyId) =>
   legacyId == null ? null : (rows.players.find((p) => p.legacy_id === legacyId) ?? null);
 
 /**
+ * When each NFL week of this season starts, or null if the schedule cannot be read.
+ *
+ * BEST EFFORT ON PURPOSE. This only improves a DEFAULT that the commissioner can
+ * already override with `setNflWeek`, so a feed that is down, slow or reshaped must not
+ * fail the finalize or the league creation that asked for it - it falls back to the
+ * behaviour that shipped before issue #45.
+ */
+async function readWeekStarts(season, feed) {
+  if (!season) return null;
+  try {
+    const source = feed || (await selectFeed());
+    if (!source.fetchWeekStarts) return null;
+    const { weekStarts } = await source.fetchWeekStarts({ season });
+    return weekStarts && Object.keys(weekStarts).length ? weekStarts : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Give a period the app just created its NFL week.
  *
  * A period is born unmapped: it is written by decompose along with the rest of the
@@ -160,7 +209,7 @@ const playerRow = (rows, legacyId) =>
  * overwrites a mapping that is already there, which makes it safe to call twice and
  * keeps it away from a commissioner's correction.
  */
-async function mapNewPeriod(client, seasonId, current) {
+async function mapNewPeriod(client, seasonId, current, { season, feed } = {}) {
   if (!current) return;
   const { data: periods } = await client
     .from("periods")
@@ -169,7 +218,13 @@ async function mapNewPeriod(client, seasonId, current) {
   if (!periods) return;
   const row = periods.find((p) => p.type === current.type && p.number === current.number);
   if (!row || row.nfl_week != null) return;
-  const week = nextNflWeek({ periods, period: row });
+  /* Only worth reading the schedule when nothing is mapped yet - once one period has a
+   * week, the mapping counts forward from it and the calendar has no say (issue #45,
+   * server/schedule.js). Skipping the fetch in the ordinary case keeps a finalize from
+   * waiting on a 8.6 MB file it will not use. */
+  const anyMapped = periods.some((p) => isValidNflWeek(p.nfl_week));
+  const weekStarts = anyMapped ? null : await readWeekStarts(season, feed);
+  const week = nextNflWeek({ periods, period: row, weekStarts });
   if (week == null) return;
   /* A failure here is not worth failing the deal or the finalize over: the week is
    * still playable, and the commissioner can set the mapping himself. */
@@ -279,12 +334,17 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
 
   /* The blank league's week 1, mapped to an NFL week before it is written. decompose
    * does not carry the column (server/schedule.js), so this is the only chance to set
-   * it at creation - and with nothing else mapped yet it resolves to league week 1 =
-   * NFL week 1, which is right for a league opening on opening weekend and correctable
-   * with setNflWeek when it is not. */
+   * it at creation.
+   *
+   * SINCE ISSUE #45 IT ASKS THE CALENDAR rather than assuming opening weekend. A league
+   * created in October now starts on the NFL week October is playing; it used to start
+   * on week 1, which fetched the wrong stats and locked rosters against a schedule from
+   * a month earlier. Still correctable with setNflWeek, and a schedule that cannot be
+   * read falls back to the old answer. */
+  const weekStarts = await readWeekStarts(seasonYear);
   rows.periods = (rows.periods ?? []).map((p) => ({
     ...p,
-    nfl_week: nextNflWeek({ periods: [], period: p }),
+    nfl_week: nextNflWeek({ periods: [], period: p, weekStarts }),
   }));
 
   /* PLAYERS ARE NOT IN THAT LIST any more. They are copied from `player_pool` in one
@@ -880,7 +940,25 @@ async function commissionerLifecycle(db, leagueId, token, opName, expect, apply)
   }
   const bad = guard(ctx, opName, expect, [vkey.period()]);
   if (bad) return bad;
+  return runLifecycle(db, leagueId, ctx, apply);
+}
 
+/**
+ * A lifecycle step, with no opinion about who asked for it.
+ *
+ * Split out of `commissionerLifecycle` so the SCHEDULED cycle (issue #52) runs the same
+ * code rather than a second implementation of it - the same reason `runStatsPull` was
+ * split out of `pullStats`, and the same reason `src/engine/` is shared with the
+ * server. Two implementations of "deal a week" would be a very quiet way to hand out
+ * different rosters on a Tuesday morning than on a Tuesday afternoon.
+ *
+ * THE AUTHORIZATION AND THE PHASE GUARDS STAY WITH THE CALLERS, because they genuinely
+ * differ. The button answers to a commissioner's session and returns 409s he reads on
+ * screen; the scheduler answers to a cron and treats the same conditions as reasons to
+ * skip a league quietly (server/autoCycle.js). What must NOT differ is what gets
+ * written, which is everything below.
+ */
+async function runLifecycle(db, leagueId, ctx, apply) {
   const outcome = await apply(ctx);
   if (outcome.error) return fail(400, outcome.error, { reason: "invalid", view: ctx.view });
 
@@ -974,7 +1052,24 @@ export async function dealPeriod(db, { leagueId, token, expect, feed, refresh })
     }
   }
 
-  return commissionerLifecycle(db, leagueId, token, "dealPeriod", expect, async (ctx) => {
+  return commissionerLifecycle(
+    db, leagueId, token, "dealPeriod", expect,
+    applyDeal({ poolRefresh, feed })
+  );
+}
+
+/**
+ * The deal itself, shared by the button and by the clock (issue #52).
+ *
+ * `by` is the only thing that differs between the two, and it changes one word in the
+ * activity log. THAT WORD MATTERS: a roster that appeared overnight with nobody
+ * pressing anything must say so, in the one place the league reads its own history.
+ * The same promise `poolRefreshNote` makes about a pool that changed by itself.
+ *
+ * @param {"commissioner"|"the schedule"} by
+ */
+function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
+  return async (ctx) => {
     const v = ctx.view;
     const teamIds =
       v.currentPeriod.type === "playoff" ? v.playoffConfig.activeTeamIds : v.teams.map((t) => t.id);
@@ -1005,8 +1100,9 @@ export async function dealPeriod(db, { leagueId, token, expect, feed, refresh })
       ts: new Date().toISOString(),
       type: "deal",
       text:
-        "Rosters dealt for " + label + " (" + teamIds.length +
-        " team" + (teamIds.length === 1 ? "" : "s") + ")." + poolRefreshNote(poolRefresh),
+        "Rosters dealt" + (by === "commissioner" ? "" : " automatically") + " for " + label +
+        " (" + teamIds.length + " team" + (teamIds.length === 1 ? "" : "s") + ")." +
+        poolRefreshNote(poolRefresh),
     });
 
     return {
@@ -1014,7 +1110,13 @@ export async function dealPeriod(db, { leagueId, token, expect, feed, refresh })
       afterPersist: async (client) => {
         await client
           .from("periods")
-          .update({ deal_seed: seed, dealt_at: new Date().toISOString() })
+          /* `dealt_at` IS READ BACK AS A DEADLINE, not just recorded: every "has this
+           * week's deadline passed" question in server/autoCycle.js compares against
+           * it. So when the clock deals, it stamps its OWN now rather than the wall
+           * clock - the same reason `rng` is injected into the engine. In production
+           * the two are the same instant; in a test with a frozen clock they are not,
+           * and a week dealt "now" must not immediately look overdue. */
+          .update({ deal_seed: seed, dealt_at: new Date(now ?? Date.now()).toISOString() })
           .eq("id", ctx.period.id);
         /* Read the week's kickoff times here, because dealing is when the week starts
          * and the lock needs a clock from that moment on. Best effort by design: a
@@ -1024,15 +1126,47 @@ export async function dealPeriod(db, { leagueId, token, expect, feed, refresh })
         await readKickoffs(client, ctx.period, ctx.rows.seasons[0]?.year, feed);
       },
     };
-  });
+  };
 }
 
 export async function processSchemes(db, { leagueId, token, expect }) {
-  return commissionerLifecycle(db, leagueId, token, "processSchemes", expect, async (ctx) => {
+  return commissionerLifecycle(db, leagueId, token, "processSchemes", expect, applyProcessSchemes());
+}
+
+/**
+ * Scheme resolution, shared by the button and by the clock (issue #52).
+ *
+ * Note what this does beyond resolving schemes: it sets `rosterLocked = true`, matching
+ * the artifact (legacy line 2305). So automating the Thursday step also OPENS THE STATS
+ * WINDOW in the ordinary case, and a league with `auto_pull_stats` on becomes eligible
+ * for its scheduled pull without anyone pressing Lock Rosters. That is most of what
+ * OQ-12 was asking about, arriving from a different direction; OQ-12 itself - whether
+ * the LINEUP lock alone should be enough - stays open and unbuilt.
+ *
+ * A team with no scheme on file is skipped by the engine rather than erroring, which is
+ * the whole reason 3am Thursday becomes a real deadline. See the header of
+ * server/autoCycle.js.
+ */
+function applyProcessSchemes({ by = "commissioner" } = {}) {
+  return async (ctx) => {
     const seed = newSeed();
     const blob = engineProcessSchemes(ctx.view, seededRng(seedFromString(seed)));
     blob.currentPeriod.phase = "schemes-processed";
     blob.rosterLocked = true;
+    if (by !== "commissioner") {
+      const label =
+        (blob.currentPeriod.type === "playoff" ? "Playoff Round " : "Week ") + blob.currentPeriod.number;
+      blob.activityLog.push({
+        id: "act_autoschemes_" + blob.currentPeriod.type + blob.currentPeriod.number,
+        period: { ...blob.currentPeriod },
+        periodLabel: label,
+        ts: new Date().toISOString(),
+        type: "auto",
+        text:
+          "Schemes for " + label + " were processed automatically at the " +
+          deadlineWords(DEADLINES.schemes) + " deadline. Rosters are now locked.",
+      });
+    }
     return {
       blob,
       afterPersist: async (client) => {
@@ -1046,13 +1180,40 @@ export async function processSchemes(db, { leagueId, token, expect }) {
           .is("resolved_at", null);
       },
     };
-  });
+  };
 }
 
-export async function finalizePeriod(db, { leagueId, token, expect }) {
-  return commissionerLifecycle(db, leagueId, token, "finalizePeriod", expect, async (ctx) => {
+export async function finalizePeriod(db, { leagueId, token, expect, feed }) {
+  return commissionerLifecycle(db, leagueId, token, "finalizePeriod", expect, applyFinalize({ feed }));
+}
+
+/**
+ * Finalize, shared by the button and by the clock (issue #52).
+ *
+ * THE ONE STEP WITH NO UNDO. It writes `cumulative` - "standings are updated" - and it
+ * is legal from `schemes-processed` as well as from `stats`, which means it will score
+ * a week of blank stat boxes as a week of zeros for everybody without complaining. The
+ * guard against an unattended one doing that is entirely in `advanceEligibility`
+ * (server/autoCycle.js), which refuses until every game of the mapped NFL week is
+ * final. Nothing here is allowed to assume the caller checked.
+ */
+function applyFinalize({ feed, by = "commissioner" } = {}) {
+  return async (ctx) => {
     const result = finalizeCurrentPeriod(ctx.view);
     if (result.error) return { error: result.error };
+    if (by !== "commissioner") {
+      const done = ctx.view.currentPeriod;
+      const label = (done.type === "playoff" ? "Playoff Round " : "Week ") + done.number;
+      result.state.activityLog.push({
+        id: "act_autofinal_" + done.type + done.number,
+        period: { ...done },
+        periodLabel: label,
+        ts: new Date().toISOString(),
+        type: "auto",
+        text: label + " was finalized automatically - every game of NFL week " +
+          ctx.period.nfl_week + " was final.",
+      });
+    }
     return {
       blob: result.state,
       afterPersist: async (client) => {
@@ -1061,13 +1222,16 @@ export async function finalizePeriod(db, { leagueId, token, expect }) {
           .update({ phase: "finalized", finalized_at: new Date().toISOString() })
           .eq("id", ctx.period.id);
         // Finalize advances to the next week, so a brand new period row now exists.
-        await mapNewPeriod(client, ctx.rows.seasons[0].id, result.state.currentPeriod);
+        await mapNewPeriod(client, ctx.rows.seasons[0].id, result.state.currentPeriod, {
+          season: ctx.rows.seasons[0].year,
+          feed,
+        });
       },
     };
-  });
+  };
 }
 
-export async function startPlayoffs(db, { leagueId, token, bracketSize, advancement }) {
+export async function startPlayoffs(db, { leagueId, token, bracketSize, advancement, feed }) {
   return commissionerLifecycle(db, leagueId, token, "startPlayoffs", null, async (ctx) => {
     const blob = engineStartPlayoffs(ctx.view, bracketSize, advancement);
     return {
@@ -1076,7 +1240,10 @@ export async function startPlayoffs(db, { leagueId, token, bracketSize, advancem
        * work out on its own if the season was never mapped - "round 1" says nothing
        * about which Sunday it is. It counts on from the last mapped week instead. */
       afterPersist: async (client) => {
-        await mapNewPeriod(client, ctx.rows.seasons[0].id, blob.currentPeriod);
+        await mapNewPeriod(client, ctx.rows.seasons[0].id, blob.currentPeriod, {
+          season: ctx.rows.seasons[0].year,
+          feed,
+        });
       },
     };
   });
@@ -1228,7 +1395,32 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
   const bad = guard(ctx, "refreshPlayerPool", expect, []);
   if (bad) return bad;
 
-  const season = ctx.rows.seasons[0]?.year ?? new Date().getUTCFullYear();
+  const outcome = await runPoolRefresh(db, { leagueId, rows: ctx.rows, feed });
+  if (outcome.error) {
+    return fail(outcome.error.status, outcome.error.message, {
+      reason: outcome.error.reason,
+      view: ctx.view,
+    });
+  }
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)), report: outcome.report });
+}
+
+/**
+ * The refresh itself, with no opinion about who asked for it.
+ *
+ * Split out for the same reason `runStatsPull` was: the SCHEDULED deal (issue #52)
+ * refreshes the pool first exactly as the commissioner's "Refresh Pool & Deal Rosters"
+ * button does, and a second implementation of "what the depth charts say now" is the
+ * last thing this project wants - it would be a very quiet way to deal from a different
+ * pool on a Tuesday morning than on a Tuesday afternoon.
+ *
+ * AUTHORIZATION AND PHASE GUARDS STAY WITH THE CALLERS. What must not differ is what
+ * gets written, which is everything below.
+ *
+ * @returns {{ report: object }|{ error: { status: number, message: string, reason: string } }}
+ */
+async function runPoolRefresh(db, { leagueId, rows, feed }) {
+  const season = rows.seasons[0]?.year ?? new Date().getUTCFullYear();
 
   let snapshot;
   let injuries = { ok: false, reason: "not read" };
@@ -1267,20 +1459,26 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
   } catch (err) {
     /* A feed that is down, late, or has changed shape must not take the league with it.
      * The pool is left exactly as it was and the commissioner deals from what he has. */
-    return fail(502, "Could not reach the stats feed - the pool is unchanged. " + err.message, {
-      reason: "feed",
-      view: ctx.view,
-    });
+    return {
+      error: {
+        status: 502,
+        message: "Could not reach the stats feed - the pool is unchanged. " + err.message,
+        reason: "feed",
+      },
+    };
   }
 
   if (!snapshot.players.length) {
-    return fail(502, "The stats feed returned no players - the pool is unchanged.", {
-      reason: "feed-empty",
-      view: ctx.view,
-    });
+    return {
+      error: {
+        status: 502,
+        message: "The stats feed returned no players - the pool is unchanged.",
+        reason: "feed-empty",
+      },
+    };
   }
 
-  const leaguePlayers = ctx.rows.players.filter((p) => p.league_id === leagueId);
+  const leaguePlayers = rows.players.filter((p) => p.league_id === leagueId);
   const plan = planPoolRefresh({
     existing: leaguePlayers,
     wanted: snapshot.players,
@@ -1288,7 +1486,7 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
   });
 
   if (plan.inserts.length) {
-    const rows = plan.inserts.map((r, i) => ({
+    const inserts = plan.inserts.map((r, i) => ({
       ...r,
       league_id: leagueId,
       // legacy_id keeps the artifact-shaped view working; hydrate maps players by it.
@@ -1296,8 +1494,8 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
       active: true,
       version: 1,
     }));
-    const { error } = await db.from("players").insert(rows);
-    if (error) return fail(500, "Adding new players failed: " + error.message);
+    const { error } = await db.from("players").insert(inserts);
+    if (error) return { error: { status: 500, message: "Adding new players failed: " + error.message, reason: "write" } };
   }
 
   /* Batched deliberately: one request per changed player is a few hundred sequential
@@ -1308,11 +1506,10 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
     existing: leaguePlayers,
   })) {
     const { error } = await db.from("players").upsert(chunk, { onConflict: "id" });
-    if (error) return fail(500, "Updating the pool failed: " + error.message);
+    if (error) return { error: { status: 500, message: "Updating the pool failed: " + error.message, reason: "write" } };
   }
 
-  return good({
-    view: hydrate(await fetchLeagueRows(db, leagueId)),
+  return {
     report: {
       ...plan.report,
       gaps: snapshot.gaps,
@@ -1320,7 +1517,7 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
       injuries,
       season,
     },
-  });
+  };
 }
 
 /**
@@ -1582,6 +1779,309 @@ export async function scheduledStatsPull(db, { feed } = {}) {
   }
 
   return good(summarize(outcomes));
+}
+
+/**
+ * Turn the weekly cycle's clock on or off, and say which clock it is.
+ *
+ * THE SAME SHAPE AS `setAutoPullStats`, and for the same reasons: commissioner-only,
+ * per league, default off, written by direct update rather than through the blob so an
+ * ordinary save cannot flip it. What is different is what it grants, and that is worth
+ * being plain about - unlike the stats pull, this one CHANGES HOW THE LEAGUE IS PLAYED:
+ *
+ *   - `processSchemes` on a clock makes 3am Thursday a real deadline. A manager who
+ *     forgets loses his scheme for the week, where today the commissioner waits.
+ *   - `advanceWeek` finalizes without a person looking at the numbers first. It refuses
+ *     until every game of the mapped NFL week is final (server/autoCycle.js), but a
+ *     finalize is still the one step in this app with no undo.
+ *
+ * Both are off until he says otherwise, and every button he has today still works and
+ * still wins - the clock presses the same buttons, it does not replace them.
+ *
+ * Each field is optional: sending only `tz` changes only the timezone.
+ */
+export async function setAutoCycle(db, { leagueId, token, processSchemes, advanceWeek, tz }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+
+  const patch = {};
+  for (const [key, value] of [
+    ["auto_process_schemes", processSchemes],
+    ["auto_advance_week", advanceWeek],
+  ]) {
+    if (value === undefined) continue;
+    if (typeof value !== "boolean") return fail(400, "Each switch must be true or false.");
+    patch[key] = value;
+  }
+  if (tz !== undefined) {
+    /* Refused at the door rather than three hours later inside a cron, where the only
+     * symptom would be a league that quietly stopped advancing. */
+    if (!isValidTimeZone(tz)) return fail(400, "That is not a timezone this app knows.");
+    patch.tz = tz;
+  }
+  if (!Object.keys(patch).length) return fail(400, "Nothing to change.");
+
+  const { error } = await db.from("leagues").update(patch).eq("id", leagueId);
+  if (error) return fail(500, error.message);
+
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Issue #52: run the weekly cycle on a clock, for the leagues that asked for it.
+ *
+ * Scott's request in his own words, recorded as OQ-14: rosters dealt automatically on
+ * Tuesday morning, schemes processed at 3am Thursday, standings updated when the
+ * numbers are in.
+ *
+ * WHAT MAKES THIS SAFE IS THAT IT IS NOT NEW. Every step runs the SAME `apply` the
+ * commissioner's button runs - `applyProcessSchemes`, `applyFinalize`, `applyDeal` -
+ * through the same `runLifecycle` and the same `persistBlob`. There is no second
+ * implementation of dealing a week or resolving a scheme, and there never will be.
+ *
+ * NO NEW CREDENTIAL. Called from a scheduled Netlify function that already holds the
+ * secret key - a peer of netlify/functions/api.mjs, not a client of it - so there is no
+ * scheduler token to mint, store, rotate or leak, no new route into the API, and
+ * `verifySession` is untouched. Exactly the shape stage 7's stats pull took.
+ *
+ * EVERY REFUSAL IS A SKIP, and the guards run in cost order: the free ones first, the
+ * feed only for a league that could actually act on it. Most hours of most weeks every
+ * league fails an early guard and the job makes no outbound request at all.
+ *
+ * ORDER WITHIN A LEAGUE IS ADVANCE, THEN SCHEMES, and it is deliberate. On a Tuesday
+ * the advance finalizes and deals, leaving the new week in `dealt` with `dealt_at` set
+ * to now - which is AFTER the most recent Thursday deadline, so the scheme step
+ * correctly skips it rather than processing an hours-old week's schemes on the spot.
+ *
+ * @param {object} db    a secret-key client
+ * @param {number} now   epoch ms, injected so tests can freeze the clock
+ * @param {object} feed  injected by tests; otherwise feed/index.js chooses
+ */
+export async function scheduledWeeklyCycle(db, { now = Date.now(), feed } = {}) {
+  const { data: leagues, error } = await db
+    .from("leagues")
+    .select("id, name, tz, auto_process_schemes, auto_advance_week, auto_pull_stats")
+    .or("auto_process_schemes.eq.true,auto_advance_week.eq.true");
+  if (error) return fail(500, "Could not list leagues: " + error.message);
+
+  const outcomes = [];
+  for (const league of leagues ?? []) {
+    const where = { leagueId: league.id, league: league.name, tz: zoneOf(league) };
+    const steps = [];
+    let failure = null;
+
+    try {
+      const advanced = await advanceOneLeague(db, { league, now, feed });
+      steps.push(...advanced.steps);
+      if (advanced.failure) failure = advanced.failure;
+
+      if (!failure) {
+        const processed = await processOneLeague(db, { league, now });
+        steps.push(...processed.steps);
+        if (processed.failure) failure = processed.failure;
+      }
+    } catch (err) {
+      failure = "unexpected: " + (err?.message ?? String(err));
+    }
+
+    if (failure) {
+      outcomes.push({ ...where, status: "failed", why: failure, steps });
+    } else {
+      const acted = steps.filter((st) => st.did);
+      outcomes.push({
+        ...where,
+        status: acted.length ? "acted" : "skipped",
+        why: acted.length ? acted.map((st) => st.step).join(" + ") : steps.map((st) => st.why).join("; "),
+        steps,
+      });
+    }
+  }
+
+  return good(summarizeCycle(outcomes));
+}
+
+/**
+ * Tuesday morning: finalize the week just played, and deal the next one.
+ *
+ * TWO STEPS, NOT ONE, and either can happen without the other. The commissioner very
+ * often finalizes himself on Monday night, which leaves the week in `pre-deal` with
+ * nothing to finalize - a job that could only "finalize and then deal" would skip that
+ * league forever. So the finalize is attempted, and then the deal is attempted
+ * regardless of whether it ran. See `dealEligibility` in server/autoCycle.js.
+ */
+async function advanceOneLeague(db, { league, now, feed }) {
+  const steps = [];
+  const ctx = await systemContext(db, league.id);
+  if (ctx.error) return { steps: [{ step: "advance", did: false, why: "no such league" }] };
+
+  const finalize = await finalizeIfReady(db, { league, ctx, now, feed });
+  steps.push(...finalize.steps);
+  if (finalize.failure) return { steps, failure: finalize.failure };
+
+  const deal = await dealIfDue(db, { league, now, feed });
+  steps.push(...deal.steps);
+  if (deal.failure) return { steps, failure: deal.failure };
+
+  return { steps };
+}
+
+/** Score the week just played - but only once its football is genuinely over. */
+async function finalizeIfReady(db, { league, ctx, now, feed }) {
+  const teamCount = periodTeamCount(ctx.view);
+
+  /* The cheap guards first, and only then the feed - the same cost discipline
+   * server/autoPull.js keeps. `needsResults` is the cue that everything else passed. */
+  let verdict = advanceEligibility({ league, period: ctx.period, teamCount, now });
+  if (!verdict.eligible && !verdict.needsResults) {
+    return { steps: [{ step: "finalize", did: false, why: verdict.why }] };
+  }
+
+  let results;
+  try {
+    const source = feed || (await selectFeed());
+    ({ results } = await source.fetchGameResults({
+      season: ctx.rows.seasons[0]?.year,
+      week: ctx.period.nfl_week,
+    }));
+  } catch (err) {
+    /* A feed that is down on a Tuesday morning is a reason to try again in an hour, not
+     * a reason to page anyone - and emphatically not a reason to finalize anyway. */
+    return { steps: [{ step: "finalize", did: false, why: "could not read the results: " + err.message }] };
+  }
+
+  verdict = advanceEligibility({ league, period: ctx.period, teamCount, results, now });
+  if (!verdict.eligible) return { steps: [{ step: "finalize", did: false, why: verdict.why }] };
+
+  const steps = [];
+
+  /* ONE LAST PULL BEFORE THE NUMBERS ARE COMMITTED, for a league that already asked for
+   * automatic pulls. The three-hourly job may have last run some hours ago, and this is
+   * the final chance for a corrected line to land before it becomes a standings point.
+   * Best effort: it never overwrites a line the commissioner typed, and a failure here
+   * is not a reason to hold the week up. */
+  if (league.auto_pull_stats && ctx.period.roster_locked) {
+    const pulled = await runStatsPull(db, {
+      leagueId: league.id, rows: ctx.rows, period: ctx.period, feed,
+    });
+    steps.push({
+      step: "final pull",
+      did: !pulled.error,
+      why: pulled.error ? pulled.error.message : pulled.report.filled.length + " line(s) filled",
+    });
+  }
+
+  /* Re-read: the pull just wrote stat lines, and finalizing off a stale view would
+   * score the week without them. */
+  const fresh = await systemContext(db, league.id);
+  if (fresh.error) return { steps, failure: "the league vanished mid-run" };
+
+  const finalized = await runLifecycle(db, league.id, fresh, applyFinalize({ feed, by: "the schedule" }));
+  if (finalized.status !== 200) {
+    return { steps, failure: "finalize failed: " + (finalized.body?.error ?? finalized.status) };
+  }
+  steps.push({ step: "finalize", did: true, why: verdict.why });
+  return { steps };
+}
+
+/** Deal the week in front of the league, if this is the morning to do it. */
+async function dealIfDue(db, { league, now, feed }) {
+  const ctx = await systemContext(db, league.id);
+  if (ctx.error) return { steps: [{ step: "deal", did: false, why: "no such league" }] };
+
+  const verdict = dealEligibility({
+    league,
+    next: ctx.period,
+    teamCount: periodTeamCount(ctx.view),
+    playoffsComplete: ctx.view?.playoffConfig?.completed === true,
+    previousFinalizedAt: lastFinalizedAt(ctx.rows),
+    now,
+  });
+  if (!verdict.eligible) {
+    if (verdict.endOfSeason) await noteEndOfSeason(db, ctx, league.id);
+    return { steps: [{ step: "deal", did: false, why: verdict.why }] };
+  }
+
+  /* Refresh the pool first, exactly as "Refresh Pool & Deal Rosters" does - Scott's
+   * 2026-09-06 answer was that a deal should be off live rosters every time, and an
+   * automatic deal is no less a deal. A feed failure notes itself and deals anyway. */
+  const refreshed = await runPoolRefresh(db, { leagueId: league.id, rows: ctx.rows, feed });
+  const poolRefresh = refreshed.error
+    ? { ok: false, why: refreshed.error.message }
+    : { ok: true, report: refreshed.report };
+
+  /* Re-read, because the refresh just rewrote the players the deal is about to read. */
+  const beforeDeal = await systemContext(db, league.id);
+  if (beforeDeal.error) return { steps: [], failure: "the league vanished mid-run" };
+
+  const dealt = await runLifecycle(
+    db, league.id, beforeDeal,
+    applyDeal({ poolRefresh, feed, by: "the schedule", now })
+  );
+  if (dealt.status !== 200) {
+    return { steps: [], failure: "deal failed: " + (dealt.body?.error ?? dealt.status) };
+  }
+  return { steps: [{ step: "deal", did: true, why: verdict.why }] };
+}
+
+/** When the season's most recently finished week ended, or null if none has. */
+function lastFinalizedAt(rows) {
+  const stamps = (rows.periods ?? [])
+    .map((p) => p.finalized_at)
+    .filter(Boolean)
+    .sort();
+  return stamps.length ? stamps[stamps.length - 1] : null;
+}
+
+/** Thursday 3am: resolve every block, steal and redraw, and close the week's schemes. */
+async function processOneLeague(db, { league, now }) {
+  const ctx = await systemContext(db, league.id);
+  if (ctx.error) return { steps: [{ step: "schemes", did: false, why: "no such league" }] };
+
+  const verdict = schemesEligibility({
+    league, period: ctx.period, teamCount: periodTeamCount(ctx.view), now,
+  });
+  if (!verdict.eligible) return { steps: [{ step: "schemes", did: false, why: verdict.why }] };
+
+  const out = await runLifecycle(db, league.id, ctx, applyProcessSchemes({ by: "the schedule" }));
+  if (out.status !== 200) {
+    return { steps: [], failure: "process schemes failed: " + (out.body?.error ?? out.status) };
+  }
+  return { steps: [{ step: "schemes", did: true, why: verdict.why }] };
+}
+
+/** Teams eligible for the period in front of us - all of them, or the survivors. */
+function periodTeamCount(view) {
+  if (!view) return 0;
+  return view.currentPeriod?.type === "playoff"
+    ? (view.playoffConfig?.activeTeamIds ?? []).length
+    : (view.teams ?? []).length;
+}
+
+/**
+ * Say in the app - not just in a log nobody reads - that the clock has run out of
+ * regular season and it is the commissioner's move.
+ *
+ * Written once. The activity log's ids are deterministic elsewhere for the same reason:
+ * an hourly job that appended this every hour would bury the week it belongs to.
+ */
+async function noteEndOfSeason(db, ctx, leagueId) {
+  const id = "act_seasonend_" + (ctx.view?.currentPeriod?.number ?? 0);
+  if ((ctx.view?.activityLog ?? []).some((e) => e.id === id)) return;
+  const blob = JSON.parse(JSON.stringify(ctx.view));
+  blob.activityLog.push({
+    id,
+    period: { ...blob.currentPeriod },
+    periodLabel: (blob.currentPeriod.type === "playoff" ? "Playoff Round " : "Week ") + blob.currentPeriod.number,
+    ts: new Date().toISOString(),
+    type: "auto",
+    text:
+      "That was the last week of the regular season, so nothing more will be dealt " +
+      "automatically. Starting the playoffs is yours - Commissioner -> Playoffs.",
+  });
+  await runLifecycle(db, leagueId, ctx, async () => ({ blob }));
 }
 
 export async function replaceLeague(db, { leagueId, token, blob }) {

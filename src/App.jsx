@@ -348,6 +348,7 @@ export default function App() {
   const onSetLineupLock = (mode) => ops.setLineupLock(mode);
   const onRefreshKickoffs = () => ops.refreshKickoffs();
   const onSetAutoPullStats = (enabled) => ops.setAutoPullStats(enabled);
+  const onSetAutoCycle = (patch) => ops.setAutoCycle(patch);
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -797,6 +798,7 @@ export default function App() {
               onFinalize={onFinalize} finalizeError={finalizeError}
               onPullStats={onPullStats} statsReport={statsReport}
               onSetAutoPullStats={onSetAutoPullStats}
+              onSetAutoCycle={onSetAutoCycle}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}

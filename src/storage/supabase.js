@@ -441,6 +441,10 @@ export function createSupabaseStore(config) {
     /* Whether the scheduled job may pull this league's stats. Off by default; the
      * commissioner turns it on for his own league. See server/autoPull.js. */
     setAutoPullStats: (enabled) => call("setAutoPullStats", { enabled }),
+    /* Issue #52: the weekly cycle on a clock. Each field is optional - sending only
+     * `tz` changes only the timezone - so the panel's three controls are three calls
+     * rather than one that has to know the other two's current values. */
+    setAutoCycle: (patch) => call("setAutoCycle", patch),
 
     async mutateLeague(fn) {
       const view = await readView();

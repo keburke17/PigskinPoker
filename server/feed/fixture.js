@@ -26,6 +26,7 @@ import {
   parseCsv,
   parseWeeklyStats,
   resultsFromGames,
+  weekStartsFromGames,
 } from "./nflverse.js";
 
 export const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixture");
@@ -103,6 +104,21 @@ export async function fetchKickoffs({ season, week } = {}) {
     season,
     week: Number(week),
     kickoffs: kickoffsFromGames(parseCsv(read("games.csv")), { season, week }),
+  };
+}
+
+/**
+ * When each week of the recorded season starts (issue #45).
+ *
+ * games.csv again, for the same reason `fetchKickoffs` uses it: it is THIS fixture
+ * season's real schedule, so a league created locally in "October" defaults to the week
+ * October is actually playing. The relabelled past week the stat lines come from would
+ * put the season in the wrong year entirely.
+ */
+export async function fetchWeekStarts({ season } = {}) {
+  return {
+    season,
+    weekStarts: weekStartsFromGames(parseCsv(read("games.csv")), { season }),
   };
 }
 

@@ -29,10 +29,25 @@
  * thing under "Lineup Lock & Injury Swaps"; this card must not drift from it, and must
  * not invent a weekday of its own - `weekly` names the week's first kickoff, whatever
  * day that turns out to be.
+ *
+ * AND SINCE ISSUE #52, THE SCHEME DEADLINE CAN BE A CLOCK AFTER ALL. A league may opt
+ * into having schemes processed at a fixed hour each week and the next week dealt and
+ * finalized on a Tuesday morning (OQ-14; both off by default). So the sentence above -
+ * "this half must never promise a weekday" - now holds only for a league that has NOT
+ * switched that on, and the words below branch on it. The named deadline comes from
+ * schemeDeadlineWords()/advanceDeadlineWords() so that this card, the Help tab and the
+ * server's own guard cannot disagree about when it is.
  */
 
 import { useState } from "react";
-import { LINEUP_LOCK, lineupLockMode } from "../engine/index.js";
+import {
+  LINEUP_LOCK,
+  advanceDeadlineWords,
+  autoAdvanceWeek,
+  autoProcessSchemes,
+  lineupLockMode,
+  schemeDeadlineWords,
+} from "../engine/index.js";
 import { nextStep } from "./guidance.js";
 
 export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, onDismiss, onGoTo }) {
@@ -93,10 +108,13 @@ function ManagerBasics({ state }) {
     <ul className="pp-rule-list pp-overlay-list">
       <li><strong>Fresh roster every week.</strong> 12 random players - 6 starters (Coach, QB, WR, RB, TE, FLEX) and 6 bench. Nothing carries over, so a bad week is only a week.</li>
       <li><strong>One scheme per week.</strong> Block protects a starter, Steal takes an unprotected starter off another team, Redraw swaps a player for a random free agent. No Action is a real choice, and it is what you get if you submit nothing.</li>
+      {autoProcessSchemes(state) ? (
+        <li><strong>Schemes close at {schemeDeadlineWords(state)}.</strong> On the clock, like waivers - not when somebody gets round to it. Miss it and you get No Action for the week.</li>
+      ) : null}
       {weekly ? (
-        <li><strong>Your lineup closes at the week's first kickoff.</strong> Usually Thursday night. Schemes close earlier, when your commissioner processes the week - so do both while you are thinking about it.</li>
+        <li><strong>Your lineup closes at the week&apos;s first kickoff.</strong> Usually Thursday night. Schemes close earlier{autoProcessSchemes(state) ? "" : ", when your commissioner processes the week"} - so do both while you are thinking about it.</li>
       ) : (
-        <li><strong>Each player locks when his own game starts.</strong> So you can keep changing your lineup all Sunday, using anyone who has not kicked off yet. Schemes close separately, when your commissioner processes the week.</li>
+        <li><strong>Each player locks when his own game starts.</strong> So you can keep changing your lineup all Sunday, using anyone who has not kicked off yet. Schemes close separately{autoProcessSchemes(state) ? "" : ", when your commissioner processes the week"}.</li>
       )}
       <li><strong>Only starters score.</strong> Bench players never score, whatever they do on Sunday.</li>
     </ul>
@@ -107,12 +125,33 @@ function CommissionerBasics({ state }) {
   const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
   return (
     <ul className="pp-rule-list pp-overlay-list">
-      <li><strong>The week is a cycle you drive.</strong> Deal rosters, let managers submit schemes, process the schemes, lock the rosters, enter stats, finalize. Nothing advances on its own.</li>
+      {anyClock(state) ? (
+        <li><strong>The week is a cycle, and part of it runs on a clock.</strong> Deal rosters, let managers submit schemes, process the schemes, lock the rosters, enter stats, finalize. {clockSentence(state)} Every button is still yours, and pressing one early always wins.</li>
+      ) : (
+        <li><strong>The week is a cycle you drive.</strong> Deal rosters, let managers submit schemes, process the schemes, lock the rosters, enter stats, finalize. Nothing advances on its own.</li>
+      )}
       <li><strong>Set up once.</strong> Teams, then invites, then - if you want them - the player pool, the scoring rates and the NFL week. All of it lives under Commissioner.</li>
-      <li><strong>The scheme deadline is yours to press.</strong> "Lock Rosters for the Weekend" closes scheme submission, and nothing does that on a clock. {weekly ? "Lineups close on their own at the week's first kickoff, because that is the rule your league is set to." : "Lineups close on their own too - each player when his own game starts."} You can freeze any player by hand as well, and that always wins.</li>
-      <li><strong>Finalize ends the week.</strong> It scores everyone, awards standings points and opens the next week. Do it once the stats are right.</li>
+      <li><strong>The scheme deadline.</strong> {autoProcessSchemes(state) ? "Schemes are processed at " + schemeDeadlineWords(state) + ", which also locks rosters for the weekend." : "\"Lock Rosters for the Weekend\" closes scheme submission, and nothing does that on a clock."} {weekly ? "Lineups close on their own at the week's first kickoff, because that is the rule your league is set to." : "Lineups close on their own too - each player when his own game starts."} You can freeze any player by hand as well, and that always wins.</li>
+      <li><strong>Finalize ends the week.</strong> It scores everyone, awards standings points and opens the next week. {autoAdvanceWeek(state) ? "On the clock it runs at " + advanceDeadlineWords(state) + ", and only once every game of the week is final - so check the stats before then, because a finalize cannot be undone." : "Do it once the stats are right."}</li>
     </ul>
   );
+}
+
+/* Whether anything at all in this league moves without somebody pressing a button, and
+ * the one sentence that says which parts. Kept together so the overlay and the Help
+ * tab's "What happens on its own" card describe the same two switches. */
+function anyClock(state) {
+  return autoProcessSchemes(state) || autoAdvanceWeek(state);
+}
+
+function clockSentence(state) {
+  const schemes = autoProcessSchemes(state);
+  const week = autoAdvanceWeek(state);
+  if (schemes && week) {
+    return "Schemes process at " + schemeDeadlineWords(state) + ", and the week is finalized and the next one dealt at " + advanceDeadlineWords(state) + ".";
+  }
+  if (schemes) return "Schemes process at " + schemeDeadlineWords(state) + "; the rest waits for you.";
+  return "The week is finalized and the next one dealt at " + advanceDeadlineWords(state) + "; schemes still wait for you to process them.";
 }
 
 /* The quieter, permanent version of the same sentence. #26 asked for this specifically:

@@ -40,6 +40,15 @@ Each has a recommendation so you have something to say yes or no to.
 > done first. Two Phase 4 questions closed, and **one new request opened - the pool should
 > refresh itself at the weekly rollover** rather than waiting to be pressed. See
 > `docs/PHASE-4-PLAN.md` section 8.
+>
+> **Answered 2026-09-07 - OQ-14, the weekly cycle on a clock.** Scott asked for rosters
+> dealt automatically on Tuesday morning and schemes processed at 3am Thursday "just how
+> waivers would process in real fantasy football". Built as **two per-league switches,
+> both defaulting to off**, so nothing moves until a commissioner turns it on. This is
+> the boundary `CLAUDE.md` protects, so it is recorded as a decision rather than as a
+> feature: the two things it changes about playing in the league - a real scheme deadline
+> and an unattended finalize - are written out in full below, along with two defaults
+> chosen rather than asked for. **The honest gap is that nobody is notified** (OQ-6).
 
 ---
 
@@ -599,6 +608,18 @@ writing stats into a week without him is a change to it, however reasonable the 
 The scheduler shipped respecting `roster_locked` exactly as it stands, and moving to the
 second option later is a small change.
 
+**Update 2026-09-07: most of this arrived from a different direction, and the question is
+still open.** OQ-14 put the SCHEME step on a clock, and `processSchemes` sets
+`rosterLocked = true` as it always has (matching the artifact, legacy line 2305). So in a
+league that has switched that on, the stats window opens at 3am Thursday without anyone
+pressing Lock Rosters, and the scheduled pull becomes eligible on its own - the "set it
+and forget it" gap this question describes is closed in practice for those leagues.
+
+What is still genuinely open is the narrower question as asked: whether the LINEUP lock
+firing should be enough on its own, for a league that has automated nothing else. Nothing
+was built for that, and a commissioner who leaves both OQ-14 switches off is in exactly
+the position described above.
+
 It only bites a league playing `weekly`. Under `gametime` - the default - the two locks
 are answering different questions anyway.
 
@@ -664,6 +685,99 @@ be saved and then disregarded.
 **Nothing has been changed.** This is the boundary `CLAUDE.md` protects - the panel is
 yours, it came over from the artifact working exactly as it does now, and taking a rule off
 the board is still a rules change. Tracked as issue #48.
+
+---
+
+### OQ-14. Should the weekly cycle run on a clock? **[ANSWERED 2026-09-07: yes, per league, off by default]**
+
+Raised as issue #52, from Scott's own description of the league he wants:
+
+> Rosters are dealt automatically Tuesday morning. Schemes are processed Thursday morning
+> at like 3am (just how waivers would process in real fantasy football), and then you have
+> until players' games to adjust lineups until each player individually locks once their
+> game starts. The weekend is played. Monday night game is over. Stats are all compiled in
+> real time. Tuesday morning rosters are dealt automatically for the next week. Standings
+> are updated.
+
+**This needed recording as a decision before anything was built**, because `CLAUDE.md`
+says plainly: *"The commissioner-driven weekly flow: pre-deal -> dealt ->
+schemes-processed -> stats -> finalized. Do not automate away the commissioner's
+control."* That line exists to stop a session doing this unasked. It is not a veto on
+Scott asking for it - he is the person it defers to - but it does mean the answer belongs
+here, dated, with what it costs written down beside it.
+
+**Answer: build it, per league, both switches defaulting to OFF.** So no league's rules
+move until a commissioner turns it on, and the commissioner keeps every button he has -
+the clock presses the same ones, it does not replace them.
+
+#### What it does to the league, in Scott's own terms
+
+Two things are worth him seeing spelled out, because they are changes in FEEL rather than
+in plumbing:
+
+- **3am Thursday becomes a real deadline.** `processSchemes` skips a team with no scheme
+  on file - it is not an error, nothing happens for them. Today the commissioner waits
+  until everyone is in. On a clock, "forgot to pick" costs you your scheme for the week,
+  with no appeal. That is the waivers analogy working exactly as intended, and it is
+  still a change: a manager who has never had a deadline now has one.
+- **An unattended finalize is the one step with no undo.** `finalizePeriod` is legal from
+  `schemes-processed` as well as `stats`, and it will happily finalize a week whose stat
+  boxes are blank, writing a week of zeros into `cumulative` for everybody. **The guard
+  built for this asks whether the FOOTBALL is over, not whether the boxes are full** -
+  every team with a kickoff this week must have a result in the schedule. A postponed
+  game makes the job wait and try again an hour later. That distinction matters because
+  "a missing stat line" is also exactly what a healthy starter who was inactive looks
+  like, and OQ-4c says he scores 0.
+
+Because the finalize is the riskier half, the two are **separate switches**: a
+commissioner can let the Thursday deadline run itself and still finalize by hand.
+
+#### What was built, 2026-09-07
+
+- `leagues.auto_process_schemes` and `leagues.auto_advance_week`, both default false, plus
+  `leagues.tz`. Migration `20260907010000_auto_weekly_cycle.sql`.
+- One scheduled Netlify function, `run-cycle-scheduled.mjs`, **hourly**. Not because it
+  acts hourly - it acts twice a week - but because cron is UTC and both deadlines are
+  local: 3am Eastern is 07:00Z under EDT and 08:00Z under EST, and **the season crosses
+  the change on 1 November 2026**. Each league answers for its own timezone instead.
+- The rules are `server/autoCycle.js` - pure, testable without a database, and every
+  guard is a reason to SKIP rather than to fail. The steps themselves are the same
+  `applyDeal` / `applyProcessSchemes` / `applyFinalize` the commissioner's buttons run;
+  there is no second implementation of dealing a week.
+- The commissioner's switches live on Commissioner -> Weeks -> "Run the week on a clock".
+
+#### Two defaults I chose rather than ones you asked for
+
+1. **Tuesday morning means 6am**, league local time. You named 3am Thursday exactly and
+   left "Tuesday morning" loose. 6am leaves the longest gap after Monday night football
+   for the numbers to be published, and still has the roster there before anyone is up.
+2. **Both hours are constants in code**, not settings. Changing either is a one-line edit;
+   making them settings would put two more knobs on a commissioner nav that OQ-8 already
+   calls too crowded. Say if you want a different hour.
+
+#### Three things the clock deliberately will not do
+
+- **Deal the first week of a season.** There is no finished week behind it to follow, and
+  week 1 should wait until the teams are in and the invites sent.
+- **Deal past the end of the regular season.** Nothing in the engine knows how long a
+  regular season is - left alone the job would deal week 19, 20 and 21 into January. It
+  finalizes week 18, writes a line in the activity log saying the season is over, and
+  stops.
+- **Start the playoffs.** That takes a bracket size and an advancement ladder. No clock
+  can choose those, and it stays a human act.
+
+#### What is NOT built, and is the honest gap
+
+**Nobody is told anything.** If the roster lands at 6am Tuesday and schemes lock at 3am
+Thursday, a manager finds out by remembering to open the app. That is survivable today
+because a human deals and posts in the group chat; it is much less survivable when
+nothing human is involved. **OQ-6 (notifications) is the real prerequisite** and Resend is
+already wired up for magic links. Raised as its own issue.
+
+What this pass does instead is make the clock visible: every screen that describes the
+week now names the deadline in the league's own timezone, there is a "What happens on its
+own" card in Help, and everything the clock does is written into the activity log with its
+own icon. That is not a substitute for an email.
 
 ---
 
@@ -1027,6 +1141,7 @@ Nothing blocks Phase 1. Remaining, in the order they are needed:
 | **OQ-H** first-run guidance | **Built 2026-09-04** | Presentation only. Four reversible calls for Scott, and one finding: nothing in the app freezes on a clock. |
 | **OQ-I** you cannot see your own scheme | **Soon** | A real bug, not a preference. Needs a migration (Kyle) and a nod on OQ-9's intent (Scott). |
 | **OQ-13** is the standings-points ladder a rule anyone wants? | Anytime | Nothing depends on it - the default has never been changed. Raised because the panel is a button on a crowded phone nav for a lever nobody has pulled. |
+| **OQ-14** should the weekly cycle run on a clock? | **Done - answered 2026-09-07** | Yes, per league, both switches off by default. Built the same day (issue #52). Makes 3am Thursday a real deadline and lets a week finalize unattended once its football is over. |
 
 **The standing agenda is cleared.** OQ-A, OQ-B, OQ-C, OQ-D and OQ-E were all answered by
 Scott on 2026-09-06 and are recorded in full above. OQ-A was the only one that changed the
@@ -1045,7 +1160,12 @@ answered:
   own screenshot. Two calls left: whether the bench gets the same row, and whether the
   taller row is the trade you wanted.
 - **OQ-12**, whether the clock should be allowed to open the stats window. Raised while
-  building the scheduled pull; it is a rules decision, not a tidy-up.
+  building the scheduled pull; it is a rules decision, not a tidy-up. **Mostly overtaken
+  by OQ-14** - automating the scheme step opens the window anyway - but still open for a
+  league that automates nothing.
+- **OQ-14 is answered and built, and two things in it are yours to look at**: the
+  Tuesday hour (6am was chosen, not asked for), and whether to actually switch either
+  one on in your league. Nothing is on until you say so.
 - **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
   button and leave the engine field, or take the rule off the board. Recommendation: hide.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do

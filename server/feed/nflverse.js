@@ -18,6 +18,8 @@
  * The decisions about what to do with them live in server/operations.js.
  */
 
+import { instantOf } from "../tz.js";
+
 /* -------------------------------------------------------------- sources -- */
 
 export const DEPTH_CHART_URL = (season) =>
@@ -808,6 +810,47 @@ export function kickoffsFromGames(rows, { season, week }) {
 }
 
 /**
+ * When each NFL week of a season starts - its earliest kickoff.
+ *
+ * WHAT IT IS FOR: issue #45. A period created mid-season used to default to the
+ * league's own week number, so a league opening in October mapped its week 1 to NFL
+ * week 1 - fetching September's stats and, worse, locking rosters against September's
+ * kickoff times. Knowing when each week begins is all it takes to default to the week
+ * actually being played.
+ *
+ * Same file, same parse, one more pass: games.csv carries every week's `gameday` and
+ * `gametime` from the day the schedule is published, so this answers before a ball is
+ * thrown, which is the only time it is any use.
+ *
+ * @returns {{ season, weekStarts: Object<number,string> }} NFL week -> ISO timestamp of
+ *   its first kickoff. A week with no times listed is absent rather than guessed at.
+ */
+export async function fetchWeekStarts({ season, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(GAMES_URL);
+  if (!res.ok) throw new Error("nflverse games returned HTTP " + res.status);
+  return {
+    season,
+    weekStarts: weekStartsFromGames(parseCsv(await res.text()), { season }),
+  };
+}
+
+/** Exported for testing: each week's earliest kickoff, out of the whole games file. */
+export function weekStartsFromGames(rows, { season }) {
+  const wantedSeason = String(season);
+  const out = {};
+  for (const r of rows) {
+    if (String(r.season) !== wantedSeason) continue;
+    const week = Number(r.week);
+    if (!Number.isInteger(week)) continue;
+    const iso = kickoffIso(r.gameday, r.gametime);
+    if (!iso) continue;
+    /* Same format, same zone, so a string compare IS a time compare. */
+    if (!out[week] || iso < out[week]) out[week] = iso;
+  }
+  return out;
+}
+
+/**
  * `gameday` + `gametime` as an instant.
  *
  * THE TIMES IN THAT FILE ARE EASTERN WALL CLOCK, with no offset on them, and the
@@ -829,27 +872,20 @@ export function kickoffIso(gameday, gametime) {
     Number(time[1]), Number(time[2])
   );
   if (!Number.isFinite(naive)) return null;
-  let utc = naive + easternOffsetMs(naive);
-  utc = naive + easternOffsetMs(utc);
-  return new Date(utc).toISOString();
+  return new Date(
+    instantOf(
+      {
+        year: Number(day[1]), month: Number(day[2]), day: Number(day[3]),
+        hour: Number(time[1]), minute: Number(time[2]),
+      },
+      EASTERN
+    )
+  ).toISOString();
 }
 
-const EASTERN = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  hour12: false,
-  year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", second: "2-digit",
-});
-
-/* How far behind UTC New York is at that instant, in milliseconds - +4h or +5h, as a
- * number to ADD to an Eastern wall clock to get UTC. Formatting the instant in the zone
- * and reading it back as if it were UTC is the standard trick, and it needs no data of
- * its own: the browser and Node both ship the zone table. */
-function easternOffsetMs(utcMs) {
-  const p = {};
-  EASTERN.formatToParts(new Date(utcMs)).forEach((part) => {
-    if (part.type !== "literal") p[part.type] = Number(part.value);
-  });
-  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
-  return utcMs - asUtc;
-}
+/* The zone those times are written in. The two-pass offset dance that turns a wall
+ * clock into an instant used to live here; it moved to server/tz.js when the scheduled
+ * weekly cycle needed the same arithmetic for a league that names its own zone. One
+ * implementation, for the same reason `runStatsPull` is shared: two would drift, and
+ * the symptom would be an hour, twice a season, in the direction nobody checks. */
+const EASTERN = "America/New_York";

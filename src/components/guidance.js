@@ -15,10 +15,14 @@
 
 import {
   LINEUP_LOCK,
+  advanceDeadlineWords,
+  autoAdvanceWeek,
+  autoProcessSchemes,
   firstKickoff,
   formatKickoff,
   kickoffsFor,
   lineupLockMode,
+  schemeDeadlineWords,
 } from "../engine/index.js";
 
 /* The weekly cycle, named once. CLAUDE.md writes it as
@@ -36,6 +40,26 @@ function weeklyDeadline(state) {
 }
 
 const isWeekly = (state) => lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
+
+/* ---------------------------------------------------------------------------
+ * THE CLOCK (issue #52, OQ-14). A league can have the scheme deadline and the
+ * Tuesday-morning finalize-and-deal run on their own. Both are off by default, so every
+ * sentence below has to branch: telling a manager "there is no clock, so do it now"
+ * when 3am Thursday will take his scheme off him is the exact failure that made
+ * automating this worth documenting in the first place.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Will the clock deal the week in front of this league?
+ *
+ * NOT SIMPLY `autoAdvanceWeek`. The clock never deals the FIRST week of a season -
+ * there is no finished week behind it to follow, so `dealEligibility` refuses (see
+ * server/autoCycle.js). Week 1 waits for the commissioner, and saying otherwise on his
+ * own screen would leave him waiting for a Tuesday that never comes.
+ */
+function clockWillDeal(state) {
+  return autoAdvanceWeek(state) && (state.weeklyResults || []).length > 0;
+}
 
 /**
  * The one thing this person should do next, or the one thing they are waiting on.
@@ -63,11 +87,19 @@ function commissionerStep(state) {
     };
   }
   if (phase === "pre-deal") {
-    return {
-      headline: "Deal " + periodName(state) + ".",
-      detail: "Every team gets a fresh, random 12-player roster. Invite your managers first if they are not in yet - Commissioner " + ARROWED + " Invite.",
-      tab: "comm",
-    };
+    return clockWillDeal(state)
+      ? {
+          headline: periodName(state) + " is dealt for you at " + advanceDeadlineWords(state) + ".",
+          detail: "Nothing to press - the clock deals it, refreshing the player pool first. You can still deal it now yourself if you would rather not wait.",
+          tab: "comm",
+        }
+      : {
+          headline: "Deal " + periodName(state) + ".",
+          detail:
+            "Every team gets a fresh, random 12-player roster. Invite your managers first if they are not in yet - Commissioner " + ARROWED + " Invite." +
+            (autoAdvanceWeek(state) ? " The clock takes over from next week - it never deals the first one." : ""),
+          tab: "comm",
+        };
   }
   if (phase === "dealt") {
     return state.rosterLocked
@@ -76,13 +108,26 @@ function commissionerStep(state) {
           detail: "Rosters are locked, so scheme submission is closed. Pull Stats fills every starter's boxes from the NFL week; anything you typed yourself is never overwritten.",
           tab: "comm",
         }
-      : {
-          headline: "Wait for schemes, then process them.",
-          detail: "Managers are setting lineups and picking schemes. Commissioner " + ARROWED + " Weeks shows who is still out. Processing resolves every block, steal and redraw at once.",
-          tab: "comm",
-        };
+      : autoProcessSchemes(state)
+        ? {
+            headline: "Schemes process themselves at " + schemeDeadlineWords(state) + ".",
+            detail: "Managers are setting lineups and picking schemes; Commissioner " + ARROWED + " Weeks shows who is still out. Anyone who has not submitted by then gets No Action for the week. You can still process early if everyone is in.",
+            tab: "comm",
+          }
+        : {
+            headline: "Wait for schemes, then process them.",
+            detail: "Managers are setting lineups and picking schemes. Commissioner " + ARROWED + " Weeks shows who is still out. Processing resolves every block, steal and redraw at once.",
+            tab: "comm",
+          };
   }
   if (phase === "schemes-processed") {
+    if (autoAdvanceWeek(state)) {
+      return {
+        headline: "The week finalizes itself on " + advanceDeadlineWords(state) + ".",
+        detail: "Once every game of the NFL week is final, the clock scores the week, awards standings points and deals the next one. Check the stats before then if you want to correct anything - after a finalize there is no undo.",
+        tab: "comm",
+      };
+    }
     return {
       headline: "Lock the rosters, then enter stats.",
       detail: isWeekly(state)
@@ -91,7 +136,13 @@ function commissionerStep(state) {
       tab: "comm",
     };
   }
-  return { headline: "Finalize the week.", detail: "Finalizing scores the week, awards standings points and opens the next one.", tab: "comm" };
+  return autoAdvanceWeek(state)
+    ? {
+        headline: "The week finalizes itself on " + advanceDeadlineWords(state) + ".",
+        detail: "The clock waits until every game of the NFL week is final, then scores the week and deals the next one. Finalize it yourself sooner if the numbers are already right.",
+        tab: "comm",
+      }
+    : { headline: "Finalize the week.", detail: "Finalizing scores the week, awards standings points and opens the next one.", tab: "comm" };
 }
 
 function managerStep(state, team) {
@@ -101,7 +152,11 @@ function managerStep(state, team) {
   if (!team || !team.roster || phase === "pre-deal") {
     return {
       headline: "Nothing to do yet.",
-      detail: "Your commissioner deals " + period + " when the league is ready. You will get 12 players - 6 starters and 6 bench - and then you set your lineup and pick a scheme.",
+      detail:
+        (clockWillDeal(state)
+          ? period + " is dealt automatically on " + advanceDeadlineWords(state) + "."
+          : "Your commissioner deals " + period + " when the league is ready.") +
+        " You will get 12 players - 6 starters and 6 bench - and then you set your lineup and pick a scheme.",
       tab: null,
     };
   }
@@ -120,14 +175,21 @@ function managerStep(state, team) {
   if (!scheme) {
     return {
       headline: "Set your lineup and submit a scheme.",
-      detail: "Your roster is in. Pick your 6 starters, then choose Block, Steal, Redraw or No Action. Submit before your commissioner processes the week - there is no clock, so do it now.",
+      detail:
+        "Your roster is in. Pick your 6 starters, then choose Block, Steal, Redraw or No Action. " +
+        (autoProcessSchemes(state)
+          ? "Schemes close at " + schemeDeadlineWords(state) + ", on the clock. Miss it and you get No Action for the week."
+          : "Submit before your commissioner processes the week - there is no clock, so do it now."),
       tab: "myteam",
     };
   }
 
   return {
     headline: "You are in. " + schemeWord(scheme) + " is on file.",
-    detail: "You can change it right up until the commissioner processes " + period + "." +
+    detail:
+      (autoProcessSchemes(state)
+        ? "You can change it right up until " + schemeDeadlineWords(state) + "."
+        : "You can change it right up until the commissioner processes " + period + ".") +
       (isWeekly(state)
         ? " Keep an eye on your lineup too - every lineup closes at " + weeklyDeadline(state) + "."
         : " Keep an eye on your lineup too - bench swaps stay open until each player's own game kicks off."),

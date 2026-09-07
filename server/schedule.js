@@ -37,9 +37,13 @@ export function isValidNflWeek(week) {
  * on its own, and every week after it. That is the whole reason to count from the
  * existing mapping rather than from the league's week number.
  *
- * With nothing mapped yet it falls back to the league's own week number, which is
- * correct for a league opening on opening weekend - the case the reset league is - and
- * correctable when it is not.
+ * WITH NOTHING MAPPED YET IT ASKS THE CALENDAR (issue #45). This used to fall back
+ * straight to the league's own week number, which is right for a league opening on
+ * opening weekend and wrong in a way that LOOKS right for every other one: a league
+ * created in October mapped its week 1 to NFL week 1, so the stats pull fetched
+ * September's numbers and - the more damaging half - the lineup lock fired on
+ * September's kickoff times. Given `weekStarts`, the answer is instead the week that is
+ * about to be played, and the old fallback only applies when no schedule was available.
  *
  * A playoff round with nothing to count from stays NULL rather than guessing: its
  * `number` is the round, not a week of football, and "playoff round 1" is no evidence
@@ -48,9 +52,13 @@ export function isValidNflWeek(week) {
  *
  * @param {Array}  periods  every period row in the season, mapped or not
  * @param {{type: string, number: number}} period  the one being created
+ * @param {Object<number,string>|null} weekStarts  NFL week -> ISO of its first kickoff,
+ *        from the caller (server/feed's `fetchWeekStarts`). Absent falls back to the
+ *        league's week number, which is what this did before #45.
+ * @param {number} now  epoch ms, injected so the rule is testable with a frozen clock
  * @returns {number|null}
  */
-export function nextNflWeek({ periods = [], period }) {
+export function nextNflWeek({ periods = [], period, weekStarts = null, now = Date.now() }) {
   const mapped = periods.filter((p) => isValidNflWeek(p.nfl_week)).map((p) => p.nfl_week);
   if (mapped.length) {
     const next = Math.max(...mapped) + 1;
@@ -58,6 +66,46 @@ export function nextNflWeek({ periods = [], period }) {
      * refuses cleanly; a clamp to 23 would silently pull the wrong week's numbers. */
     return isValidNflWeek(next) ? next : null;
   }
-  if (period && period.type === "week" && isValidNflWeek(period.number)) return period.number;
+  /* AN EXISTING MAPPING ALWAYS WINS over the calendar, and that ordering is the point:
+   * a commissioner's correction has to keep carrying forward. The calendar only speaks
+   * for a season nobody has mapped anything in yet. */
+  if (period && period.type === "week") {
+    const fromCalendar = weekInProgress(weekStarts, now);
+    if (fromCalendar != null) return fromCalendar;
+    if (isValidNflWeek(period.number)) return period.number;
+  }
   return null;
+}
+
+/**
+ * The NFL week a league starting RIGHT NOW would be playing: the earliest week whose
+ * first kickoff is still ahead.
+ *
+ * WHY "NOT YET KICKED OFF" RATHER THAN "STILL RUNNING". A deal happens on a Tuesday or
+ * a Wednesday, which sits after one week's last game and before the next week's first -
+ * so "the week whose games are in progress" has no answer on the day the question is
+ * actually asked. It also gets the awkward case right on its own: a league created on
+ * the Sunday afternoon of week 5 gets week 6, because week 5 is half played and dealing
+ * into it would hand people players whose games are over.
+ *
+ * ONCE EVERY WEEK HAS KICKED OFF this returns the last one known rather than null. A
+ * league created in January is in the postseason and the commissioner has to say which
+ * round anyway; the alternative fallback - the league's own week number - would confidently
+ * answer "week 1", which is the failure #45 is about.
+ *
+ * @returns {number|null} null when there is no schedule to read
+ */
+export function weekInProgress(weekStarts, now = Date.now()) {
+  if (!weekStarts) return null;
+  const weeks = Object.keys(weekStarts)
+    .map(Number)
+    .filter((w) => isValidNflWeek(w))
+    .sort((a, b) => a - b);
+  if (!weeks.length) return null;
+
+  for (const week of weeks) {
+    const at = Date.parse(weekStarts[week]);
+    if (Number.isFinite(at) && at > now) return week;
+  }
+  return weeks[weeks.length - 1];
 }

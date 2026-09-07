@@ -2010,3 +2010,340 @@ gate()("site admin: head coaches", () => {
     expect(await snapshot()).toBe(before);
   });
 });
+
+/* ============================ the scheduled cycle ==========================
+ *
+ * Issue #52 / OQ-14: the weekly flow on a clock. The unit half - which leagues are due
+ * and why not - is tests/autoCycle.test.js and runs anywhere. What needs a real
+ * PostgREST is what cannot be reasoned about: that the scheduler runs THE SAME
+ * OPERATIONS the commissioner's buttons run and leaves the same rows behind, that the
+ * opt-in genuinely gates it, and that a refusal leaves the week exactly as it was
+ * rather than half-advanced.
+ *
+ * The demo league sits in week 2 with rosters dealt, so the clock is moved rather than
+ * the league: every test picks an instant, which is what the real job does anyway.
+ */
+gate()("the scheduled weekly cycle", () => {
+  beforeEach(() => resetDemo());
+
+  const season = async () => {
+    const { data } = await db.from("seasons").select("*").eq("league_id", leagueId).single();
+    return data;
+  };
+  const current = async () => {
+    const { data } = await db
+      .from("periods").select("*").eq("season_id", (await season()).id).eq("number", 2).single();
+    return data;
+  };
+  const periodsOf = async () => {
+    const { data } = await db
+      .from("periods").select("*").eq("season_id", (await season()).id).order("number");
+    return data;
+  };
+  const setSwitches = (patch) => db.from("leagues").update(patch).eq("id", leagueId);
+
+  /* Tuesday 10am ET in the week the demo league was dealt; Thursday noon ET after it. */
+  const TUESDAY = Date.parse("2026-10-20T14:00:00Z");
+  const THURSDAY = Date.parse("2026-10-15T16:00:00Z");
+  const DEALT_AT = "2026-10-13T14:00:00Z";
+
+  /* Put the current week where a given step would find it. */
+  const stage = async (patch) => {
+    const period = await current();
+    await db.from("periods").update({ dealt_at: DEALT_AT, ...patch }).eq("id", period.id);
+    return current();
+  };
+
+  /* Every team in the week has a result, so `weekIsComplete` is satisfied. */
+  const feedAllDone = async (periodId) => {
+    const { data } = await db
+      .from("roster_slots").select("players(nfl_team)").eq("period_id", periodId);
+    const teams = [...new Set((data ?? []).map((r) => r.players?.nfl_team).filter(Boolean))];
+    return {
+      fetchGameResults: async () => ({ results: new Map(teams.map((t) => [t, "Win"])) }),
+      fetchWeeklyStats: async () => ({ lines: [], stoppedEarly: false }),
+      fetchDepthChart: async () => { throw new Error("feed down"); },
+      fetchKickoffs: async () => ({ kickoffs: {} }),
+      fetchWeekStarts: async () => ({ weekStarts: {} }),
+    };
+  };
+
+  /* Kickoffs for exactly the teams that will have results, so the week reads complete. */
+  const kickoffsForWeek = async (periodId) => {
+    const { data } = await db
+      .from("roster_slots").select("players(nfl_team)").eq("period_id", periodId);
+    const out = {};
+    for (const row of data ?? []) {
+      if (row.players?.nfl_team) out[row.players.nfl_team] = "2026-10-18T17:00:00Z";
+    }
+    return out;
+  };
+
+  /* ------------------------------ the opt-in ------------------------------ */
+
+  it("does nothing at all to a league that has not opted in", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: false });
+    const before = await periodsOf();
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: THURSDAY });
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.considered).toBe(0);
+    expect(await periodsOf()).toEqual(before);
+  });
+
+  /* ------------------------- Thursday: the schemes ------------------------ */
+
+  it("processes schemes once the Thursday deadline has passed", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: false });
+    const period = await stage({ phase: "dealt" });
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: THURSDAY });
+    expect(r.body.ok).toBe(true);
+    expect(r.body.acted).toBe(1);
+
+    const after = (await periodsOf()).find((p) => p.id === period.id);
+    expect(after.phase).toBe("schemes-processed");
+    /* Same as the button: scheme resolution locks the rosters, which is what opens the
+     * stats window (see applyProcessSchemes, and OQ-12). */
+    expect(after.roster_locked).toBe(true);
+    expect(after.scheme_seed).toBeTruthy();
+  });
+
+  it("says so in the activity log, because nobody pressed anything", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: false });
+    await stage({ phase: "dealt" });
+
+    await ops.scheduledWeeklyCycle(db, { now: THURSDAY });
+
+    const { data: rows } = await db
+      .from("events").select("text, type").eq("season_id", (await season()).id);
+    expect(rows.some((r) => r.type === "auto" && /processed automatically/i.test(r.text))).toBe(true);
+  });
+
+  it("waits when the deadline has not come round yet", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: false });
+    const period = await stage({ phase: "dealt" });
+
+    // Wednesday: dealt on Tuesday, Thursday 3am is still ahead.
+    const r = await ops.scheduledWeeklyCycle(db, { now: Date.parse("2026-10-14T16:00:00Z") });
+    expect(r.body.ok).toBe(true);
+    expect(r.body.acted).toBe(0);
+    expect(r.body.skipped).toBe(1);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("dealt");
+  });
+
+  it("does nothing twice - a second run in the same hour is a skip", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: false });
+    const period = await stage({ phase: "dealt" });
+
+    await ops.scheduledWeeklyCycle(db, { now: THURSDAY });
+    const { data: once } = await db.from("periods").select("*").eq("id", period.id).single();
+
+    const again = await ops.scheduledWeeklyCycle(db, { now: THURSDAY + 3600 * 1000 });
+    expect(again.body.acted).toBe(0);
+    const { data: twice } = await db.from("periods").select("*").eq("id", period.id).single();
+    expect(twice.scheme_seed).toBe(once.scheme_seed);
+  });
+
+  /* --------------------- Tuesday: finalize, then deal --------------------- */
+
+  it("finalizes a finished week and deals the next one", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true, auto_pull_stats: false });
+    const period = await stage({
+      phase: "stats", roster_locked: true, nfl_week: 6, kickoffs: await kickoffsForWeek((await current()).id),
+    });
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: await feedAllDone(period.id) });
+    expect(r.body.ok).toBe(true);
+    expect(r.body.acted).toBe(1);
+
+    const after = await periodsOf();
+    expect(after.find((p) => p.id === period.id).phase).toBe("finalized");
+    const next = after.find((p) => p.number === 3 && p.type === "week");
+    expect(next).toBeTruthy();
+    expect(next.phase).toBe("dealt");
+    expect(next.deal_seed).toBeTruthy();
+  });
+
+  /* THE GUARD THAT MATTERS MOST. finalizePeriod will happily commit a week of zeros;
+   * this is what stops an unattended one doing it while a game is still to be played. */
+  it("REFUSES to finalize while a game of the week is unfinished", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const kickoffs = await kickoffsForWeek((await current()).id);
+    const period = await stage({ phase: "stats", roster_locked: true, nfl_week: 6, kickoffs });
+
+    const partial = {
+      fetchGameResults: async () => ({ results: new Map() }), // nothing has finished
+      fetchWeeklyStats: async () => ({ lines: [], stoppedEarly: false }),
+    };
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: partial });
+    expect(r.body.ok).toBe(true);
+    expect(r.body.acted).toBe(0);
+    expect(r.body.leagues[0].why).toMatch(/not finished playing/);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("stats");
+  });
+
+  it("refuses when the week's kickoff times were never read", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const period = await stage({ phase: "stats", roster_locked: true, nfl_week: 6, kickoffs: {} });
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: await feedAllDone(period.id) });
+    expect(r.body.acted).toBe(0);
+    expect(r.body.leagues[0].why).toMatch(/kickoff times/);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("stats");
+  });
+
+  it("refuses a week whose schemes were never processed", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const period = await stage({ phase: "dealt", kickoffs: await kickoffsForWeek((await current()).id) });
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: await feedAllDone(period.id) });
+    expect(r.body.acted).toBe(0);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("dealt");
+  });
+
+  /* THE STOP CONDITION. Nothing in the engine knows how long a regular season is, so
+   * without this the clock would deal week 19, 20 and 21 into January. */
+  it("finalizes week 18 but does not deal week 19", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const kickoffs = await kickoffsForWeek((await current()).id);
+    const period = await stage({
+      phase: "stats", roster_locked: true, nfl_week: 18, kickoffs,
+    });
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: await feedAllDone(period.id) });
+    expect(r.body.ok).toBe(true);
+
+    const after = await periodsOf();
+    expect(after.find((p) => p.id === period.id).phase).toBe("finalized");
+    const next = after.find((p) => p.number === 3 && p.type === "week");
+    expect(next.phase).toBe("pre-deal"); // created, deliberately not dealt
+
+    const { data: log } = await db.from("events").select("text").eq("season_id", (await season()).id);
+    expect(log.some((l) => /last week of the regular season/i.test(l.text))).toBe(true);
+  });
+
+  it("does not repeat the end-of-season note on every hourly tick", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const kickoffs = await kickoffsForWeek((await current()).id);
+    const period = await stage({ phase: "stats", roster_locked: true, nfl_week: 18, kickoffs });
+    const feed = await feedAllDone(period.id);
+
+    await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed });
+    await ops.scheduledWeeklyCycle(db, { now: TUESDAY + 3600 * 1000, feed });
+
+    const { data: log } = await db.from("events").select("text").eq("season_id", (await season()).id);
+    expect(log.filter((l) => /last week of the regular season/i.test(l.text)).length).toBe(1);
+  });
+
+  /* THE CASE THAT SPLIT THE STEP IN TWO. A commissioner who finalizes himself on Monday
+   * night leaves the week in `pre-deal` with nothing left to finalize. A job that could
+   * only "finalize and then deal" would skip that league every Tuesday, forever, and
+   * the league would simply never be dealt. */
+  it("deals a week the commissioner finalized himself the night before", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const period = await current();
+    // Week 2 finished by hand on Monday night; week 3 exists and is waiting.
+    await db.from("periods")
+      .update({ phase: "finalized", finalized_at: "2026-10-20T02:00:00Z" })
+      .eq("id", period.id);
+    const { data: season3 } = await db
+      .from("periods").insert({
+        season_id: (await season()).id, type: "week", number: 3, phase: "pre-deal", nfl_week: 7,
+      }).select().single();
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: await feedAllDone(period.id) });
+    expect(r.body.ok).toBe(true);
+
+    const { data: after } = await db.from("periods").select("*").eq("id", season3.id).single();
+    expect(after.phase).toBe("dealt");
+  });
+
+  /* And NOT at 11pm on the Monday, because Scott asked for Tuesday morning. */
+  it("does not deal on the Monday night the week ended", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const period = await current();
+    await db.from("periods")
+      .update({ phase: "finalized", finalized_at: "2026-10-20T02:00:00Z" })
+      .eq("id", period.id);
+    const { data: week3 } = await db
+      .from("periods").insert({
+        season_id: (await season()).id, type: "week", number: 3, phase: "pre-deal", nfl_week: 7,
+      }).select().single();
+
+    const mondayNight = Date.parse("2026-10-20T03:00:00Z"); // 11pm ET Monday
+    await ops.scheduledWeeklyCycle(db, { now: mondayNight, feed: await feedAllDone(period.id) });
+
+    const { data: after } = await db.from("periods").select("*").eq("id", week3.id).single();
+    expect(after.phase).toBe("pre-deal");
+  });
+
+  /* -------------------------- the two together --------------------------- */
+
+  /* A Tuesday run deals a fresh week, whose `dealt_at` is NOW - so the scheme step,
+   * which runs second, must correctly leave it alone rather than processing schemes
+   * that were submitted seconds ago. */
+  it("does not process the schemes of a week it just dealt", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: true });
+    const kickoffs = await kickoffsForWeek((await current()).id);
+    const period = await stage({ phase: "stats", roster_locked: true, nfl_week: 6, kickoffs });
+
+    await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: await feedAllDone(period.id) });
+
+    const next = (await periodsOf()).find((p) => p.number === 3 && p.type === "week");
+    expect(next.phase).toBe("dealt");
+    expect(next.roster_locked).toBe(false);
+  });
+
+  /* ------------------------------ the switch ------------------------------ */
+
+  it("setAutoCycle is commissioner-only, and reaches the browser", async () => {
+    const manager = await asManager(T1);
+    expect((await ops.setAutoCycle(db, { leagueId, token: manager, processSchemes: true })).status).toBe(403);
+
+    const token = await asCommissioner();
+    const r = await ops.setAutoCycle(db, { leagueId, token, processSchemes: true, advanceWeek: true });
+    expect(r.status).toBe(200);
+    expect(r.body.view._meta.autoProcessSchemes).toBe(true);
+    expect(r.body.view._meta.autoAdvanceWeek).toBe(true);
+
+    const off = await ops.setAutoCycle(db, { leagueId, token, processSchemes: false, advanceWeek: false });
+    expect(off.body.view._meta.autoProcessSchemes).toBe(false);
+    expect(off.body.view._meta.autoAdvanceWeek).toBe(false);
+  });
+
+  it("changes only what it was sent", async () => {
+    const token = await asCommissioner();
+    await ops.setAutoCycle(db, { leagueId, token, processSchemes: true, advanceWeek: true });
+    const r = await ops.setAutoCycle(db, { leagueId, token, tz: "America/Denver" });
+    expect(r.body.view._meta.tz).toBe("America/Denver");
+    expect(r.body.view._meta.autoProcessSchemes).toBe(true);
+    expect(r.body.view._meta.autoAdvanceWeek).toBe(true);
+  });
+
+  /* Refused at the door rather than three hours later inside a cron, where the only
+   * symptom would be a league that quietly stopped advancing. */
+  it("refuses a timezone the runtime cannot use", async () => {
+    const token = await asCommissioner();
+    const r = await ops.setAutoCycle(db, { leagueId, token, tz: "Mars/Olympus_Mons" });
+    expect(r.status).toBe(400);
+  });
+
+  /* A league in California should not have its schemes processed at midnight because
+   * the deadline was written in Eastern. */
+  it("keeps the deadline in the league's own timezone", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: false, tz: "America/Los_Angeles" });
+    const period = await stage({ phase: "dealt" });
+
+    // 3:30am Eastern on Thursday is 12:30am Pacific - the Pacific deadline is hours off.
+    const early = await ops.scheduledWeeklyCycle(db, { now: Date.parse("2026-10-15T07:30:00Z") });
+    expect(early.body.acted).toBe(0);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("dealt");
+
+    // 3:30am Pacific.
+    const due = await ops.scheduledWeeklyCycle(db, { now: Date.parse("2026-10-15T10:30:00Z") });
+    expect(due.body.acted).toBe(1);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("schemes-processed");
+  });
+});

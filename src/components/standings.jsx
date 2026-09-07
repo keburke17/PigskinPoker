@@ -105,6 +105,9 @@ export function ActivityPanel({ state }) {
   const iconFor = (type) => ({
     steal: ICON.football, "steal-failed": ICON.warn, redraw: ICON.redraw, block: ICON.shield,
     result: ICON.flag, warning: ICON.warn, "playoffs-start": ICON.trophy, advance: ICON.forward, champion: ICON.trophy,
+    /* Something the schedule did on its own - issue #52. Deliberately its own icon:
+       scrolling the log, the clock entries are the ones nobody pressed a button for. */
+    auto: ICON.clock,
   }[type] || "*");
   return (
     <div>

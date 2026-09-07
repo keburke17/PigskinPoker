@@ -1585,3 +1585,110 @@ the bench should have been included at all.
 available in the session this was built in, so `rls`, `server` and `bootstrap` did not run.
 The change touches no storage, no schema and no authorization; the 5 new engine tests for
 `playerKickoff` and `formatKickoffDay` run anywhere and pass.
+
+---
+
+## The weekly cycle runs on a clock (2026-09-07)
+
+Issue #52, answered as **OQ-14**. Scott asked for the league he described: "Rosters are
+dealt automatically Tuesday morning. Schemes are processed Thursday morning at like 3am
+(just how waivers would process in real fantasy football) ... Tuesday morning rosters are
+dealt automatically for the next week. Standings are updated."
+
+**Recorded as a decision before it was built**, because `CLAUDE.md` says "do not automate
+away the commissioner's control". That line defers to Scott, so his asking IS the answer -
+but the two things it costs the league belong written down beside it, and OQ-14 is where
+they are.
+
+**Two switches, both default off**, and the split is the point. `auto_process_schemes`
+makes 3am Thursday a real deadline; `auto_advance_week` finalizes the week and deals the
+next one on Tuesday morning. Finalize is the one step with no undo, so a commissioner can
+take the Thursday deadline and keep the finalize in his own hands - which is probably the
+sensible middle setting. Finalize and deal are ONE switch because they are one act:
+`finalizeCurrentPeriod` creates the period the deal acts on.
+
+**The readiness guard asks whether the FOOTBALL is over, not whether the stat boxes are
+full**, and that distinction is the whole safety argument. `finalizePeriod` is legal from
+`schemes-processed` and will happily commit a week of zeros. The obvious guard - "the pull
+reported nothing missing" - is wrong, because a missing line is also what a healthy
+starter who was inactive looks like, and OQ-4c says he scores 0. So every team with a
+kickoff in the mapped NFL week must have a result in the schedule. A postponed game has a
+kickoff and no result, so the job waits and retries an hour later - precisely the case an
+unattended finalize would damage most. An empty `kickoffs` map is NOT vacuously complete;
+that is a skip.
+
+**Hourly, not twice a week, and it is a timezone decision rather than a freshness one.**
+Cron is UTC and both deadlines are local: 3am Eastern is 07:00Z under EDT and 08:00Z under
+EST, and **the 2026 season crosses the change on 1 November**. A single UTC schedule would
+fire an hour wrong for half the season - 2am or 4am relative to the deadline the league
+was told about. So `run-cycle-scheduled.mjs` runs every hour and each league answers for
+its own `leagues.tz`. The guards are pure comparisons on two rows and run before anything
+is fetched, so an ordinary hour costs one small query.
+
+**Hourly also makes a missed tick harmless**, which is why the guard is `dealt_at <
+lastLocalDeadline(...)` rather than "is it 3am right now". An hour lost to a deploy is
+picked up on the next one; it cannot fire twice because acting moves the phase; and a week
+dealt LATE - on a Friday - correctly waits for the following Thursday instead of
+processing itself thirty seconds later.
+
+**The bug that would have shipped in the timezone maths**, found by writing the test
+first: stepping back N days by subtracting `N * 24h` is wrong across a DST transition. 1
+November 2026 is a 25-hour local day, so 24 hours back from late on that Sunday lands at
+00:30 ON THE 1ST rather than on the 31st, moving the deadline by a whole day. `server/tz.js`
+does the arithmetic on a date-only UTC value instead, where there are no transitions. The
+same file also fixes a latent trap in the old code: `hour12: false` lets some ICU builds
+format midnight as "24" belonging to the previous day, so it pins `hourCycle: "h23"`.
+
+**One implementation, three times over.** `runLifecycle` was split out of
+`commissionerLifecycle`, and `applyDeal` / `applyProcessSchemes` / `applyFinalize` out of
+their operations, so the clock runs the same code the buttons run - authorization and how
+a refusal is reported are the only differences. `runPoolRefresh` was split out of
+`refreshPlayerPool` for the same reason, so an automatic deal refreshes the pool exactly
+as "Refresh Pool & Deal Rosters" does. The precedent is `runStatsPull` from stage 7.
+
+**No new credential**, following `pull-stats-scheduled.mjs` exactly: a peer of `api.mjs`,
+not a client of it, reading the same secret from the same environment. No scheduler token,
+no new route, `verifySession` untouched.
+
+**Found while building it: finalize and deal had to become two steps.** The first version
+was "finalize, then deal the period that created" - which skips a league forever whenever
+the commissioner finalizes himself on Monday night, because the week is then already in
+`pre-deal` with nothing to finalize. The deal is now its own step with its own window:
+open when the last week ended before the most recent Tuesday deadline, or when it is
+currently Tuesday morning. That also gets "do not deal at 11pm on Monday" right, which was
+the actual request.
+
+**Three things the clock deliberately will not do.** Deal a season's first week (no
+finished week behind it; week 1 waits for teams and invites). Deal past week 18 - nothing
+in the engine knows how long a regular season is, so it would otherwise deal week 19, 20
+and 21 into January; it finalizes 18, writes one note in the activity log, and stops.
+Start the playoffs, which takes a bracket size.
+
+**Issue #45 landed first, because the readiness guard depends on it.** `nextNflWeek` now
+takes the season's week-start times and defaults a new period to the NFL week about to be
+played, rather than to the league's own week number. A league created in October used to
+map its week 1 to NFL week 1 - fetching September's stats and, worse, locking rosters
+against September's kickoffs. An existing mapping still wins, so a commissioner's
+correction carries forward exactly as before, and a schedule that cannot be read falls
+back to the old behaviour. `server/schedule.js` stays I/O-free: the rows are passed in.
+
+**What is NOT built, and it is the honest gap: nobody is told anything.** A manager finds
+out his roster was dealt, or that schemes close in twelve hours, by opening the app. That
+works today because a human deals and then posts in the group chat - which is exactly what
+the clock removes. **OQ-6 is the real prerequisite** for leaning on the second switch.
+What this pass does instead is make the clock visible: `src/engine/weeklyClock.js` holds
+the deadlines so the browser can NAME them, every screen that describes the week branches
+on the league's own switches, Help gained a "What happens on its own" card, and everything
+the clock does is written into the activity log under a new `auto` event type with its own
+icon.
+
+**Where the deadlines live, and why it is `src/engine/`.** The server decides whether a
+deadline has passed; the browser has to tell people it exists. `server/` may import from
+`src/` and not the reverse (`tests/bundle.test.js` enforces it), so the constants sit on
+the side both can reach - the same arrangement `lineupLock.js` has.
+
+`npm test`: **623 passed, 28 files** with the local stack up, from a baseline of 524 in 27.
+The 18 new database-backed tests in `tests/server.test.js` DID run. `tests/autoCycle.test.js`
+(52) and the #45 additions to `tests/schedule.test.js` run anywhere. `tests/parity.test.js`
+is untouched and green - **no engine behaviour changed**; the clock presses existing
+buttons.

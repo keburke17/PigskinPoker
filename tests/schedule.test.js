@@ -6,8 +6,9 @@
  * a round trip - the thing under test.
  */
 
-import { describe, expect, it } from "vitest";
-import { NFL_WEEK_MAX, isValidNflWeek, nextNflWeek } from "../server/schedule.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import { NFL_WEEK_MAX, isValidNflWeek, nextNflWeek, weekInProgress } from "../server/schedule.js";
+import { fetchWeekStarts } from "../server/feed/fixture.js";
 
 const week = (number, nfl_week = null) => ({ type: "week", number, nfl_week });
 const playoff = (number, nfl_week = null) => ({ type: "playoff", number, nfl_week });
@@ -83,7 +84,95 @@ describe("nextNflWeek", () => {
     expect(nextNflWeek({ periods, period: week(2) })).toBe(2);
   });
 
-  it("falls back to the league's own week number when nothing is mapped", () => {
+  it("falls back to the league's own week number when nothing is mapped and no schedule is given", () => {
     expect(nextNflWeek({ periods: [week(1), week(2)], period: week(2) })).toBe(2);
+  });
+});
+
+/* ============================== issue #45 ================================= */
+
+/* The default used to be the league's own week number, which is right for a league
+ * opening on opening weekend and wrong in a way that LOOKS right for every other one: a
+ * league created in October mapped its week 1 to NFL week 1, so the stats pull fetched
+ * September's numbers and the lineup lock fired on September's kickoff times.
+ *
+ * The clock is frozen and the schedule is the recorded 2026 fixture - the real published
+ * schedule - so these are dates, not fabrications. */
+describe("defaulting from the calendar (issue #45)", () => {
+  /** @type {Object<number,string>} */
+  let weekStarts;
+  const at = (iso) => Date.parse(iso);
+
+  beforeAll(async () => {
+    ({ weekStarts } = await fetchWeekStarts({ season: 2026 }));
+  });
+
+  const on = (iso, period = week(1)) =>
+    nextNflWeek({ periods: [], period, weekStarts, now: at(iso) });
+
+  it("reads a week start for every week of the real schedule", () => {
+    expect(Object.keys(weekStarts).length).toBe(18);
+    expect(weekStarts[1] < weekStarts[2]).toBe(true);
+  });
+
+  it("starts a league made before the season on week 1", () => {
+    expect(on("2026-08-20T12:00:00Z")).toBe(1);
+  });
+
+  it("starts a league made mid-season on the week about to be played", () => {
+    // Tuesday of NFL week 6 - week 5 is over, week 6 has not kicked off.
+    expect(on("2026-10-13T12:00:00Z")).toBe(6);
+  });
+
+  /* THE NORMAL CASE, not an edge case: deals happen on Tuesdays and Wednesdays, which
+   * sit after one week's last game and before the next week's first. "The week whose
+   * games are running" has no answer on the day the question is actually asked. */
+  it("answers on a Tuesday, between two weeks", () => {
+    expect(on("2026-09-15T12:00:00Z")).toBe(2);
+    expect(on("2026-09-22T12:00:00Z")).toBe(3);
+  });
+
+  /* A league made mid-Sunday should not be dealt into a week half its players have
+   * already finished playing. */
+  it("moves on to next week once this week has kicked off", () => {
+    expect(on("2026-10-04T20:00:00Z")).toBe(5);
+  });
+
+  it("keeps the last week rather than answering week 1 in January", () => {
+    expect(on("2027-02-01T12:00:00Z")).toBe(18);
+  });
+
+  /* THE ORDERING THAT MATTERS: a commissioner's correction still carries forward, and
+   * the calendar only speaks for a season nobody has mapped anything in. */
+  it("lets an existing mapping beat the calendar", () => {
+    const found = nextNflWeek({
+      periods: [week(1, 9)], period: week(2), weekStarts, now: at("2026-10-13T12:00:00Z"),
+    });
+    expect(found).toBe(10);
+  });
+
+  it("leaves a playoff round unmapped even with a schedule in hand", () => {
+    expect(on("2026-10-13T12:00:00Z", playoff(1))).toBe(null);
+  });
+
+  it("falls back to the old behaviour when the schedule cannot be read", () => {
+    expect(nextNflWeek({ periods: [], period: week(1), weekStarts: null })).toBe(1);
+    expect(nextNflWeek({ periods: [], period: week(1), weekStarts: {} })).toBe(1);
+  });
+});
+
+describe("weekInProgress", () => {
+  it("has nothing to say without a schedule", () => {
+    expect(weekInProgress(null, 0)).toBe(null);
+    expect(weekInProgress({}, 0)).toBe(null);
+  });
+
+  it("ignores weeks outside the range the column accepts", () => {
+    expect(weekInProgress({ 99: "2026-09-10T00:20:00Z" }, Date.parse("2026-09-01T00:00:00Z"))).toBe(null);
+  });
+
+  it("ignores a week whose start could not be parsed", () => {
+    const starts = { 1: "not a date", 2: "2026-09-18T00:15:00Z" };
+    expect(weekInProgress(starts, Date.parse("2026-09-01T00:00:00Z"))).toBe(2);
   });
 });
