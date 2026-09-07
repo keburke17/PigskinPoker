@@ -13,22 +13,25 @@ import { ICON, STARTER_SLOTS } from "./constants.js";
  * Generic ranking with tiebreakers.
  * rows: [{teamId, rawScore, tb:[standingsPts, weekWins, coachWins, tds, yards, bestPlayerPts]}]
  *
- * !! KNOWN DEFECT - OQ-A (docs/OPEN-QUESTIONS.md). DO NOT "FIX" THIS. !!
- * The loop below runs `i < 5` over a SIX-element tb array, so the sixth documented
- * tiebreaker (best single-player score) never breaks a tie - while the rank-grouping
- * check three lines further down compares all six via .every(). Two teams level on the
- * first five but differing on the sixth therefore sort arbitrarily (comparator returns
- * 0, stable sort keeps input order) yet receive DIFFERENT ranks, and so different
- * standings points. The beneficiary is whichever team was created first.
+ * All SIX tiebreakers apply, matching what the rules screen has always documented:
+ *   Standings Points -> Week Wins -> Coach Wins -> Total TDs -> Total Yards ->
+ *   Best single-player score in a week.
  *
- * This is preserved deliberately: it is the original designer's rule set and a live
- * league. It is held for a future change made with him. See tests/standings.test.js,
- * which asserts this behaviour on purpose and carries the skipped test for the fix.
+ * OQ-A, ANSWERED 2026-09-06 by Scott: "yes that should be a 6th tiebreaker if at all
+ * necessary." Until that answer this loop ran `i < 5` over a SIX-element tb array, so the
+ * sixth tiebreaker never broke a tie - while the rank-grouping check below compared all
+ * six via .every(). Two teams level on the first five but differing on the sixth sorted
+ * arbitrarily (the comparator returned 0, and the stable sort kept input order) yet
+ * received DIFFERENT ranks, and so different standings points - the beneficiary being
+ * whichever team was created first. The bound is now `i < 6`, and the two agree.
+ *
+ * This is a real rules change, the second in the port. tests/parity.test.js records it;
+ * see docs/OPEN-QUESTIONS.md.
  */
 export function rankTeamsWithTiebreak(rows) {
   const sorted = rows.slice().sort((a, b) => {
     if (b.rawScore !== a.rawScore) return b.rawScore - a.rawScore;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       const av = a.tb[i] || 0,
         bv = b.tb[i] || 0;
       if (bv !== av) return bv - av;

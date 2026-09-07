@@ -149,7 +149,7 @@ gate()("a blank league", () => {
   });
 
   it("refuses to deal with no teams", async () => {
-    const r = await ops.dealPeriod(db, { leagueId, token });
+    const r = await ops.dealPeriod(db, { leagueId, token, refresh: false });
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/at least one team/i);
   });

@@ -1,8 +1,11 @@
 /* Pigskin Poker UI - the Rosters hub's two panels.
  *
- * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1474-1528. FreeAgentsTab is
- * unchanged; AllRostersTab was rebuilt for issues #29 and #30 - see the note on it.
- */
+ * Extracted from LegacyProject/PigskinPokerCode.jsx lines 1474-1528. Neither panel is
+ * verbatim any more:
+ *   AllRostersTab was rebuilt for issues #29 and #30 - see the note on it.
+ *   FreeAgentsTab hides players a pool refresh retired (2026-09-04). The artifact had
+ *     no feed, so it had no such player, and its OUT tab could safely show everyone.
+ *     See the comment on that filter. */
 
 import { useState } from "react";
 import { FA_TABS, ICON, allRosteredPlayerIds, teamPeriodScore } from "../engine/index.js";
@@ -67,11 +70,22 @@ export function AllRostersTab({ state, myTeam }) {
 export function FreeAgentsTab({ state }) {
   const [tab, setTab] = useState("QB");
   const rostered = allRosteredPlayerIds(state);
+  /* RETIRED PLAYERS ARE NOT SHOWN HERE AT ALL - added 2026-09-04, and the reason this
+   * screen is no longer verbatim from the artifact.
+   *
+   * A player the refresh dropped used to land under the OUT tab, because retiring him
+   * set his status to OUT and this tab lists every player with that status. So the
+   * misspelling the feed had just replaced went on show to every manager in the league:
+   * "James Cook" sitting under OUT while "James Cook III" started for somebody. OUT, IR
+   * and BYE are football statements about a player who is still in the pool, and they
+   * belong here. A retired player is not in the pool, and belongs only to the
+   * commissioner's Player Pool screen. */
+  const pool = state.playerPool.filter((p) => !p.retired);
   let list;
   if (tab === "BYE" || tab === "IR" || tab === "OUT") {
-    list = state.playerPool.filter((p) => p.status === tab);
+    list = pool.filter((p) => p.status === tab);
   } else {
-    list = state.playerPool.filter((p) => p.position === tab && p.status === "Active" && !rostered.has(p.id));
+    list = pool.filter((p) => p.position === tab && p.status === "Active" && !rostered.has(p.id));
   }
   list = list.slice().sort((a, b) => a.name.localeCompare(b.name));
   return (

@@ -1,9 +1,18 @@
-/* Pigskin Poker UI - extracted from
- * LegacyProject/PigskinPokerCode.jsx lines 1716-1815.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. One card has been edited since: "Lineup Lock & Injury Swaps" now states
- * THIS league's lock policy rather than one of them, because it became an option.
- */
+/* Pigskin Poker UI - originally extracted verbatim from
+ * LegacyProject/PigskinPokerCode.jsx lines 1716-1815, with only module boundaries
+ * added: imports at the top, `export` on each declaration.
+ *
+ * SINCE EDITED, deliberately, because this screen is the rules as the league reads
+ * them and it had fallen behind the game:
+ *   2026-08-28 - the scoring card, for the passing / rushing / receiving split (OQ-4c).
+ *   2026-09-05 - "Lineup Lock & Injury Swaps" states THIS league's lock policy rather
+ *     than one of them, because the lock timing became an option (OQ-11).
+ *   2026-09-06 - a Player Pool card (the live depth charts, injuries, and what a
+ *     refresh may not do), the coaches line, and the tiebreaker card, which had
+ *     documented six tiebreakers since the artifact while the engine applied five.
+ *     That is OQ-A, now fixed, so the screen and the game finally agree.
+ *
+ * docs/RULES.md is the long form of the same thing. Change both together. */
 
 import {
   ARROW,
@@ -94,7 +103,9 @@ export function RulesTab({ state }) {
         <li>Ties share the higher value.</li>
         <li>Season standings = sum of weekly standings points, not raw weekly scores.</li>
         <li>Tiebreaker order, in this order: {["Standings Points", "Week Wins", "Coach Wins", "Total TDs", "Total Yards", "Best single-player score in a week"].join(" " + ARROW + " ")}.</li>
-        <li>Best single-player score tracks the player's name, points, and week - and updates whenever a later week beats it.</li>
+        <li>Best single-player score tracks the player's name, points, and week - and updates whenever a later week beats it. Your Coach counts, if he ever gets you the most points in a week.</li>
+        <li>A tie inside a single week uses the same six tiebreakers, on season-to-date totals - so it goes to whoever is already ahead in the season.</li>
+        <li>Teams level on all six share a rank, and the next rank is skipped.</li>
       </RuleCard>
 
       <RuleCard title={SUIT_CH.star + " Playoffs"}>
@@ -111,6 +122,19 @@ export function RulesTab({ state }) {
       <RuleCard title="Coaches">
         <li>Coaches can never be stolen, redrawn, or blocked.</li>
         <li>They only move between your own starting lineup and bench.</li>
+        <li>The live roster pull never touches a Coach - the commissioner adds, edits and removes them by hand.</li>
+      </RuleCard>
+
+      <RuleCard title="The Player Pool">
+        <li>Your league has its own pool. Marking a player OUT is a statement about this league - it never reaches anyone else's.</li>
+        <li>The pool is built from the live NFL depth charts: each NFL team's current QB, 2 RBs, 2 WRs and TE, plus its head coach.</li>
+        <li>The commissioner refreshes it before dealing, and only before dealing - there are no rosters to disturb yet.</li>
+        <li>A refresh adds new starters and retires players who are no longer rostered. Retired means marked OUT, never deleted, so past weeks still make sense.</li>
+        <li>Injuries come from the weekly roster file: a player on reserve is marked IR, anyone else off the active roster is marked OUT.</li>
+        <li>An injured starter is skipped and the next healthy man takes the slot, so every NFL team still contributes a full QB / 2 RB / 2 WR / TE.</li>
+        <li>A refresh never overwrites the commissioner: a player he added, or a status he set by hand, is left alone.</li>
+        <li>Only Active players are dealt - OUT, IR and BYE are all skipped.</li>
+        <li>Once you're dealt, you're dealt. A player who gets hurt or whose coach is fired mid-week still finishes your week; the change shows up at the next deal.</li>
       </RuleCard>
 
       <LineupLockCard state={state} />

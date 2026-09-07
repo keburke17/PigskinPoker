@@ -14,10 +14,13 @@ import {
   POOL_DEPTH,
   buildPool,
   coachesFromGames,
+  currentRosterWeek,
   fetchDepthChart,
   parseCsv,
   parseCsvLine,
+  poolStatusOf,
   readLatestSnapshot,
+  statusOf,
 } from "../server/feed/nflverse.js";
 import { POOL_WRITE_CHUNK, normalizeName, planPoolRefresh, poolWriteRows } from "../server/pool.js";
 
@@ -127,24 +130,38 @@ describe("head coaches, which depth charts do not carry", () => {
   });
 });
 
+/* CHANGED 2026-09-04. buildPool used to emit 224 rows including a head coach per team,
+ * taken from the coach columns of nflverse's games.csv. It emits 192 now and no coaches
+ * at all: Scott read that file's answers on 2026-09-04 - John Harbaugh with the Giants,
+ * Todd Monken at Cleveland, Klint Kubiak spelled "Kubliak" - and made head coaches
+ * commissioner-maintained (OQ-4d). A league still holds 224 players. The feed is
+ * responsible for 192 of them and must not touch the other 32. */
 describe("building the pool", () => {
-  const coaches = new Map(Object.values(NFL_TEAMS).map((t) => [t, t + " Coach"]));
-
-  it("takes the designer's depth: 1 QB, 2 RB, 2 WR, 1 TE and a coach per team", () => {
-    expect(POOL_DEPTH).toEqual({ QB: 1, RB: 2, WR: 2, TE: 1 });
+  const everyTeamToDepth = (extra = 2) => {
     const depthPlayers = [];
     for (const team of new Set(Object.values(NFL_TEAMS))) {
       for (const [pos, n] of Object.entries(POOL_DEPTH)) {
-        for (let r = 1; r <= n + 2; r++) {
+        for (let r = 1; r <= n + extra; r++) {
           depthPlayers.push({ name: team + " " + pos + r, position: pos, team, depthRank: r, externalIds: {} });
         }
       }
     }
-    const { players, gaps } = buildPool({ depthPlayers, coaches });
+    return depthPlayers;
+  };
+
+  it("takes the designer's depth: 1 QB, 2 RB, 2 WR and 1 TE per team", () => {
+    expect(POOL_DEPTH).toEqual({ QB: 1, RB: 2, WR: 2, TE: 1 });
+    const { players, gaps } = buildPool({ depthPlayers: everyTeamToDepth() });
     const byPos = players.reduce((a, p) => ({ ...a, [p.position]: (a[p.position] || 0) + 1 }), {});
-    expect(byPos).toEqual({ QB: 32, RB: 64, WR: 64, TE: 32, Coach: 32 });
-    expect(players.length).toBe(224);
+    expect(byPos).toEqual({ QB: 32, RB: 64, WR: 64, TE: 32 });
+    expect(players.length).toBe(192);
     expect(gaps).toEqual([]);
+  });
+
+  it("produces no head coaches at all - they are the commissioner's", () => {
+    const { players, gaps } = buildPool({ depthPlayers: everyTeamToDepth() });
+    expect(players.some((p) => p.position === "Coach")).toBe(false);
+    expect(gaps.some((g) => g.position === "Coach")).toBe(false);
   });
 
   it("takes the lowest depth ranks, not whatever order the file was in", () => {
@@ -152,17 +169,146 @@ describe("building the pool", () => {
       { name: "Backup", position: "QB", team: "Buffalo Bills", depthRank: 2, externalIds: {} },
       { name: "Starter", position: "QB", team: "Buffalo Bills", depthRank: 1, externalIds: {} },
     ];
-    const { players } = buildPool({ depthPlayers, coaches });
+    const { players } = buildPool({ depthPlayers });
     const bufQb = players.filter((p) => p.team === "Buffalo Bills" && p.position === "QB");
     expect(bufQb.map((p) => p.name)).toEqual(["Starter"]);
   });
 
   it("reports a hole rather than quietly dealing a short pool", () => {
-    const { players, gaps } = buildPool({ depthPlayers: [], coaches: new Map() });
+    const { players, gaps } = buildPool({ depthPlayers: [] });
     expect(players).toEqual([]);
-    // 32 teams x (1 QB + 2 RB + 2 WR + 1 TE + 1 Coach)
-    expect(gaps.length).toBe(224);
-    expect(gaps[0].reason).toMatch(/depth chart|head coach/);
+    // 32 teams x (1 QB + 2 RB + 2 WR + 1 TE)
+    expect(gaps.length).toBe(192);
+    expect(gaps[0].reason).toMatch(/depth chart/);
+  });
+
+  it("treats everyone as healthy when there is no roster status to read", () => {
+    const { players } = buildPool({ depthPlayers: everyTeamToDepth(), rosterStatus: null });
+    expect(players.every((p) => p.status === "Active")).toBe(true);
+  });
+});
+
+/* The injury half, added 2026-09-04. Scott's question was the right one: the depth chart
+ * has twelve columns and none of them is injury status, so the "IR" ESPN shows beside a
+ * name never reaches us. Rank catches most of it - Jayden Higgins was Houston's WR7 the
+ * day after his season ended - but it lags, so roster status is read separately. */
+describe("injured starters", () => {
+  const statusFor = (map) => ({
+    byGsis: new Map(),
+    byName: new Map(Object.entries(map).map(([k, v]) => [k, { status: v }])),
+  });
+
+  const houston = [
+    { name: "Nico Collins", position: "WR", team: "Houston Texans", depthRank: 1, externalIds: {} },
+    { name: "Jayden Higgins", position: "WR", team: "Houston Texans", depthRank: 2, externalIds: {} },
+    { name: "Xavier Hutchinson", position: "WR", team: "Houston Texans", depthRank: 3, externalIds: {} },
+  ];
+
+  it("maps the NFL's roster designations onto the game's statuses", () => {
+    expect(poolStatusOf("ACT")).toBe("Active");
+    expect(poolStatusOf("RES")).toBe("IR"); // reserve/injured is the only one that means hurt
+    expect(poolStatusOf("CUT")).toBe("OUT");
+    expect(poolStatusOf("DEV")).toBe("OUT"); // practice squad: not playing, but not hurt
+  });
+
+  it("treats a status it has never seen as Active, rather than benching a starter", () => {
+    expect(poolStatusOf("SOMETHING_NEW")).toBe("Active");
+    expect(poolStatusOf("")).toBe("Active");
+    expect(poolStatusOf(undefined)).toBe("Active");
+  });
+
+  /* The decision, taken by Scott on 2026-09-04: skip him and promote the next healthy
+   * man, so every NFL team always contributes a full 1/2/2/1 and the dealable pool does
+   * not thin out every time somebody gets hurt. */
+  it("skips a hurt starter and promotes the next healthy man", () => {
+    const { players, gaps } = buildPool({
+      depthPlayers: houston,
+      rosterStatus: statusFor({ "jayden higgins|WR": "RES" }),
+    });
+    const wr = players.filter((p) => p.team === "Houston Texans" && p.position === "WR");
+    const dealable = wr.filter((p) => p.status === "Active").map((p) => p.name);
+    expect(dealable).toEqual(["Nico Collins", "Xavier Hutchinson"]);
+    // The team is not left a receiver short. (The other 31 teams have no depth chart in
+    // this fixture, so they gap as they should - Houston is the one under test.)
+    expect(gaps.filter((g) => g.team === "Houston Texans" && g.position === "WR")).toEqual([]);
+  });
+
+  it("still returns the hurt player, marked IR, so the pool can explain his absence", () => {
+    const { players, sidelined } = buildPool({
+      depthPlayers: houston,
+      rosterStatus: statusFor({ "jayden higgins|WR": "RES" }),
+    });
+    const higgins = players.find((p) => p.name === "Jayden Higgins");
+    expect(higgins.status).toBe("IR");
+    expect(sidelined).toContainEqual({
+      name: "Jayden Higgins",
+      position: "WR",
+      team: "Houston Texans",
+      depthRank: 2,
+      status: "IR",
+    });
+  });
+
+  it("reports a hole when everyone at a spot is hurt, and says which kind of hole", () => {
+    const { gaps } = buildPool({
+      depthPlayers: houston,
+      rosterStatus: statusFor({
+        "nico collins|WR": "RES",
+        "jayden higgins|WR": "RES",
+        "xavier hutchinson|WR": "RES",
+      }),
+    });
+    const houGaps = gaps.filter((g) => g.team === "Houston Texans" && g.position === "WR");
+    expect(houGaps).toHaveLength(2);
+    expect(houGaps[0].reason).toMatch(/hurt or off the roster/);
+  });
+
+  it("does not treat a player the roster file has never heard of as hurt", () => {
+    const { players } = buildPool({
+      depthPlayers: houston,
+      rosterStatus: statusFor({ "somebody else|WR": "RES" }),
+    });
+    expect(players.filter((p) => p.status === "Active")).toHaveLength(2);
+  });
+
+  it("prefers the provider id over the name, the same way the pool matcher does", () => {
+    const rosterStatus = {
+      byGsis: new Map([["g1", { status: "RES" }]]),
+      byName: new Map(),
+    };
+    const status = statusOf(
+      { name: "Spelled Differently", position: "WR", externalIds: { gsis: "g1" } },
+      rosterStatus
+    );
+    expect(status).toBe("IR");
+  });
+});
+
+/* Which week of the roster file describes "now". Not the highest one: the file runs to
+ * week 22, and week 22 is the two teams left in the Super Bowl. Taking it would leave
+ * thirty teams with no roster row and mark all their starters OUT. */
+describe("choosing the roster week", () => {
+  const rowsFor = (weeks) =>
+    Object.entries(weeks).flatMap(([week, teams]) =>
+      Array.from({ length: teams }, (_, i) => ({ week, team: "T" + i }))
+    );
+
+  it("takes the newest week that still covers the league", () => {
+    expect(currentRosterWeek(rowsFor({ 1: 32, 2: 32, 3: 32 }))).toBe(3);
+  });
+
+  it("ignores a playoff week that only has the teams still playing", () => {
+    expect(currentRosterWeek(rowsFor({ 17: 32, 18: 32, 19: 12, 22: 2 }))).toBe(18);
+  });
+
+  it("is not fooled by the file being out of week order", () => {
+    // The real 2025 file opens 16, 17, 9 - it is not sorted by anything useful.
+    const rows = [...rowsFor({ 16: 32 }), ...rowsFor({ 9: 32 }), ...rowsFor({ 17: 32 })];
+    expect(currentRosterWeek(rows)).toBe(17);
+  });
+
+  it("falls back to the newest week there is when none covers the league", () => {
+    expect(currentRosterWeek(rowsFor({ 1: 4, 2: 6 }))).toBe(2);
   });
 });
 
@@ -189,6 +335,7 @@ const row = (over) => ({
   external_ids: over.external_ids || {},
   source: over.source || "seed",
   status_source: over.status_source || "default",
+  retired: over.retired ?? false,
 });
 
 const feedPlayer = (over) => ({
@@ -261,7 +408,7 @@ describe("planning a refresh - what it corrects", () => {
       status_source: "feed",
     });
     expect(plan.report.added).toEqual([
-      { name: "Rookie Sensation", position: "RB", team: "Buffalo Bills" },
+      { name: "Rookie Sensation", position: "RB", team: "Buffalo Bills", status: "Active" },
     ]);
   });
 
@@ -275,6 +422,77 @@ describe("planning a refresh - what it corrects", () => {
     expect(plan.retires[0]).toMatchObject({ id: "1", status: "OUT", status_source: "feed" });
     // Deleting him would break the rosters and results that reference him.
     expect(Object.keys(plan.retires[0])).not.toContain("deleted");
+  });
+
+  /* From 2026-09-04. Retiring used to mean nothing but status OUT, and the managers'
+   * Free Agents screen has an OUT tab - so every misspelling the feed replaced went on
+   * show to the whole league. Scott: "i have a James Cook III listed as active from a
+   * roster refresh, but James Cook listed as out." The flag is what hides him. */
+  it("marks a retired player retired, not merely OUT", () => {
+    const plan = planPoolRefresh({
+      existing: [row({ id: "1", name: "Kalil Shakir" })],
+      wanted: [feedPlayer({ name: "Khalil Shakir", externalIds: { gsis: "00-0037261" } })],
+      at: AT,
+    });
+    expect(plan.inserts[0].name).toBe("Khalil Shakir");
+    expect(plan.retires[0]).toMatchObject({ id: "1", retired: true });
+  });
+
+  /* A suffix is NOT a replacement, and this is why "James Cook" and "James Cook III"
+   * should never both be sitting in a pool: normalizeName strips the suffix, the rows
+   * match, and the feed's spelling simply wins. Asserted because Scott reported seeing
+   * both on 2026-09-04 - if that is real it is a second bug, not this one. */
+  it("merges a suffix variant into one player rather than replacing him", () => {
+    const plan = planPoolRefresh({
+      existing: [row({ id: "1", name: "James Cook", position: "RB" })],
+      wanted: [feedPlayer({ name: "James Cook III", position: "RB", externalIds: { gsis: "00-0037248" } })],
+      at: AT,
+    });
+    expect(plan.inserts).toEqual([]);
+    expect(plan.retires).toEqual([]);
+    expect(plan.updates[0].name).toBe("James Cook III");
+  });
+
+  /* The one way they CAN both exist: the pool already held two rows that normalize to
+   * the same man. The feed claims one and cannot claim the other, so the leftover is
+   * retired - and before the `retired` flag it went straight to the managers' OUT tab. */
+  it("retires the leftover when the pool held the same player twice", () => {
+    const plan = planPoolRefresh({
+      existing: [
+        row({ id: "1", name: "James Cook", position: "RB" }),
+        row({ id: "2", name: "James Cook Jr.", position: "RB" }),
+      ],
+      wanted: [feedPlayer({ name: "James Cook III", position: "RB" })],
+      at: AT,
+    });
+    expect(plan.updates).toHaveLength(1);
+    expect(plan.retires).toHaveLength(1);
+    expect(plan.retires[0].retired).toBe(true);
+  });
+
+  it("un-retires a player the feed lists as a starter again", () => {
+    const back = row({ id: "1", name: "Back Again", status: "OUT", source: "feed", status_source: "feed" });
+
+    const plan = planPoolRefresh({ existing: [back], wanted: [feedPlayer({ name: "Back Again" })], at: AT });
+    expect(plan.updates[0].retired).toBe(false);
+    expect(plan.updates[0].status).toBe("Active");
+  });
+
+  it("does not retire an already-retired player a second time", () => {
+    const gone = row({ id: "1", name: "Long Gone", status: "OUT", source: "feed", status_source: "feed" });
+    gone.retired = true;
+    const plan = planPoolRefresh({ existing: [gone], wanted: [], at: AT });
+    expect(plan.retires).toEqual([]);
+  });
+
+  /* Restoring sets the status by hand, which stamps status_source 'manual' in
+   * src/storage/decompose.js - and that is what stops the next refresh retiring him
+   * straight back out of the pool the commissioner just put him in. */
+  it("leaves a restored player alone on the next refresh", () => {
+    const restored = row({ id: "1", name: "Put Him Back", status: "Active", status_source: "manual" });
+    const plan = planPoolRefresh({ existing: [restored], wanted: [], at: AT });
+    expect(plan.retires).toEqual([]);
+    expect(plan.report.untouched[0].why).toMatch(/set this player's status/);
   });
 
   it("never double-matches two feed players onto one row", () => {
@@ -357,10 +575,76 @@ describe("planning a refresh - what it must never touch", () => {
     expect(plan.updates[0].status).toBe("Active");
   });
 
+  /* HEAD COACHES, from 2026-09-04 (OQ-4d). Stronger than the 'manual' rule on purpose:
+   * the coach rows in Scott's league were written by an EARLIER refresh, so they carry
+   * source 'feed' and would otherwise be the feed's own work to revise. Position is what
+   * protects them, not provenance. */
+  it("never retires a head coach, whatever the feed says", () => {
+    const coach = row({ id: "1", name: "Jesse Minter", position: "Coach", source: "feed", status_source: "feed" });
+    const plan = planPoolRefresh({ existing: [coach], wanted: [], at: AT });
+    expect(plan.retires).toEqual([]);
+    expect(plan.updates).toEqual([]);
+    expect(plan.report.coachesKept).toBe(1);
+  });
+
+  it("never renames or re-teams a head coach", () => {
+    const coach = row({ id: "1", name: "John Harbaugh", position: "Coach", nfl_team: "New York Giants", source: "feed" });
+    const plan = planPoolRefresh({
+      existing: [coach],
+      wanted: [feedPlayer({ name: "Somebody Else", position: "Coach", team: "New York Giants" })],
+      at: AT,
+    });
+    expect(plan.updates).toEqual([]);
+    expect(plan.inserts).toEqual([]); // and it does not add one alongside him either
+  });
+
+  it("does not count coaches as retired in the report", () => {
+    const plan = planPoolRefresh({
+      existing: [
+        row({ id: "1", name: "Andy Reid", position: "Coach", source: "feed" }),
+        row({ id: "2", name: "Benched Guy", position: "WR", source: "feed" }),
+      ],
+      wanted: [],
+      at: AT,
+    });
+    expect(plan.report.retired).toBe(1);
+    expect(plan.report.coachesKept).toBe(1);
+  });
+
+  it("carries the feed's IR verdict onto a row it owns", () => {
+    const existing = [row({ id: "1", name: "Hurt Starter", source: "feed", status_source: "feed" })];
+    const plan = planPoolRefresh({
+      existing,
+      wanted: [{ ...feedPlayer({ name: "Hurt Starter" }), status: "IR" }],
+      at: AT,
+    });
+    expect(plan.updates[0].status).toBe("IR");
+    expect(plan.updates[0].feed_status).toBe("IR");
+  });
+
+  it("still will not overrule a status the commissioner set, even to say IR", () => {
+    const mine = row({ id: "1", name: "Hurt Starter", status: "Active", status_source: "manual" });
+    const plan = planPoolRefresh({
+      existing: [mine],
+      wanted: [{ ...feedPlayer({ name: "Hurt Starter" }), status: "IR" }],
+      at: AT,
+    });
+    expect(plan.updates[0].status).toBeUndefined();
+    expect(plan.updates[0].feed_status).toBe("IR");
+    expect(plan.report.untouched).toContainEqual({
+      name: "Hurt Starter",
+      position: "WR",
+      why: "the feed has him IR, you have him Active",
+    });
+  });
+
   it("is idempotent - refreshing twice changes nothing the second time", () => {
     const existing = [
       row({ id: "1", name: "Josh Allen", position: "QB", source: "feed", status_source: "feed", external_ids: { gsis: "g1" } }),
-      row({ id: "2", name: "Gone Guy", status: "OUT", source: "feed", status_source: "feed" }),
+      // `retired` from 2026-09-04: what "already gone" means is now the flag, not the
+      // status. A row that is OUT-by-feed WITHOUT it predates the flag and is retired
+      // once more, which is exactly what that day's migration backfills.
+      row({ id: "2", name: "Gone Guy", status: "OUT", source: "feed", status_source: "feed", retired: true }),
     ];
     const wanted = [feedPlayer({ name: "Josh Allen", position: "QB", externalIds: { gsis: "g1" } })];
     const plan = planPoolRefresh({ existing, wanted, at: AT });

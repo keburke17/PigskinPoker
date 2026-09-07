@@ -65,7 +65,7 @@ be able to say "save this" or "put it live" and have it happen.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **461 passed, 1 skipped, 26 files**. If the output says
+2. `npm test` before committing: **491 passed, 26 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -125,12 +125,12 @@ in a league that is actually being played is worse than a bug everyone has adapt
 
 ### Specific things that look wrong and must stay
 
-- **`rankTeamsWithTiebreak` compares only 5 of its 6 tiebreakers** (`src/engine/standings.js`,
-  the `i < 5` loop). The sixth documented tiebreaker never applies, and teams level on the
-  first five get ranked by input order instead. **This is OQ-A, deliberately preserved,
-  pending the designer's decision.** `tests/standings.test.js` asserts the current
-  behaviour on purpose and carries a skipped test for the fix. Changing the loop bound
-  changes the league's standings.
+- **`rankTeamsWithTiebreak` now compares all 6 tiebreakers** (`src/engine/standings.js`).
+  It used to compare five. **OQ-A was answered by Scott on 2026-09-06: the sixth applies**
+  - best single-player score in a week, exactly as the rules screen has always said. This
+  is a real rules change and `tests/parity.test.js` records it as a deliberate difference
+  from the artifact. It is listed here because the old behaviour is still in
+  `LegacyProject/`: do not "restore" it, and do not read the parity difference as a bug.
 - **`CP()` / `String.fromCodePoint` for every glyph** (`src/engine/constants.js`). The
   source is deliberately 100% ASCII. The original author hit real bugs with escapes in
   JSX text rendering literally. Do not "simplify" this to raw unicode or `\u` escapes.
@@ -288,7 +288,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-462 tests. Three groups worth knowing about:
+491 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -297,7 +297,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 148 of the 462
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 152 of the 491
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

@@ -890,7 +890,88 @@ async function commissionerLifecycle(db, leagueId, token, opName, expect, apply)
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
-export async function dealPeriod(db, { leagueId, token, expect, feed }) {
+/**
+ * What the deal says about the refresh that ran before it.
+ *
+ * Always says something. A pool that changes with nobody pressing refresh must not
+ * change invisibly, and "nothing changed" is itself worth reading on a Thursday - it
+ * means the depth charts agree with the pool, not that the refresh failed to run.
+ */
+function poolRefreshNote(refresh) {
+  if (!refresh) return "";
+  if (!refresh.ok) {
+    return " Pool NOT refreshed - " + refresh.why + " Dealt from the existing pool.";
+  }
+  const r = refresh.report;
+  const added = r.added?.length ?? 0;
+  const renamed = r.renamed?.length ?? 0;
+  const sidelined = r.sidelined?.length ?? 0;
+  const parts = [];
+  if (added) parts.push(added + " added");
+  if (r.retired) parts.push(r.retired + " retired");
+  if (renamed) parts.push(renamed + " renamed");
+  if (sidelined) parts.push(sidelined + " hurt, replaced by the next man up");
+  return parts.length
+    ? " Pool refreshed first: " + parts.join(", ") + "."
+    : " Pool refreshed first - no changes.";
+}
+
+/**
+ * Deal the week - refreshing the player pool from the live depth charts first.
+ *
+ * THE REFRESH RUNS BEFORE THE LIFECYCLE, and that ordering is the whole design.
+ * `persistBlob` rewrites the entire `players` table from the blob it is handed, so a
+ * refresh performed *inside* the lifecycle callback would be silently reverted: the blob
+ * was built from a view read before the refresh, and upserting it puts every status back.
+ * Running the refresh first, as its own committed operation, means the lifecycle then
+ * reads the world fresh and deals from what the refresh just wrote.
+ *
+ * WHY IT IS HERE AT ALL. Scott, 2026-09-06: "when a deal is dealt, i want the rosters to
+ * be live each time." Refreshing when the week *ends* does not deliver that - finalize
+ * on Monday night and deal on Thursday and the pool is three days stale at the only
+ * moment that matters. The deal is the moment, so the refresh belongs on the deal.
+ *
+ * This is a deliberate departure from "commissioner-pressed, never automatic" as written
+ * in docs/PHASE-4-PLAN.md section 6. What that rule was protecting against is an
+ * unattended refresh nobody sees; three things keep that protection:
+ *
+ *   1. It is still a commissioner pressing a button, in the same phase, doing the same
+ *      operation. One press instead of two - not a schedule, and not a background job.
+ *   2. It says what it did, in the activity log, every time. A pool that changes with
+ *      nobody pressing anything must not change invisibly.
+ *   3. `refreshPlayerPool` is untouched and still on its own button, for the times he
+ *      wants to look at the pool and correct it before dealing.
+ *
+ * A FEED FAILURE MUST NOT STOP THE WEEK. If the feed is down, late or has changed shape,
+ * the refresh returns 502, the pool is left exactly as it was, and the deal goes ahead on
+ * the pool he has - saying so in the log. A week that cannot start because nflverse is
+ * having a bad morning is a far worse failure than a slightly stale pool.
+ *
+ * ANY OTHER FAILURE DOES STOP IT, and is returned unchanged. A refused phase, a stale
+ * version or somebody who is not the commissioner would fail the deal identically a
+ * moment later, so there is one error rather than two. More importantly a write failure
+ * mid-refresh (500) leaves the pool half-updated, and dealing out of a half-written pool
+ * is exactly the silent damage the original rule existed to prevent.
+ *
+ * `feed` and `refresh` are injected by tests. `refresh: false` deals without touching the
+ * pool, which is what the parity and engine fixtures want.
+ */
+export async function dealPeriod(db, { leagueId, token, expect, feed, refresh }) {
+  /** @type {{ok: true, report: object} | {ok: false, why: string} | null} */
+  let poolRefresh = null;
+
+  if (refresh !== false) {
+    const outcome = await refreshPlayerPool(db, { leagueId, token, expect, feed });
+    if (outcome.status === 200) {
+      poolRefresh = { ok: true, report: outcome.body.report };
+    } else if (outcome.status === 502) {
+      // The feed's fault. Note it, deal anyway.
+      poolRefresh = { ok: false, why: outcome.body?.error ?? "the stats feed was unreachable" };
+    } else {
+      return outcome;
+    }
+  }
+
   return commissionerLifecycle(db, leagueId, token, "dealPeriod", expect, async (ctx) => {
     const v = ctx.view;
     const teamIds =
@@ -923,7 +1004,7 @@ export async function dealPeriod(db, { leagueId, token, expect, feed }) {
       type: "deal",
       text:
         "Rosters dealt for " + label + " (" + teamIds.length +
-        " team" + (teamIds.length === 1 ? "" : "s") + ").",
+        " team" + (teamIds.length === 1 ? "" : "s") + ")." + poolRefreshNote(poolRefresh),
     });
 
     return {
@@ -1122,8 +1203,12 @@ export async function refreshKickoffs(db, { leagueId, token, expect, feed }) {
  * Rebuild the player pool from each NFL team's current starters.
  *
  * The designer's answer to OQ-4b: the hand-typed pool was typed out of necessity, so the
- * pool becomes 1 QB, 2 RB, 2 WR, 1 TE and 1 head coach per team - 224 rows - and tracks
- * depth-chart moves and injuries instead of going stale.
+ * pool becomes 1 QB, 2 RB, 2 WR and 1 TE per team - 192 rows - and tracks depth-chart
+ * moves and injuries instead of going stale.
+ *
+ * HEAD COACHES ARE NOT IN THAT NUMBER. Scott looked at what the free coach data actually
+ * said on 2026-09-04, did not recognise half of it, and made coaches his (OQ-4d). The
+ * league still holds 224 rows; the refresh is responsible for 192 of them.
  *
  * Commissioner-pressed, pre-deal only, never automatic and never mid-week. It writes
  * over its own work and never over a person's: see server/pool.js for that rule, which
@@ -1144,17 +1229,38 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
   const season = ctx.rows.seasons[0]?.year ?? new Date().getUTCFullYear();
 
   let snapshot;
+  let injuries = { ok: false, reason: "not read" };
   try {
     /* `feed` is injected by tests. Otherwise the environment chooses, and it can only
      * ever choose the recorded fixture against a local database - see server/feed/index.js. */
     const source = feed || (await selectFeed());
-    const [chart, coachData] = await Promise.all([
+
+    /* TWO FILES, ONE OF THEM OPTIONAL. The depth chart is the pool and a failure there
+     * is fatal to the refresh. The roster file only adds injury status, is fifteen times
+     * the size, and cannot be read a piece at a time (see ROSTER_URL) - so it is allowed
+     * to fail on its own. Losing it costs a day or two of lag on a player ESPN has not
+     * demoted yet; treating it as fatal would cost the refresh entirely.
+     *
+     * A source that cannot report roster status at all - the recorded fixture - simply
+     * returns none, and every depth-chart player is treated as healthy. */
+    const [chart, rosterStatus] = await Promise.all([
       source.fetchDepthChart({ season }),
-      source.fetchHeadCoaches({ season }),
+      source.fetchRosterStatus
+        ? source.fetchRosterStatus({ season }).then(
+            (r) => {
+              injuries = { ok: true, week: r.week };
+              return r;
+            },
+            (err) => {
+              injuries = { ok: false, reason: err.message };
+              return null;
+            }
+          )
+        : Promise.resolve(null),
     ]);
     snapshot = {
       at: chart.snapshotAt,
-      ...source.buildPool({ depthPlayers: chart.players, coaches: coachData.coaches }),
+      ...source.buildPool({ depthPlayers: chart.players, rosterStatus }),
     };
   } catch (err) {
     /* A feed that is down, late, or has changed shape must not take the league with it.
@@ -1205,7 +1311,13 @@ export async function refreshPlayerPool(db, { leagueId, token, expect, feed }) {
 
   return good({
     view: hydrate(await fetchLeagueRows(db, leagueId)),
-    report: { ...plan.report, gaps: snapshot.gaps, season },
+    report: {
+      ...plan.report,
+      gaps: snapshot.gaps,
+      sidelined: snapshot.sidelined ?? [],
+      injuries,
+      season,
+    },
   });
 }
 

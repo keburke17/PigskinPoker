@@ -265,6 +265,12 @@ export function hydrateLeague(db, opts = {}) {
       position: p.position,
       team: p.nfl_team,
       status: p.status,
+      /* Dropped from the pool by a refresh: the commissioner's screen shows him, the
+       * managers' Free Agents screen does not. He stays IN playerPool rather than being
+       * filtered out here, because a week he already played still references him and
+       * `legacyOf` resolves a missing player to null - which would blank a starter slot
+       * in a finalized week. Added 2026-09-04; see the migration of the same date. */
+      retired: !!p.retired,
     })),
     scoringConfig: season.scoring_config,
     standingsPointsOverride: season.standings_points_override ?? null,

@@ -25,10 +25,34 @@ export const DEPTH_CHART_URL = (season) =>
   season +
   ".csv";
 
-/* Carries away_coach / home_coach, which is the only free source for "who is this
- * team's head coach" - depth charts do not list coaches. The same file carries game
- * results, which is what the Coach slot will score from when the stats pull lands. */
+/* Carries away_coach / home_coach, and the game results the Coach slot will score from
+ * when the stats pull lands.
+ *
+ * THE POOL REFRESH NO LONGER READS THE COACHES OUT OF IT. Scott's decision, 2026-09-04:
+ * this file's coach columns were wrong for his league on the day he checked - it had
+ * John Harbaugh with the Giants, Todd Monken at Cleveland, and it spelled Klint Kubiak
+ * "Klint Kubliak" - so head coaches became commissioner-maintained. `coachesFromGames`
+ * stays exported and tested because the results half of this file is still the plan for
+ * Coach scoring; nothing calls the coach half any more. See docs/OPEN-QUESTIONS.md OQ-4d. */
 export const GAMES_URL = "https://github.com/nflverse/nfldata/raw/master/data/games.csv";
+
+/* Weekly roster status - who is actually on the active roster, and who is on IR.
+ *
+ * WHY A SECOND FILE. The depth chart carries twelve columns and none of them is injury
+ * status: the "IR" tag ESPN shows on its own site is dropped from the extract. Rank
+ * alone catches most of it, because ESPN demotes an injured player down the chart - on
+ * 2026-09-04 Jayden Higgins was Houston's WR7 the day after his season ended - but that
+ * reordering lags by a day or two, and this file does not.
+ *
+ * WHY IT IS READ IN FULL. Unlike the depth chart this one is NOT grouped by snapshot and
+ * is not in week order (2025 opens 16, 17, 9), so there is no prefix worth stopping
+ * after and no suffix worth range-requesting. It is ~940KB per week and reached 15.4MB
+ * by the end of 2025, uncompressed on the wire. That is why the caller treats a failure
+ * here as survivable and refreshes on depth charts alone. */
+export const ROSTER_URL = (season) =>
+  "https://github.com/nflverse/nflverse-data/releases/download/weekly_rosters/roster_weekly_" +
+  season +
+  ".csv";
 
 /* nflverse abbreviation -> the full names the player pool has always used. Hand-written
  * because it is 32 rows that change roughly never, and a lookup table is cheaper than a
@@ -71,10 +95,40 @@ export const NFL_TEAMS = {
 };
 
 /* How deep the pool goes at each position, decided by the designer on 2026-08-28.
- * 1 QB, 2 RB, 2 WR, 1 TE and 1 head coach per NFL team = 224 rows. Deliberately no
- * WR3s, no second tight ends, and no ranking step. Two backs because of committee
- * backfields. See docs/PHASE-4-PLAN.md section 4.2. */
+ * 1 QB, 2 RB, 2 WR, 1 TE per NFL team = 192 rows. Deliberately no WR3s, no second tight
+ * ends, and no ranking step. Two backs because of committee backfields.
+ * See docs/PHASE-4-PLAN.md section 4.2.
+ *
+ * Head coaches were part of this until 2026-09-04 and are not any more - they are the
+ * commissioner's to keep, so the feed does not produce them. The pool is still 224 rows
+ * in a league: 192 from here plus the 32 coaches nobody but him touches. */
 export const POOL_DEPTH = { QB: 1, RB: 2, WR: 2, TE: 1 };
+
+/* nflverse roster status -> the pool status the game already understands.
+ *
+ * `status` is the NFL's own roster designation, not an injury report: ACT is the active
+ * roster, RES is reserve (injured reserve, PUP, non-football injury), DEV is the
+ * practice squad, and CUT / RET / EXE / INA / TRD are the various ways of not being on
+ * the team this week. Only RES means "hurt", which is why it is the only one that maps
+ * to IR; everything else that is not ACT simply is not playing, which is OUT.
+ *
+ * Anything unrecognised maps to Active on purpose. A status nflverse adds later must not
+ * silently bench a starter - a player wrongly OUT is a hole in the deal, and a player
+ * wrongly Active is a bad week the commissioner can see and fix. */
+export const ROSTER_STATUS = {
+  ACT: "Active",
+  RES: "IR",
+  DEV: "OUT",
+  CUT: "OUT",
+  RET: "OUT",
+  EXE: "OUT",
+  INA: "OUT",
+  TRD: "OUT",
+  TRC: "OUT",
+};
+
+export const poolStatusOf = (rosterStatus) =>
+  rosterStatus == null || rosterStatus === "" ? "Active" : (ROSTER_STATUS[rosterStatus] ?? "Active");
 
 /* ----------------------------------------------------------------- csv -- */
 
@@ -266,6 +320,139 @@ const pruneIds = (ids) => {
   return out;
 };
 
+/* ------------------------------------------------- roster status (IR) -- */
+
+/**
+ * Stream a whole CSV, handing each row to `keep` and retaining only what it returns.
+ *
+ * The roster file is 15MB of which we want about a thirtieth, so the rows we do not
+ * want are parsed and dropped rather than accumulated. Same line handling as
+ * `readLatestSnapshot`; that one can stop early and this one cannot, which is the only
+ * reason they are not the same function.
+ */
+export async function streamCsvRows(stream, keep) {
+  const decoder = new TextDecoder();
+  const reader = stream.getReader();
+  let buffer = "";
+  let header = null;
+  const rows = [];
+
+  const takeLine = (line) => {
+    if (!line) return;
+    const cells = parseCsvLine(line);
+    if (!header) {
+      header = cells;
+      return;
+    }
+    const row = {};
+    header.forEach((h, i) => {
+      row[h] = cells[i] ?? "";
+    });
+    const kept = keep(row);
+    if (kept) rows.push(kept === true ? row : kept);
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      takeLine(buffer.slice(0, nl).replace(/\r$/, ""));
+      buffer = buffer.slice(nl + 1);
+    }
+  }
+  takeLine(buffer.replace(/\r$/, ""));
+  return rows;
+}
+
+/**
+ * Pick the week whose rosters describe "now".
+ *
+ * NOT simply the highest week in the file. Once the playoffs start the file keeps going
+ * to week 22, and week 22 is two teams - taking it would leave thirty of them with no
+ * roster at all and mark their starters OUT. The newest week that still covers
+ * essentially the whole league is the one that means what we want it to mean.
+ */
+export function currentRosterWeek(rows, { minTeams = 30 } = {}) {
+  const teamsByWeek = new Map();
+  for (const r of rows) {
+    const week = Number(r.week);
+    if (!Number.isFinite(week)) continue;
+    if (!teamsByWeek.has(week)) teamsByWeek.set(week, new Set());
+    teamsByWeek.get(week).add(r.team);
+  }
+  const weeks = [...teamsByWeek.keys()].sort((a, b) => b - a);
+  const full = weeks.find((w) => teamsByWeek.get(w).size >= minTeams);
+  return full ?? weeks[0] ?? null;
+}
+
+/**
+ * Every skill-position player's roster status for the current week.
+ * @returns {{ week: number, byGsis: Map, byName: Map }}
+ */
+export async function fetchRosterStatus({ season, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(ROSTER_URL(season));
+  if (!res.ok) {
+    throw new Error("nflverse weekly rosters returned HTTP " + res.status + " for " + season);
+  }
+  const wanted = (row) =>
+    POSITIONS_WANTED.has(row.position)
+      ? {
+          week: row.week,
+          team: row.team,
+          position: row.position,
+          name: row.full_name,
+          gsis: row.gsis_id,
+          status: row.status,
+          abbr: row.status_description_abbr,
+        }
+      : null;
+
+  const rows =
+    res.body && typeof res.body.getReader === "function"
+      ? await streamCsvRows(res.body, wanted)
+      : parseCsv(await res.text())
+          .map(wanted)
+          .filter(Boolean);
+
+  const week = currentRosterWeek(rows);
+  const current = rows.filter((r) => Number(r.week) === week);
+
+  const byGsis = new Map();
+  const byName = new Map();
+  for (const r of current) {
+    if (r.gsis) byGsis.set(String(r.gsis), r);
+    byName.set(rosterKey(r.name, r.position), r);
+  }
+  return { week, byGsis, byName };
+}
+
+/* Deliberately the same shape as server/pool.js's matcher: lowercase, punctuation and
+ * suffixes gone. Duplicated rather than imported because this module is the feed and
+ * that one is the decision layer, and neither should have to load the other. */
+const rosterKey = (name, position) =>
+  String(name || "")
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/['`]/g, "")
+    .replace(/\s+(jr|sr|ii|iii|iv|v)$/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim() +
+  "|" +
+  position;
+
+/** What the roster file says about one depth-chart player, or Active if it has never
+ * heard of him. Not knowing somebody is not evidence that he is hurt. */
+export function statusOf(player, rosterStatus) {
+  if (!rosterStatus) return "Active";
+  const gsis = player.externalIds && player.externalIds.gsis;
+  const row =
+    (gsis && rosterStatus.byGsis.get(String(gsis))) ||
+    rosterStatus.byName.get(rosterKey(player.name, player.position));
+  return row ? poolStatusOf(row.status) : "Active";
+}
+
 /* ------------------------------------------------------------- coaches -- */
 
 /**
@@ -313,16 +500,29 @@ export function coachesFromGames(rows, season) {
 /* ---------------------------------------------------------------- pool -- */
 
 /**
- * The 224-row pool: each NFL team's starters, plus its head coach.
+ * The 192-row pool: each NFL team's healthy starters at QB, RB, WR and TE.
  *
  * Positions are filled by depth-chart rank, so a team's RB1 and RB2 are whoever the
  * chart says they are this week. Anything the chart cannot supply is REPORTED in
  * `gaps`, never quietly filled - a pool that is silently one quarterback short deals a
  * broken week, and the designer would rather see the hole.
+ *
+ * INJURED STARTERS ARE SKIPPED, NOT COUNTED. Scott's decision, 2026-09-04: if a team's
+ * WR2 is on injured reserve, the next healthy receiver takes the slot, so every team
+ * always contributes a full 1/2/2/1 and the dealable pool does not thin out every time
+ * somebody gets hurt. The hurt player is still returned - carrying IR rather than Active
+ * - because a pool that simply omits him cannot explain why he is gone. He is in the
+ * league's pool and out of its deal, which is exactly what IR has always meant here.
+ *
+ * `rosterStatus` is optional. Without it every depth-chart player is treated as healthy,
+ * which is what the refresh falls back to when the roster file cannot be read.
+ *
+ * HEAD COACHES ARE NOT PRODUCED HERE. They are the commissioner's, see GAMES_URL above.
  */
-export function buildPool({ depthPlayers, coaches }) {
+export function buildPool({ depthPlayers, rosterStatus }) {
   const wanted = [];
   const gaps = [];
+  const sidelined = [];
 
   const byTeamPos = new Map();
   for (const p of depthPlayers) {
@@ -337,31 +537,41 @@ export function buildPool({ depthPlayers, coaches }) {
       const list = (byTeamPos.get(team + "|" + position) || [])
         .slice()
         .sort((a, b) => a.depthRank - b.depthRank);
-      for (let i = 0; i < depth; i++) {
-        const pick = list[i];
-        if (!pick) {
-          gaps.push({ team, position, wantedRank: i + 1, reason: "not on the depth chart" });
-          continue;
-        }
-        wanted.push({ ...pick, position });
+
+      const healthy = [];
+      const hurt = [];
+      for (const p of list) {
+        if (healthy.length >= depth) break;
+        const status = statusOf(p, rosterStatus);
+        if (status === "Active") healthy.push({ ...p, position, status: "Active" });
+        else hurt.push({ ...p, position, status });
+      }
+
+      for (let i = healthy.length; i < depth; i++) {
+        gaps.push({
+          team,
+          position,
+          wantedRank: i + 1,
+          reason: hurt.length
+            ? "everyone on the depth chart at this spot is hurt or off the roster"
+            : "not on the depth chart",
+        });
+      }
+
+      wanted.push(...healthy, ...hurt);
+      for (const p of hurt) {
+        sidelined.push({
+          name: p.name,
+          position: p.position,
+          team: p.team,
+          depthRank: p.depthRank,
+          status: p.status,
+        });
       }
     }
-
-    const coach = coaches.get(team);
-    if (!coach) {
-      gaps.push({ team, position: "Coach", wantedRank: 1, reason: "no head coach listed" });
-      continue;
-    }
-    wanted.push({
-      name: coach,
-      position: "Coach",
-      team,
-      depthRank: 1,
-      externalIds: {},
-    });
   }
 
-  return { players: wanted, gaps };
+  return { players: wanted, gaps, sidelined };
 }
 
 /* --------------------------------------------------------- weekly stats -- */
