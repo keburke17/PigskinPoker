@@ -1,0 +1,90 @@
+# Pigskin Poker - the check that runs before a merge.
+#
+# WHY THIS EXISTS
+# Merging to `main` IS publishing: Netlify rebuilds pigskin.ballsohard.org a minute or
+# two later with no further step. Until this file, the only thing between a pull request
+# and the live site was somebody remembering to run `npm test` on their own machine with
+# Docker up. That is a fine habit and a bad gate.
+#
+# THE SKIP IS THE WHOLE POINT
+# `rls.test.js`, `server.test.js` and `bootstrap.test.js` need the local Supabase stack
+# and SKIP THEMSELVES SILENTLY without it - 160 of the 524 tests, covering every Row
+# Level Security assertion and all server-side authorization. A run without Docker is
+# green and has verified none of it, which is worse than a red one.
+#
+# So this job does two things a careless CI would not:
+#   1. starts the real stack, so those tests actually execute;
+#   2. FAILS if any suite printed its SKIPPED line anyway.
+#
+# Without (2) a broken `supabase start` would degrade quietly into a green tick that
+# means nothing - exactly the failure the suite's own design warns about.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same branch cancels the first. Nobody needs the results of a
+# commit that has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches .nvmrc and the NODE_VERSION pinned in netlify.toml. Three places is
+          # two too many, but the alternative is a runtime that moves under the function.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # BEFORE the tests on purpose. bundle.test.js reads dist/ and builds it itself if
+      # it is missing - which works, but turns "the build is broken" into a confusing
+      # failure inside a security test. Building here means a build failure says so.
+      - name: Build
+        run: npm run build
+
+      # The Supabase CLI is a devDependency, so this is the same binary and the same
+      # version every developer runs. Docker is already present on ubuntu-latest.
+      #
+      # `supabase start` applies every migration and runs supabase/seed.sql, which is
+      # what puts the demo league in place for server.test.js to reset between cases.
+      - name: Start the Supabase stack
+        run: npx supabase start
+
+      # Tee, so the skip check below reads what the humans read. `pipefail` keeps
+      # vitest's exit code rather than tee's.
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+
+      - name: Fail if any suite skipped itself
+        shell: bash
+        run: |
+          if grep -q "SKIPPED:" test-output.txt; then
+            echo "::error::A test suite skipped itself. The stack-backed tests did not run,"
+            echo "::error::so RLS and server authorization were NOT verified by this run."
+            grep "SKIPPED:" test-output.txt
+            exit 1
+          fi
+          echo "No suite skipped itself - the stack-backed tests ran."
+
+      - name: Stack logs on failure
+        if: failure()
+        run: npx supabase status || true

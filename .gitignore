@@ -25,3 +25,6 @@ supabase/.temp/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# hosted database dumps - `npm run db:backup`. These hold credential material.
+backups/

@@ -270,12 +270,105 @@ promote-then-demote, and the server refuses to remove the last commissioner - a 
 without one could not deal a week, add a team, or issue an invite, and no screen in the
 app could repair it.
 
+### Taking a backup
+
+```bash
+npm run db:backup
+```
+
+Three timestamped files into `backups/` (git-ignored): the schema, every row in
+`public`, and the `auth` schema's accounts. It dumps the **linked** project, so there is
+no second place to configure a target.
+
+**This is not the backup that gets used, and that is fine.** The one that gets used is
+in the app - **Commissioner -> Backup -> Download Backup (JSON)** - because a
+commissioner can take it and restore it with no tools and nobody's help. What the JSON
+export has no room for is everything that is not one league's game state: the accounts,
+the memberships, the outstanding invitations, the site admins. That is what this covers.
+
+Take the JSON one weekly. Take this one **before anything irreversible** - a migration,
+a wipe, a restore.
+
+The `auth` dump holds credential material and every member's email address. The script
+refuses to run if `backups/` has stopped being git-ignored, and it asks git rather than
+trusting the `.gitignore` file to still say what it says today.
+
+### Wiping the database
+
+The one-time cutover from "everything in there is test data" to "everything in there is
+a season people are playing".
+
+```bash
+npm run db:backup
+```
+
+```bash
+SUPABASE_URL=https://YOUR_REF.supabase.co SUPABASE_SECRET_KEY=sb_secret_... npm run db:wipe
+```
+
+It shows every league, account and finalized week it is about to destroy, then asks you
+to **type the project ref** - so a wipe cannot be confirmed by a reflex `y`. `--dry-run`
+stops after the inventory. `--keep-accounts` leaves `auth.users` alone.
+
+It deletes `leagues`, and the ON DELETE CASCADE takes the rest: seasons, teams, players,
+periods, rosters, stats, schemes, results, events, memberships, invitations. It leaves
+two things on purpose:
+
+- **`site_admins`** is keyed on email, not `user_id`, so deleting the accounts demotes
+  nobody. Sign in again and you are still an admin.
+- **`player_pool`** is the template a new league is *copied* from. It is repo state that
+  a migration built, not league data.
+
+**Then, in the new league, press Refresh Player Pool before dealing Week 1.** Creating
+a league copies `player_pool` as it stands, and it holds the depth charts as of the day
+`20260829000000_pool_template_from_feed.sql` was generated - stale by definition.
+**Commissioner -> Player Pool -> Refresh Player Pool** reconciles that league against the
+live feed in one button: adds, retires, and updates injury status. It is only permitted
+in `pre-deal`, so it has to happen before the first deal.
+
+Regenerating the **template** is a separate and optional job. It changes nothing about a
+league that already exists - it only affects leagues created afterwards - so it is worth
+doing at some point for hygiene and is not on the critical path:
+
+```bash
+PIGSKIN_FEED=live npm run pool:sql:feed
+```
+
+```bash
+npm run db:push
+```
+
+That writes a **new** migration - never edit an applied one - and `db:push` runs
+`verify:grants` for you. `PIGSKIN_FEED=live` is not optional: with `.env.local` pointing
+at the local stack, the generator would otherwise read the recorded fixture and bake a
+snapshot of last month into the migration.
+
+#### Why not `supabase db reset --linked`
+
+It rebuilds the hosted schema from the migrations, which sounds more thorough and is
+more dangerous:
+
+- It runs `supabase/seed.sql` unless you remember `--no-seed`, and on a database it has
+  just emptied the seed's own safety guard passes - so the obvious invocation plants the
+  six-team **demo league** into production and reports success.
+- Rebuilding-from-migrations is already proven daily. `npm run db:reset` does exactly
+  that locally and `npm test` runs against the result. There is nothing left to learn
+  from doing it to the live project.
+- It re-creates every table, and on hosted Supabase a new table is born with `GRANT ALL`
+  to `anon`. That is the failure `20260818020000_revoke_default_grants.sql` exists for.
+  Deleting rows cannot reintroduce it; recreating tables can.
+
+The schema is not the thing that is wrong. The data is.
+
 ### Rolling back
 
 - **The site:** Netlify -> Deploys -> pick a previous deploy -> "Publish deploy".
   Instant, no rebuild.
-- **The database:** there is no undo. Restore from Supabase's backups
-  (Database -> Backups), which is why schema changes get tested locally first.
+- **The database:** there is no undo. Restore from `npm run db:backup`'s most recent
+  dump, or - for one league gone wrong - from the commissioner's JSON export, which is
+  faster and far safer. Supabase's own daily backups are a paid-plan feature; on the
+  free tier **Database -> Backups has nothing in it**, so the only backup of this project
+  is one somebody took. This is why schema changes get tested locally first.
 
 Rolling the site back does **not** roll the database back. If a deploy included a
 migration, rolling back the site leaves the new schema in place - usually fine, since

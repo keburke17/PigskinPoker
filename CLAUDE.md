@@ -72,13 +72,18 @@ be able to say "save this" or "put it live" and have it happen.
 3. Conventional commit, push the branch, open the pull request. Use `gh pr create` if the
    GitHub CLI is signed in; otherwise push and hand him the link:
    `https://github.com/keburke17/PigskinPoker/compare/<branch>?expand=1`.
+   **GitHub Actions runs the full suite on the pull request** (`.github/workflows/ci.yml`),
+   with the Supabase stack up, and fails if any suite skipped itself. That is a second
+   pair of eyes, not a replacement for step 2 - a red tick after the push is a slower way
+   to learn the same thing.
 4. **Merging is publishing.** Netlify rebuilds <https://pigskin.ballsohard.org> from
    `main` a minute or two after a merge, with no further step. Say that out loud before
    merging, every time. Nothing else is automatic - migrations never run themselves.
 
 Hand these back to Kyle rather than doing them in Scott's session:
 
-- `npm run db:push`, or any other command that touches the hosted database
+- `npm run db:push`, `npm run db:wipe`, `npm run db:backup`, or any other command that
+  touches the hosted database
 - environment variables, keys, DNS, and the hosted service settings - Netlify, Supabase,
   Resend
 
@@ -322,7 +327,10 @@ npm test
   added.
 
   **A green `npm test` with no local stack has verified none of that.** Check the skip
-  count before trusting a pass on anything touching storage, auth or the schema.
+  count before trusting a pass on anything touching storage, auth or the schema. CI does
+  it for you on a pull request: `.github/workflows/ci.yml` starts the stack and then
+  fails the job if any suite printed its `SKIPPED:` line anyway, because a CI that
+  degrades quietly into a meaningless green tick is worse than no CI.
 - Everything else runs anywhere.
 
 Engine tests are deterministic - randomness is injected, the clock frozen where it
