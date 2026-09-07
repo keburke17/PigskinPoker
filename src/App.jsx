@@ -42,6 +42,7 @@ import { HelpTab } from "./components/HelpTab.jsx";
 import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
 import { hasBeenWelcomed, markWelcomed } from "./storage/firstRun.js";
 import { CommissionerTab } from "./components/commissioner.jsx";
+import { AdminScreen } from "./components/AdminScreen.jsx";
 
 function errText(e) {
   if (!e) return "Unknown error";
@@ -176,6 +177,55 @@ export default function App() {
       .finally(() => { if (!cancelled) setLeaguesLoading(false); });
     return () => { cancelled = true; };
   }, [route.name, account, store]);
+
+  /* SITE ADMIN, issue #40. A role that is not a league role - see server/auth.js.
+   *
+   * Asked of the server for the signed-in account and nothing else: the client is told
+   * whether IT is an admin, never who the admins are. `null` means "not asked yet",
+   * which is why this is not a plain boolean - the difference between "no" and "do not
+   * know" is what stops the Admin pill flickering into view on every load.
+   *
+   * Re-asked whenever the account changes, and cleared on sign-out, for the same reason
+   * `identity` is: a stale yes left in a variable is a screen someone should not see. */
+  const [siteAdmin, setSiteAdmin] = useState(null);
+  useEffect(() => {
+    if (!accountChecked) return;
+    if (!account) { setSiteAdmin(false); return; }
+    let cancelled = false;
+    store.adminWhoami?.()
+      .then((r) => { if (!cancelled) setSiteAdmin(!!(r?.ok && r.admin)); })
+      .catch(() => { if (!cancelled) setSiteAdmin(false); });
+    return () => { cancelled = true; };
+  }, [account, accountChecked, store]);
+
+  /* The coach list. Only read on the admin route, and only by an admin - the operation
+   * refuses anybody else, so this is about not making a pointless request rather than
+   * about safety. */
+  const [coaches, setCoaches] = useState(null);
+  const [adminError, setAdminError] = useState(null);
+  useEffect(() => {
+    if (route.name !== "admin" || !siteAdmin) return;
+    let cancelled = false;
+    store.listCoaches?.().then((r) => {
+      if (cancelled) return;
+      if (r?.ok) { setCoaches(r); setAdminError(null); }
+      else setAdminError(r?.message || "Could not read the coach list.");
+    });
+    return () => { cancelled = true; };
+  }, [route.name, siteAdmin, store]);
+
+  /* Both writes return the WHOLE list back, so the screen re-renders from what the
+   * server actually holds rather than from what the client hoped it wrote. */
+  const onSetCoach = async (team, name) => {
+    const r = await store.setCoach?.(team, name);
+    if (r?.ok) { setCoaches(r); setAdminError(null); } else setAdminError(r?.message || "That did not save.");
+    return r;
+  };
+  const onSyncCoaches = async () => {
+    const r = await store.syncCoaches?.();
+    if (r?.ok) { setCoaches(r); setAdminError(null); } else setAdminError(r?.message || "That did not run.");
+    return r;
+  };
 
   const onOpenLeague = (id) => go({ name: "league", leagueId: id, tab: DEFAULT_TAB });
 
@@ -471,6 +521,25 @@ export default function App() {
    * second case here: the in-memory demo had no auth provider, so `/` fell through to
    * the join-code login instead. That adapter is gone (see src/storage/index.js), and
    * with it the branch. */
+  /* The admin route, ahead of the landing catch-all below - it is not a league, so every
+   * league gate would send it to the front door. It does its own gating: signed out,
+   * signed in but not an admin, and admin are three different screens. */
+  if (route.name === "admin") {
+    return (
+      <AdminScreen
+        account={account}
+        admin={!!siteAdmin}
+        checked={accountChecked && siteAdmin !== null}
+        coaches={coaches}
+        error={adminError}
+        onSetCoach={onSetCoach}
+        onSyncAll={onSyncCoaches}
+        onSignInWithEmail={onSignInWithEmail}
+        onLeave={() => go({ name: "landing" })}
+      />
+    );
+  }
+
   if (route.name !== "league") {
     return (
       <div className="pp-root">
@@ -653,6 +722,11 @@ export default function App() {
      * clips, so it can reach a third row at 375px. Recorded as OQ-H for Scott. */
     { key: "help", label: "Help" },
     ...(isCommissioner ? [{ key: "comm", label: "Commish" }] : []),
+    /* Not a tab at all - it navigates OUT of the league to /admin, because the head
+     * coaches are one list shared by every league (issue #40). It rides in the nav
+     * because that is where a person looks for it, and it is drawn for the two site
+     * admins only, so it costs nobody else a pill. */
+    ...(siteAdmin ? [{ key: "admin", label: "Admin", route: { name: "admin" } }] : []),
   ];
 
   return (
@@ -696,7 +770,11 @@ export default function App() {
           <div className="pp-nav-wrap">
             <nav className="pp-nav">
               {NAV.map((n) => (
-                <button key={n.key} className={"pp-nav-btn" + (tab === n.key ? " active" : "")} onClick={() => setTab(n.key)}>{n.label}</button>
+                <button
+                  key={n.key}
+                  className={"pp-nav-btn" + (tab === n.key ? " active" : "")}
+                  onClick={() => (n.route ? go(n.route) : setTab(n.key))}
+                >{n.label}</button>
               ))}
             </nav>
           </div>

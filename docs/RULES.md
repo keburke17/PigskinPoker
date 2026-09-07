@@ -148,6 +148,12 @@ scores zero, the same as one who plays and does nothing.
 **The Coach** scores on his real team's result `[configurable]`: 2 for a Win, 1 for a Tie,
 0 for a Loss.
 
+> **The Coach card is the team.** The result is read off the NFL schedule and matched by
+> the team the card belongs to; the coach's NAME has never entered the arithmetic. That is
+> why a wrong name is annoying and not dangerous - it cannot move a point, in this week or
+> in one already played. The name is on the card because "Baltimore Ravens" twice would be
+> duller. Scott, 2026-09-07, in issue #40.
+
 > **Why yards split three ways.** Until 2026-08-28 all yards counted at one rate, which made
 > a quarterback worth several times any other slot - a 300-yard, 3-TD passing day scored 45
 > against a good receiver's 17. The same day now scores 24 against 18. This was the first
@@ -244,9 +250,12 @@ pool carrying IR - a pool that simply omitted him could not explain where he wen
 
 ### What a refresh may never do
 
-- **It never touches a Coach.** Head coaches belong to the commissioner (OQ-4d): the only
-  free source for them is not maintained to the standard of the depth charts, so coaches are
-  added, edited and removed by hand. Worth revisiting if a maintained source appears.
+- **It never touches a Coach.** The only free source for head coaches is not maintained to
+  the standard of the depth charts - it had John Harbaugh coaching the Giants - so no feed
+  writes one (OQ-4d). Since 2026-09-07 the 32 names are ONE list kept by the game's admins
+  on the /admin screen, not 32 lists kept league by league (OQ-4e, issue #40): correcting a
+  coach there corrects him in every league at once, which is safe precisely because the
+  card scores its team rather than its name.
 - **It never overwrites a decision a person made.** A player the commissioner added himself,
   or a status he set himself, is left alone - the feed records what it thinks separately and
   reports the disagreement rather than acting on it.

@@ -422,7 +422,12 @@ const ARROW_R = String.fromCodePoint(0x2192);
  * edit is not a list you maintain, and delete-then-add-again is a poor way to fix a
  * spelling. Renaming a player the feed owns is fine too - the next refresh matches him
  * by his provider id and puts its own spelling back, which is the feed correcting its
- * own work exactly as it should. */
+ * own work exactly as it should.
+ *
+ * The coaches moved on again on 2026-09-07 (issue #40): one shared list, kept by the
+ * game's admins on /admin, because a coach is one fact about the NFL rather than a
+ * decision each league makes. Editing one here still works and is still local to this
+ * league - the admins' next push overwrites it, and neither can change a point. */
 function PoolPlayerRow({ player, dimmed, onSetStatus, onDeletePlayer, onRenamePlayer, onRestorePlayer }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(player.name);
@@ -511,8 +516,13 @@ export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeleteP
           has already been dealt.
         </p>
         <p className="pp-sub">
-          <strong>Head coaches are yours.</strong> The refresh does not add, rename or
-          retire a single one - use Edit below to correct them.
+          <strong>Head coaches are not the feed's, and not yours either.</strong> The
+          refresh never adds, renames or retires one, and since 2026-09-07 the 32 names
+          are one list the game's admins keep - correcting a coach for everybody at once
+          rather than league by league. You can still Edit one below if you want a
+          different name on the card in your league; the next time the admins push the
+          list, theirs wins. It cannot affect scoring either way: the Coach card scores
+          its NFL team's Win, Tie or Loss, and the name on it is decoration.
         </p>
         {!canRefresh ? (
           <p className="pp-sub">

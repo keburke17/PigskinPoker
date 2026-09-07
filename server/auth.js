@@ -84,6 +84,36 @@ export async function verifyAccount(db, token) {
   return { id: data.user.id, email: data.user.email ?? null };
 }
 
+/**
+ * Is this account a SITE ADMIN - the role that sits above every league?
+ *
+ * The only one there is, and it exists for exactly one reason: `player_pool` is a
+ * single table shared by every league, and its head-coach rows belong to whoever
+ * designs the game rather than to whoever runs a league. See issue #40 and the
+ * migration that creates `site_admins`.
+ *
+ * MATCHED ON THE VERIFIED EMAIL, not on a user id. Supabase has just told us which
+ * address this magic link proved; that is the durable fact, and it survives an account
+ * being deleted and made again. The table stores lowercase and a check constraint
+ * enforces it, so this comparison can be exact rather than clever.
+ *
+ * Deliberately NOT part of verifySession. A site admin is not a member of any league
+ * he has not joined, and this must never quietly promote him inside one - the coaches
+ * screen is the whole of what it unlocks.
+ *
+ * @returns {{id, email}|null}
+ */
+export async function verifySiteAdmin(db, token) {
+  const user = await verifyAccount(db, token);
+  if (!user?.email) return null;
+  const { data } = await db
+    .from("site_admins")
+    .select("email")
+    .eq("email", user.email.trim().toLowerCase())
+    .maybeSingle();
+  return data ? user : null;
+}
+
 /* ------------------------------ authorization ---------------------------- */
 
 /* The rules the artifact only expressed as UI conditionals. These are the real ones. */
@@ -100,4 +130,5 @@ export const AUTH_ERRORS = {
   noSession: { status: 401, error: "Not signed in." },
   notCommissioner: { status: 403, error: "Only the commissioner can do that." },
   notYourTeam: { status: 403, error: "You can only change your own team." },
+  notSiteAdmin: { status: 403, error: "That screen belongs to the game's admins." },
 };

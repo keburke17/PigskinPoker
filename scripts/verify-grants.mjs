@@ -23,7 +23,12 @@ const READABLE = [
   // Global, not league-scoped, and public on purpose - see the pool migration.
   "player_pool",
 ];
-const SECRETS = ["invites"];
+/* Reachable by nobody through the API. `site_admins` is here rather than in READABLE
+ * on purpose: it is the list of people who may edit every league's head coaches, and
+ * nothing in the browser needs it - whether YOU are one is answered by `adminWhoami`,
+ * for you alone. Its migration grants the browser roles nothing; this is what checks
+ * that the hosted GRANT ALL default did not quietly hand it back. */
+const SECRETS = ["invites", "site_admins"];
 /* Phase 3b. A THIRD category, because these fit neither of the other two: they are
  * about people rather than about the game, so a signed-in visitor may read their own
  * rows (SELECT to `authenticated`, narrowed further by an RLS policy scoped to

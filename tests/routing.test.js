@@ -33,6 +33,15 @@ describe("parsePath", () => {
     expect(parsePath("/l/abc/not-a-tab").tab).toBe(DEFAULT_TAB);
   });
 
+  it("reads the site-admin screen, which is not inside a league", () => {
+    /* /admin edits `player_pool`, which every league is copied from - so hanging it off
+     * a league id would be a lie about what it changes (issue #40). Anyone may type the
+     * URL; the screen asks the server whether they are an admin. */
+    expect(parsePath("/admin")).toEqual({ name: "admin" });
+    expect(parsePath("/admin/anything-else")).toEqual({ name: "admin" });
+    expect(TABS).not.toContain("admin"); // never a league tab, whatever the nav draws
+  });
+
   it("falls back to the landing page for anything unrecognised", () => {
     expect(parsePath("/nonsense")).toEqual({ name: "landing" });
     expect(parsePath("/l")).toEqual({ name: "landing" }); // no league id
@@ -55,6 +64,11 @@ describe("parsePath", () => {
 });
 
 describe("buildPath", () => {
+  it("builds the admin path", () => {
+    expect(buildPath({ name: "admin" })).toBe("/admin");
+    expect(parsePath(buildPath({ name: "admin" }))).toEqual({ name: "admin" });
+  });
+
   it("is the inverse of parsePath for every shape", () => {
     // The two live next to each other precisely so they cannot drift; this is the check.
     const paths = ["/", "/join", "/join/ABC123-DEF4567890", "/l/abc", "/l/abc/comm", "/l/abc/rules", "/l/abc/home"];

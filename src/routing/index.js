@@ -10,8 +10,12 @@
  *   /join/<code>             a shared invite link, code prefilled
  *   /l/<leagueId>            a league, default tab
  *   /l/<leagueId>/<tab>      a league, on a named tab
+ *   /admin                   the site admins' screen - NOT inside a league (issue #40)
  *
- * That is four shapes and no nesting. A router that also does data loading, lazy routes
+ * That is five shapes and no nesting. `/admin` sits outside `/l/` deliberately: the head
+ * coaches are one list shared by every league, so hanging it off a league id would be a
+ * lie about what it edits. It is a route rather than a tab for the same reason, even
+ * though the app draws a nav pill for it. A router that also does data loading, lazy routes
  * and nested layouts would be solving problems this app does not have.
  *
  * The History API is doing the work. `popstate` covers the back button, which is the
@@ -44,6 +48,10 @@ export const DEFAULT_TAB = "results";
 export function parsePath(pathname) {
   const parts = String(pathname || "/").split("/").filter(Boolean);
 
+  // Not league-scoped, and its own gate: the screen asks the server whether the signed-in
+  // account is a site admin. A URL is not authorization - anyone may type this one.
+  if (parts[0] === "admin") return { name: "admin" };
+
   if (parts[0] === "join") {
     // The code may legitimately be absent - /join is still the redeem screen, just with
     // an empty box.
@@ -61,6 +69,7 @@ export function parsePath(pathname) {
 /** The inverse. Kept next to parsePath so the two cannot drift apart. */
 export function buildPath(route) {
   if (!route) return "/";
+  if (route.name === "admin") return "/admin";
   if (route.name === "join") return route.code ? "/join/" + encodeURIComponent(route.code) : "/join";
   if (route.name === "league") {
     const tab = route.tab && route.tab !== DEFAULT_TAB ? "/" + route.tab : "";
