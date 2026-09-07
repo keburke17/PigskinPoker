@@ -54,8 +54,16 @@ That prints the newest link; `npm run link -- team1@pigskin.test` picks one addr
 
 | Account | Role |
 |---|---|
-| `commish@pigskin.test` | Commissioner |
+| `commish@pigskin.test` | Commissioner - **and the local site admin**, see below |
 | `team1@pigskin.test` .. `team5@pigskin.test` | Manager of demo teams 1-5 |
+
+**`/admin` is not a league screen.** It edits `player_pool`, the template every league is
+copied from, and its 32 head-coach rows - one shared list, since a coach is one fact about
+the NFL rather than a decision each league makes (issue #40). Authorization is a
+`site_admins` row rather than a `league_members` one, and the migration seeds two real
+addresses that have never signed in on a local stack - so `seed-accounts` makes
+`commish@pigskin.test` an admin here, and the screen is reachable in dev without
+hand-written SQL. See [`docs/AUTH.md`](docs/AUTH.md) for why that table is keyed on email.
 
 **Team 6 is deliberately unclaimed**, so the path every real member takes is testable
 without setting it up first. Sign in as *any* address you like - `nobody@pigskin.test`,

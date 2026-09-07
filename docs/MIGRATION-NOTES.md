@@ -1453,3 +1453,72 @@ should read **461 passed, 1 skipped**. The 6 new
 database-backed tests in `tests/server.test.js` are in the skipped set and **have not been
 run** - they want a green run before this is trusted against a live league. The 12 in
 `tests/autoPull.test.js` run anywhere and pass.
+
+---
+
+## The head coaches become one list, kept by the game's admins (2026-09-07)
+
+> **A gap in this file, stated rather than papered over.** There is no entry for
+> 2026-09-06 - the `players.retired` column and the retired-players-out-of-sight work that
+> merged as #39. That change is documented in OQ-4d part two and in its own migration; it
+> never got a note here, and this entry does not try to write it after the fact.
+
+Issue #40. Scott, three days after OQ-4d: the coaches are still wrong. They were, and the
+reason is that OQ-4d answered who OWNS a head coach and stopped there. Nothing ever
+corrected the ones already written.
+
+### The state it was actually in
+
+`player_pool` - the template `copy_player_pool_into` copies into every new league - was
+rebuilt on 2026-08-29 by `pool:sql:feed`, which read its coach column out of the same
+`games.csv` OQ-4d then declared untrustworthy. So the applied migration still held Jesse
+Minter at Baltimore, Todd Monken at Cleveland, John Harbaugh at the **Giants** and "Klint
+Kubliak", and every league created since was born holding them. `server/pool.js` filters
+Coach out before it matches anything, which is the answered rule working correctly and
+also why nothing would ever fix it. The only correction path was the commissioner's Edit
+button: seven edits, per league, per commissioner.
+
+### The two answers, and why the order matters
+
+**The Coach card is the team.** It scores its NFL team's Win, Tie or Loss, matched on
+`nfl_team`, and no rule reads a coach's name - `feedValuesFor` matches the Coach slot by
+team, `computeStarterPoints` reads only `result`. This was already true and was not
+asserted anywhere. It is now: `tests/coaches.test.js` covers the pure side, and
+`tests/server.test.js` renames a coach against real Postgres and asserts every stat line,
+period result and team total is byte-identical afterwards.
+
+**The 32 names are one list.** Which needed the first role in this schema above a league:
+`site_admins`, keyed on email rather than `auth.users(id)` so it is seedable in a
+forward-only migration before either person has signed in - see `docs/AUTH.md`. RLS on with
+no policy, nothing granted to a browser role, added to `SECRETS` in `verify-grants`.
+`adminWhoami` answers for the caller alone; the table never reaches a browser.
+
+`/admin` lists the 32 teams. `setCoach` writes the template AND renames that team's live
+coach row in **every league already playing** - the one place this app crosses that
+boundary, and the first answer is the entire justification for it. It refuses to add or
+delete a coach, to touch a retired row, or to choose between two live coach rows for one
+team; each is reported instead.
+
+### The bug found on the way, and it was the dangerous one
+
+`scripts/generate-pool-migration.mjs --from-feed` passed a `coaches` argument that
+`buildPool` stopped accepting on 09-04, and never passed `rosterStatus`. Both were ignored
+silently. A regeneration would have emitted a **192-row template with zero Coach rows** and
+every status hardcoded `'Active'`, under a header claiming "224 - 32 Coach ...", and exited
+0 - destroying the hand-maintained list this change exists to create, while reporting
+success.
+
+Fixed by making the generated SQL delete `where position <> 'Coach'` and carry no coach
+row at all, numbering the skill rows `s1..s192` so nothing collides with the coaches'
+existing `p1`, `p8`, `p15` ids. It reads roster status now, and refuses outright if
+`buildPool` ever returns a coach. `tests/pool.test.js` checks both properties from the
+source, since the script needs the network and cannot run in a suite.
+
+### Verification
+
+`npm test`: **520 passed, 27 files, no skips** - the 160 stack-dependent tests ran. The
+migration was applied to the hosted database on 2026-09-07 and `verify:grants` reported 32
+checks passed, including `RLS enabled on site_admins` and `no browser-role grants on
+site_admins` - the hosted `GRANT ALL` default confirmed undone on the new table.
+
+Recorded as **OQ-4e**.

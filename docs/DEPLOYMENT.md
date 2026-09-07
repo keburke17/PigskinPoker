@@ -192,8 +192,14 @@ An attacker's-eye check, using the public key from your own shipped bundle:
 curl -s "https://YOUR_REF.supabase.co/rest/v1/invites?select=*" -H "apikey: YOUR_PUBLISHABLE_KEY"
 ```
 
-That must return a `42501` permission error. If it returns data, stop and fix it before
-anyone uses the site.
+```bash
+curl -s "https://YOUR_REF.supabase.co/rest/v1/site_admins?select=*" -H "apikey: YOUR_PUBLISHABLE_KEY"
+```
+
+Both must return a `42501` permission error. If either returns data, stop and fix it
+before anyone uses the site. These are the two SECRETS-class tables - `invites` holds
+hashed invitation secrets, `site_admins` holds the list of people who can edit every
+league's head coaches - and both are what `npm run verify:grants` checks structurally.
 
 ---
 
@@ -234,6 +240,27 @@ which arrives as a page of failing assertions rather than one obvious error.
 to `SECRETS` in `scripts/verify-grants.mjs` in the same change. The verifier only checks
 the tables it is told about, so a new secret table it does not know about passes
 silently - which is the one case where a green check would be actively misleading.
+
+### Changing who the site admins are
+
+There is no screen for this, deliberately - a two-row table that grants authority over
+every league is not something to put a button on. It is a row in `site_admins`, added
+through the Supabase SQL editor or a new migration:
+
+```sql
+insert into site_admins (email, note) values ('lowercase@address.com', 'who this is')
+  on conflict (email) do nothing;
+```
+
+**Lowercase, or it silently does nothing** - `verifySiteAdmin` compares exactly and the
+check constraint will reject anything else, which is the failure you want rather than an
+admin who can never sign in. Removing one is the matching `delete`; it takes effect on
+their next request, since the role is looked up per call and never carried in a token.
+
+The list is seeded by `20260907000000_site_admins.sql`, so a migration is the better route
+if the change should reach a database rebuilt from scratch. And note what admin does NOT
+grant: it is not a role in any league. A site admin who is not a member of your league
+still cannot see it, and the head-coach screen is the whole of what the role unlocks.
 
 ### Changing who the commissioner is
 

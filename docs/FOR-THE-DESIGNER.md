@@ -99,6 +99,48 @@ goes through: sign in as any address you like - `scott@pigskin.test`, anything -
 choose **I Have An Invite Code** and paste `PGSKN2-DEMTEAM234`. That puts you in charge of
 the All-In Antlers.
 
+### The Admin screen - the head coaches
+
+There is one screen that is yours rather than any league's, at **/admin**. Locally that is
+<http://localhost:5173/admin>; on the real site it is
+<https://pigskin.ballsohard.org/admin>. An **Admin** button appears in the row of tabs when
+you are signed in as somebody who is allowed to see it.
+
+It lists the 32 NFL teams with one head coach each, and you can correct any of them.
+
+**Why it exists.** The free NFL data we pull the players from is badly maintained where
+coaches are concerned - on the day you checked it, it had John Harbaugh coaching the
+Giants, Todd Monken at Cleveland, and Klint Kubiak spelled "Kubliak". So nothing automatic
+writes a coach's name any more. These 32 are typed by a person, and that person is you.
+
+**Nothing you type there can affect scoring.** This is worth knowing before you start
+editing, because it is the whole reason the screen is allowed to work the way it does: the
+Coach card scores the NFL **team's** result - Win, Tie or Loss - looked up by the team the
+card belongs to. The coach's name is on the card because it is more fun than reading the
+team name twice. Getting a name wrong is untidy; it cannot cost anybody a point, this week
+or in a week already played.
+
+**There are two ways to change something, and one is much bigger than the other.**
+
+- **Edit** on a row changes that one coach - in the master list, and in every league
+  playing right now.
+- **Push To Every League** takes the whole list and applies it everywhere. Use it after
+  correcting a batch, or on a league that was created before the list was right. It says
+  what it changed and what it left alone.
+
+Both reach into every league on the site, which is not something any other screen does.
+When it cannot do something safely it tells you instead of guessing - a league with two
+coaches listed for the same team, or with no coach for one, is reported and left alone.
+
+**You cannot add or delete a coach here**, on purpose. There are 32 NFL teams and there
+are 32 coach cards. A league missing one is a hole to look at, not something the screen
+should quietly patch.
+
+**Signing in as an admin.** On the real site it is your own email address. On your own
+machine that address has never signed in, so `commish@pigskin.test` is the admin there -
+the same account you use as commissioner. That means you can practise on your laptop, and
+you should: everything you press locally stops at your own machine.
+
 ### Starting over
 
 ```bash
