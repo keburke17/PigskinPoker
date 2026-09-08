@@ -956,6 +956,50 @@ export function CommResetPanel({ onReset }) {
 }
 
 
+
+/**
+ * Delete the league itself (OQ-18, 2026-09-08).
+ *
+ * The neighbour above wipes a league and leaves it standing, ready to be played again.
+ * This one removes it: the league, its teams, every week ever played in it, and every
+ * invitation and membership pointing at it. Nobody who was in it can reach it
+ * afterwards, and there is no undo - so the panel says the number of teams and finished
+ * weeks about to go, and asks for the league's own NAME rather than a stock phrase. A
+ * commissioner with three test leagues open in three tabs should not be able to delete
+ * the wrong one by typing the same words in the wrong tab.
+ */
+export function CommDeleteLeaguePanel({ state, onDeleteLeague }) {
+  const [error, setError] = useState(null);
+  const name = state.leagueName || "";
+  const teams = state.teams.length;
+  const weeks = state.weeklyResults.length;
+
+  const remove = async () => {
+    setError(null);
+    const r = await onDeleteLeague(name);
+    if (!r || r.ok === false) setError(r?.message || "Could not delete that league.");
+  };
+
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Delete League</h3>
+      <p className="pp-sub">
+        Deletes <strong>{name}</strong> and everything in it - {teams} team{teams === 1 ? "" : "s"},
+        {" "}{weeks} finished week{weeks === 1 ? "" : "s"}, the player pool, the settings, and every
+        invitation. Everyone else in the league loses it too, and it does not go to a bin: there is
+        no way to bring it back. Use Reset League above if you only want to start the season over.
+      </p>
+      {error ? <p className="pp-warn">{error}</p> : null}
+      <TypedConfirm
+        phrase={name}
+        label="Delete League"
+        confirmLabel="Delete This League Forever"
+        onConfirm={remove}
+      />
+    </div>
+  );
+}
+
 export function CommInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
   const [teamId, setTeamId] = useState("");
   const [role, setRole] = useState("manager");
@@ -1151,7 +1195,7 @@ export function CommissionerTab(props) {
     && props.state.currentPeriod.type === "week"
     && props.state.currentPeriod.number === 1;
   const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "reset"];
-  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", reset: "Reset" };
+  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", reset: "Reset / Delete" };
   return (
     <div>
       {setupPhase ? (
@@ -1183,7 +1227,12 @@ export function CommissionerTab(props) {
       {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
       {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />}
       {sub === "invite" && <CommInvitePanel state={props.state} invites={props.invites} onCreateInvite={props.onCreateInvite} onRevokeInvite={props.onRevokeInvite} />}
-      {sub === "reset" && <CommResetPanel onReset={props.onResetLeague} />}
+      {sub === "reset" && (
+        <>
+          <CommResetPanel onReset={props.onResetLeague} />
+          <CommDeleteLeaguePanel state={props.state} onDeleteLeague={props.onDeleteLeague} />
+        </>
+      )}
     </div>
   );
 }

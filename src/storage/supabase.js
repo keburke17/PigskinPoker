@@ -404,6 +404,11 @@ export function createSupabaseStore(config) {
     setMemberRole: (userId, role) => call("setMemberRole", { userId, role }),
     setLeagueVisibility: (visibility) => call("setLeagueVisibility", { visibility }),
 
+    /* Deleting takes the league and everything in it, so it carries the name the
+     * commissioner typed and the server checks it against the row before anything
+     * happens. See deleteLeague in server/operations.js. */
+    deleteLeague: (confirmName) => call("deleteLeague", { confirmName }),
+
     /* Which teams have a scheme in this week. A SERVER call rather than a read,
      * because an unresolved scheme is invisible to every browser read by design -
      * see the note on schemeStatus in server/operations.js. Commissioner only;
