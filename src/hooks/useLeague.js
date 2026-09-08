@@ -507,7 +507,9 @@ export function useLeague(store) {
       load();
     },
     saveState,
-    saveNow: () => queue.flush(),
+    /* No `saveNow` here since issue #69. It existed for the header's Save Now button, which
+     * is gone; the lifecycle flushes (visibilitychange, beforeunload) call `queue.flush`
+     * directly above, and a failed write retries itself. */
     conflict,
     dismissConflict: () => setConflict(null),
     opError,
