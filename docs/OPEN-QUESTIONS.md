@@ -1517,3 +1517,59 @@ used to end "Use Reset League to start over." Scott's instruction was to drop it
 rather than repoint it at Delete, and that is the honest answer: those settings are locked
 for the season precisely so a bracket cannot be re-cut around teams already playing in it,
 and Reset was never a good escape from that.
+
+### OQ-20. The week's action was three taps down. **[ANSWERED 2026-09-08: it moves onto the week screen, and the tab is renamed]**
+
+**Scott raised this himself on 2026-09-08**, and it is the sharpest statement of what the
+game is that this file has:
+
+> I think "activity" is a big part of the game. I believe one of the few things of this
+> game is picking a play scheme and then getting to see who you stole or drew at random.
+> It is also fun to see who else got stolen and blocked and redrew.
+
+**What it cost to find.** Opening the app cold landed on the Scoreboard, which said nothing
+had happened; the log was League, then Activity, the third sub-tab behind a standings table
+nobody came for. What arrived was every week ever in one list, newest first, in 13px
+`--text-dim` prose with no separation between three hours ago and last month.
+
+**The decision, out of five placements and three treatments drawn at phone size:**
+
+1. **The current week's events sit on the week screen**, in a card between your own team
+   card and the league table. One list, everyone's events together, with the rows naming
+   your team tinted and railed in gold. Not split into "yours" and "theirs" - the fun is
+   partly that the whole league watched the same thing happen to you.
+2. **The scheme becomes a coloured chip** - Block blue, Steal red, Redraw purple, reusing
+   the suit colours a roster row already wears. Everything that is not a manager's action
+   (a finalized week, the clock, a warning) takes a quiet chip so every row keeps one shape.
+3. **The tab is called "Week"**, not "Scoreboard". The old name stopped being true when the
+   screen stopped being a scoreboard; "Week" is also the shortest label in the nav, where
+   "Scoreboard" was the longest, which buys back a little of the header room OQ-8 is about.
+   **Only the label changed - the route key is still `results`, so no saved link breaks.**
+
+**What was considered and not taken**, recorded so it is not re-proposed as new: its own
+nav tab (a seventh pill, and still somewhere you must decide to go - it works better later
+as the "All weeks" destination, which is what the link now does); a one-line ticker under
+the week banner (one event at a time, and another line of header); rearranging the whole
+screen into a single "everything" feed (the same idea with far more work); and putting the
+action ABOVE your own score (right on Thursday, wrong on Sunday, and nothing on the screen
+knows which day it is).
+
+**The honest limit, and the question it leaves open.** An activity entry is
+`{ id, period, periodLabel, ts, type, text }` - prose and nothing else. There is no acting
+team on it, no player ids, no structured anything. So:
+
+- The chip comes from `type`, which is solid.
+- **The sentence is the engine's own words, verbatim.** The mockups Scott approved showed
+  shorter, punchier lines ("You took Ja'Marr Chase from Full House Flyers, and gave up Tank
+  Dell") - those are NOT what shipped, because rewording them means changing what
+  `processSchemes` writes, and `tests/parity.test.js` compares whole states against the
+  artifact after that call. That is a rules-adjacent change and it is his to ask for.
+- **"Is this row mine" is a name match** against the text. A miss leaves a row untinted; a
+  false positive tints a row that only mentions you. Both are better than the flat list this
+  replaces, and neither can corrupt anything.
+
+**So OQ-21 is the follow-up**: should the activity log carry real fields - the acting team,
+the players, the position - instead of only a sentence? That would buy the punchier wording,
+reliable "your row" marking, and a feed that could be filtered. It costs an engine change, a
+parity update, and a migration, because `decompose.js` writes `payload` empty today and a new
+field would not survive a save. Not started; waiting on him.

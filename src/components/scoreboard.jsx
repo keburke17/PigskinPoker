@@ -19,6 +19,7 @@
  */
 
 import { periodLabel, projectCurrentPeriod } from "../engine/index.js";
+import { WeekActivityCard } from "./activity.jsx";
 import { EmptyState, PeriodBanner } from "./atoms.jsx";
 import { TeamRosterBlock } from "./roster.jsx";
 
@@ -100,7 +101,7 @@ function MyWeekCard({ state, team, rows }) {
   );
 }
 
-export function WeekScoreboard({ state, myTeam }) {
+export function WeekScoreboard({ state, myTeam, onSeeAllActivity }) {
   const period = state.currentPeriod;
   const roundWord = period.type === "playoff" ? "round" : "week";
 
@@ -141,6 +142,11 @@ export function WeekScoreboard({ state, myTeam }) {
     <div>
       <PeriodBanner state={state} extra={state.rosterLocked ? "Rosters locked" : null} />
       {myTeam ? <MyWeekCard state={state} team={myTeam} rows={rows} /> : null}
+      {/* Your card, then what happened, then the table - Scott's arrangement, chosen on
+        * 2026-09-08 out of four (OQ-20). The table going below the fold is the accepted
+        * cost: your own score and rank are already in the card above, so the table is
+        * answering "and everyone else?", which is worth a scroll. */}
+      <WeekActivityCard state={state} myTeam={myTeam} onSeeAll={onSeeAllActivity} />
       <div className="pp-card">
         <h3 className="pp-h3">{periodLabel(period)} Scoreboard</h3>
         <WeekScoreTable

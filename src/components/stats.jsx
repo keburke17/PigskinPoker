@@ -7,7 +7,7 @@
  * file.
  *
  * That scoreboard used to be the ONLY place in the app a team total appeared, buried under
- * the controls below. It is now the Scoreboard tab; the sum behind it moved into the
+ * the controls below. It is now the Week tab; the sum behind it moved into the
  * engine as `teamPeriodScore`, which is also what let roster.jsx show a total without
  * importing from this file (roster.jsx <- stats.jsx already, so the other direction was a
  * cycle). This screen keeps the number where the commissioner is actually typing: on each
