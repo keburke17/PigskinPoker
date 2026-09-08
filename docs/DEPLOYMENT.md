@@ -280,14 +280,15 @@ Three timestamped files into `backups/` (git-ignored): the schema, every row in
 `public`, and the `auth` schema's accounts. It dumps the **linked** project, so there is
 no second place to configure a target.
 
-**This is not the backup that gets used, and that is fine.** The one that gets used is
-in the app - **Commissioner -> Backup -> Download Backup (JSON)** - because a
-commissioner can take it and restore it with no tools and nobody's help. What the JSON
-export has no room for is everything that is not one league's game state: the accounts,
-the memberships, the outstanding invitations, the site admins. That is what this covers.
+**This is now the only backup there is.** Until 2026-09-07 there was a second one in
+the app - Commissioner -> Backup -> Download Backup (JSON) - whose selling point was that
+a commissioner could take it and restore it with no tools and nobody's help. It was
+removed (OQ-7): it serialized the browser's view of one league, so it carried neither
+pending schemes nor any past week's rosters and stat lines, and it had nothing to say
+about the accounts, memberships, invitations or site admins either. This covers all of it.
 
-Take the JSON one weekly. Take this one **before anything irreversible** - a migration,
-a wipe, a restore.
+**Which means the schedule matters more than it did.** Take one weekly, and take one
+**before anything irreversible** - a migration, a wipe, a restore.
 
 The `auth` dump holds credential material and every member's email address. The script
 refuses to run if `backups/` has stopped being git-ignored, and it asks git rather than

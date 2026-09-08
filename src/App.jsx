@@ -22,11 +22,8 @@ import { useRoute } from "./routing/useRoute.js";
 import { DEFAULT_TAB } from "./routing/index.js";
 import { LandingScreen } from "./components/LandingScreen.jsx";
 import { useLeague } from "./hooks/useLeague.js";
-import { validateBackup } from "./storage/backup.js";
 import {
   emptyCumulative,
-  nowStamp,
-  periodLabel,
   uid,
   POSITIONS,
   SUIT_CH,
@@ -44,16 +41,6 @@ import { hasBeenWelcomed, markWelcomed } from "./storage/firstRun.js";
 import { CommissionerTab } from "./components/commissioner.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 
-function errText(e) {
-  if (!e) return "Unknown error";
-  if (typeof e === "string") return e;
-  if (e.message) return e.message;
-  try {
-    return JSON.stringify(e);
-  } catch (x) {
-    return String(e);
-  }
-}
 
 
 export default function App() {
@@ -94,7 +81,6 @@ export default function App() {
    * dismissing the banner does not bring it straight back. */
   const [linkError] = useState(() => store.getAuthLinkError?.() ?? null);
   const [loginError, setLoginError] = useState(linkError);
-  const [restoreError, setRestoreError] = useState(null);
   /* The tab lives in the URL now, so it is shareable and the back button works - which
    * is the whole of what P6 was about. Local state would immediately disagree with the
    * address bar the first time someone pressed back. */
@@ -453,62 +439,6 @@ export default function App() {
       s.standingsPointsOverride = null;
     });
 
-  /* ---- backup / restore ---- */
-  const onDownloadBackup = () => {
-    try {
-      const payload = { ...state };
-      delete payload._meta; // internal versioning, not part of the backup format
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download =
-        "pigskin-poker-backup-" +
-        new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") +
-        ".json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setRestoreError({ headline: "Couldn't create the backup file.", detail: errText(e) });
-    }
-  };
-
-  const onRestoreBackup = (file) => {
-    setRestoreError(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      let parsed;
-      try {
-        parsed = JSON.parse(reader.result);
-      } catch (e) {
-        setRestoreError({ headline: "Restore failed - that file isn't valid JSON.", detail: errText(e) });
-        return;
-      }
-      /* P9: the artifact checked only that teams and playerPool were arrays, then put
-       * the file straight into app state. Validate the whole shape first, and refuse
-       * rather than half-load. */
-      const check = validateBackup(parsed);
-      if (!check.ok) {
-        setRestoreError({
-          headline: "Restore failed - that file isn't a valid Pigskin Poker backup.",
-          detail: check.problems.join(" "),
-        });
-        return;
-      }
-      ops.mutate("restore", (s) => {
-        Object.keys(s).forEach((k) => {
-          if (k !== "_meta") delete s[k];
-        });
-        Object.assign(s, check.state);
-      });
-    };
-    reader.onerror = () =>
-      setRestoreError({ headline: "Restore failed - couldn't read the file.", detail: errText(reader.error) });
-    reader.readAsText(file);
-  };
-
   /* ------------------------------- render ------------------------------- */
 
   /* THE LANDING PAGE COMES FIRST, before every league gate below.
@@ -811,7 +741,6 @@ export default function App() {
               kickoffReport={kickoffReport}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
               onStartPlayoffs={onStartPlayoffs}
-              onDownloadBackup={onDownloadBackup} onRestoreBackup={onRestoreBackup} restoreError={restoreError}
               onResetLeague={onResetLeague}
             />
           )}

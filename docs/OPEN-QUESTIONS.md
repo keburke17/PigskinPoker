@@ -374,14 +374,30 @@ single biggest quality-of-life feature in the app.
 whether Phase 3 collects email addresses. Collecting them later is a chore; collecting them
 while building the members table is free.
 
-### OQ-7. Backup/restore is now a convenience, not a lifeline. **[assumed: keep]**
+### OQ-7. Backup/restore is now a convenience, not a lifeline. **[ANSWERED 2026-09-07: removed]**
 
 The JSON export existed because storage was not trustworthy. With Postgres and real backups
 it is no longer load-bearing.
 
-**Recommendation: keep it** - it is still useful, and it is how your league's existing
-history migrates over in Phase 5. But it should stop constraining the design of anything
-else, and restore will validate its input properly (P9) rather than trusting the file.
+The standing recommendation was to keep it, on two grounds: it was still useful, and it was
+how the existing league's history would migrate over in Phase 5.
+
+**ANSWERED 2026-09-07 by Kyle: take it out.** Neither ground survived. Phase 5 never
+happened and is not going to - the Artifact league was a worked example, not real history
+(see the Backup import row in CLAUDE.md), so there is nothing to carry across. And the
+export was never the safety net the tab claimed it was: it serialized the browser's
+`state`, which does not contain pending schemes, past weeks' rosters, or past weeks'
+stat lines. Restoring one would not have brought them back, because they were never in the
+file. That was recorded as finding 4 in `docs/MIGRATION-NOTES.md` and as item 4 in
+`docs/FOR-THE-DESIGNER.md`; removing the tab closes both.
+
+**What this means for the league.** The commissioner has no in-app download and no in-app
+restore. The remaining backup is `npm run db:backup`, which is Kyle's - it dumps the
+hosted schema, every public row and the auth schema, and it is strictly more complete than
+the JSON ever was. The cost is that a commissioner can no longer take or restore one
+himself, with no tools and nobody's help. **Scott: if you want that back, say so** - the
+honest version would be a server-side export that reads the database rather than the
+browser's view of it, and it is a different feature from the one that was removed.
 
 ### OQ-8. Phone check. **[DONE in Phase 1 - one finding for you]**
 

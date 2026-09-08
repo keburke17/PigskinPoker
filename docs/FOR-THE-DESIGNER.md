@@ -477,13 +477,16 @@ Every other action in the app checks that nobody else changed the same thing fir
 Submitting a scheme is the exception - the check is skipped, because the browser never has
 the information it would compare. Combined with (2), a double submission is silent.
 
-### 4. Your downloaded backups are missing things
+### 4. The Backup tab is gone - FIXED 2026-09-07, by deletion
 
-The Backup tab tells you to treat manual backups as your primary safety net. A backup taken
-mid-week does not contain the schemes managers have submitted, and no backup contains past
-weeks' rosters or stat lines. Restoring one would not bring them back, because they were
-never in the file. Worth knowing before you rely on one, and worth fixing alongside (1) -
-it is the same missing picture.
+This used to say: the Backup tab tells you to treat manual backups as your primary safety
+net, but a backup taken mid-week does not contain the schemes managers have submitted, and
+no backup contains past weeks' rosters or stat lines - the same missing picture as (1).
+
+Rather than fix a file that was lying about what it held, the tab was removed (OQ-7). The
+backup that remains is Kyle's `npm run db:backup`, which dumps the whole hosted database and
+is strictly more complete. **What you lose is being able to take one yourself.** If you want
+that back, say so and it gets built properly - reading the database, not the browser.
 
 ---
 

@@ -775,7 +775,10 @@ none.
 
 **4. Backup export is lossy the same way.** `onDownloadBackup` serializes the client's
 `state`, while `commissioner.jsx` tells the commissioner backups are his *primary* safety
-net.
+net. **Closed 2026-09-07 by removing the feature** (OQ-7) rather than by fixing it: nothing
+downstream needed it - Phase 5's history import never happened and is not going to - and
+`npm run db:backup` already dumps everything this file could not. `src/storage/backup.js`,
+the validator written for P9, went with it.
 
 ### Why nothing caught it
 
