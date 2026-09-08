@@ -47,7 +47,9 @@ anyone's back, it is the decision the question was waiting for. When he decides 
 
 **Kyle - the plumbing.** He did the port and owns the hosted services the game runs on:
 Supabase, Netlify, Resend, DNS, the secrets, and applying migrations to the live database.
-Technical, drives his own git, wants the reasoning rather than the summary. **He owns the
+Technical, wants the reasoning rather than the summary. **He used to drive his own git
+and asked on 2026-09-07 for that to be driven too**, up to the pull request - the merge
+stays his. See "Doing the git work". **He owns the
 configuration, not the code** - `server/`, `netlify/` and the migration files themselves
 are ordinary repository code and Scott changes them too. The intent is that the services
 stay put and both of them iterate on the app on top of them - so if a request needs the
@@ -60,8 +62,20 @@ If you cannot tell which of them you are talking to, ask once, early.
 
 ## Doing the git work
 
-Kyle pushes and merges himself - offer, do not assume. **For Scott, drive it.** He should
-be able to say "save this" or "put it live" and have it happen.
+**Drive it for both of them, up to and including the pull request.** Scott should be able
+to say "save this" and have it happen; Kyle asked for the same on 2026-09-07, having
+previously pushed himself. Do not hand either of them a list of commands to run - a list
+is a worse answer than running them.
+
+**`gh pr merge` is still Kyle's, and only his.** Merging is publishing (step 4), and it is
+the one step in the git flow that puts something in front of the league. Offer it, say
+what it will do, and let him press it.
+
+**Approval comes from the permission prompt, not from a second conversation.** `git push`
+and `gh pr create` are deliberately absent from `.claude/settings.json` - see the note at
+the end of this section - so each one asks once, in the moment, with the branch and the
+title on screen. That is the approval. Do not ask "shall I push?" in prose first and then
+trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
@@ -116,6 +130,12 @@ prompts deep before anything happens. **`git push`, `gh pr create`, `gh pr merge
 `npm run dev` and every `db:` script are deliberately left out.** Those are the moments
 something leaves the machine or changes a database, and one prompt there is worth having.
 Do not add them.
+
+**That is unchanged by Kyle asking for pushes and pull requests to be driven for him**
+(2026-09-07), and the two fit together on purpose: a session now goes ahead and runs
+`git push` and `gh pr create` rather than handing over a command to copy, and the prompt
+in front of each is where he says yes. Moving them into the settings file would remove the
+approval rather than automate the typing, which is the opposite of what he asked for.
 
 ---
 
