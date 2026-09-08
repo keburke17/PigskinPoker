@@ -1416,7 +1416,8 @@ league's **own name** - not a stock phrase - to confirm. The server checks the n
 before it deletes anything. Afterwards the app returns to the front door, because there is
 no longer a league to be looking at.
 
-**Three calls made in the building of it, each reversible if Scott wants them another way:**
+**Three calls made in the building of it. Scott confirmed all three on 2026-09-08**, so
+they are settled rather than provisional:
 
 1. **The commissioner's, not the site admin's.** It sits beside Reset League, which is
    already his, and it is authorized the same way - a `league_members` row saying
@@ -1429,7 +1430,10 @@ no longer a league to be looking at.
    front door. That list is where somebody taps quickly, and it is the one place where
    deleting the wrong one is easiest - so removing a league means opening it first. Three
    test leagues is three deliberate trips, which for a thing with no undo seemed the right
-   trade. **Say if you would rather have it on the list.**
+   trade. **Confirmed by Scott on 2026-09-08**: "i like the delete league within the league
+   itself. not on the main league list page. so we will keep it within the league commish
+   tools." So the front-door list stays a list of doors and nothing else - if a delete ever
+   does appear there, it is a decision to reopen, not a gap to fill.
 
 **What a commissioner loses, and it is worth knowing before pressing it.** There is no bin
 and no undo. `npm run db:backup` is the only copy of a league that exists, it is Kyle's to
@@ -1437,3 +1441,9 @@ run, and it is not on a schedule - so a league deleted between backups is gone f
 so is it for every manager who was in it. They are not told; they simply find the league
 missing. Notifying them is OQ-6's problem, unbuilt.
 
+**The other half of the same ask: the header.** Scott, the same day - "the name of the
+league itself should be displayed somewhere on the page where the league is being played.
+at the very top it says PIGSKIN POKER, which is fine, but maybe it says the league name and
+then pigskin poker is displayed somewhere else." Built as an eyebrow: PIGSKIN POKER in 11px
+gold caps, the league's name in the h1 below it with the suits, the role badge under that.
+**Confirmed by him on 2026-09-08 - "header looks good."** Nothing further is open here.
