@@ -409,7 +409,7 @@ himself, with no tools and nobody's help. **Scott: if you want that back, say so
 honest version would be a server-side export that reads the database rather than the
 browser's view of it, and it is a different feature from the one that was removed.
 
-### OQ-8. Phone check. **[DONE in Phase 1 - one finding for you]**
+### OQ-8. Phone check. **[DONE in Phase 1; the touch-target finding TABLED 2026-09-08]**
 
 Measured at 375x812 with the demo league loaded, not assumed:
 
@@ -423,6 +423,27 @@ The layout holds up. The touch targets are the finding: usable, but fiddly for p
 checking scores one-thumbed on a Sunday. It is a CSS-only fix (padding plus `min-height`)
 but it changes the proportions of every screen, so it is a design call rather than a port
 call. **Want me to raise the touch targets, or leave the look exactly as he designed it?**
+
+**Answered 2026-09-08 - tabled, with a preference on the record.** Scott was shown four
+phone mockups at true size (today; 44px targets alone; a quiet header folding the
+housekeeping behind one button; and the nav moved to a bottom bar), with every control
+outlined and measured. His read: **"the buttons dont seem to be that big a deal honestly"**
+- so this is NOT being built now. **If it is ever built, he picked the quiet header**: 44px
+targets, with Log Out and Save Now folded into a single button rather than sitting in the
+header. He did not choose the bottom nav.
+
+So the three pieces, in the order he would take them:
+
+1. **Raise the targets to 44px** - one stylesheet, no game logic. On its own it makes the
+   header TALLER, which is why it was never worth doing alone.
+2. **Fold Log Out, Save Now and the signed-in-as line behind one button** - the part he
+   actually liked, and the only one that buys screen back. The cost he accepted in
+   principle: the save status shrinks to a dot, so you trust the auto-save rather than
+   watch it.
+3. **The bottom nav** - not chosen. Leave it here as the option that was declined, not as
+   the next step.
+
+The header's height (OQ-8's other half) was not separately answered and is still open.
 
 ### OQ-9. Should resolved schemes become public? **[ANSWERED: yes, once resolved]**
 
