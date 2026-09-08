@@ -107,7 +107,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>League</strong> - season standings, playoff bracket, and the activity log of steals, blocks and redraws.</li>
         <li><strong>Rosters</strong> - everybody's rosters and the free-agent pool.</li>
         <li><strong>Rules</strong> - the game itself: scoring rates, tiebreakers, playoffs. The numbers there are read from your league's own settings.</li>
-        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup, and all three settings panels also appear together on the setup screen before your first week is dealt; Manage Rosters acts on a manager's behalf; Reset / Delete holds the two escape hatches - wiping the league back to an empty one you can play again, or deleting it outright, which takes it away from everyone in it and cannot be undone.</li> : null}
+        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup, and all three settings panels also appear together on the setup screen before your first week is dealt; Manage Rosters acts on a manager's behalf; Delete League is the one escape hatch, and it takes the league away from everyone in it and cannot be undone.</li> : null}
       </RuleCard>
 
       {/* ISSUE #52. The one card whose entire job is "what moves without anybody
@@ -173,7 +173,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
       </RuleCard>
 
       <RuleCard title="When something looks wrong">
-        <li><strong>"Saved at ..." in the header</strong> is the app's save state. "Save failed - retrying" means it is still trying; your change is not lost, and Save Now forces it.</li>
+        <li><strong>"Saved at ..." in the header</strong> is the app's save state. "Save failed - retrying" means it is still trying; your change is not lost, and it keeps trying on its own until it lands.</li>
         <li><strong>A conflict banner</strong> means somebody else changed the same thing first. Your change was not applied and nothing of theirs was overwritten - make it again if you still want it.</li>
         <li><strong>A greyed-out Deal button</strong> means the league has no teams yet.</li>
         <li><strong>A greyed-out Pull Stats</strong> means either no NFL week is set for this period, or the rosters are not locked yet - it will tell you which.</li>

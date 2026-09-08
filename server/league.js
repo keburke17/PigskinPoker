@@ -28,9 +28,27 @@ export async function fetchLeagueRows(db, leagueId) {
   rows.seasons = seasons.data;
   const seasonIds = seasons.data.map((s) => s.id);
 
+  /* ORDERED, exactly as the client's read is (src/storage/supabase.js), and for the same
+   * two reasons - which is the point: every write returns a freshly hydrated league that
+   * the client adopts wholesale, so an unordered read here shuffles the cards under a
+   * commissioner mid-entry and the ordered re-read a moment later shuffles them back.
+   * That was issue #60. Rows move in the heap as they are rewritten, so "whatever
+   * PostgREST hands back" changes on every save.
+   *
+   * The half that outlives the flicker is that `state.teams` order is load-bearing in
+   * the engine: rankTeamsWithTiebreak leaves teams it cannot separate in INPUT order, so
+   * a dead tie at the playoff cut or on the champion is sliced by array order. Finalize
+   * runs HERE, on these rows - so this is the read that decides it, and ordering by
+   * created_at is what makes OQ-A's "whichever team joined first" true rather than
+   * aspirational. The client fix for issue #29 never reached this side.
+   *
+   * `players` is ordered for the same reason twice over: it is the pool and free-agent
+   * lists on screen, and dealRosters shuffles it, so a seeded deal is only replayable
+   * from a stable input order. `id` is the tiebreak of last resort so the order is
+   * total. */
   const [teams, players] = await Promise.all([
-    db.from("teams").select("*").eq("league_id", leagueId),
-    db.from("players").select("*").eq("league_id", leagueId),
+    db.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id"),
+    db.from("players").select("*").eq("league_id", leagueId).order("created_at").order("id"),
   ]);
   rows.teams = teams.data ?? [];
   rows.players = players.data ?? [];
@@ -96,6 +114,52 @@ export async function persistBlob(db, previous, blob, opts) {
    * braces alongside the identity fix in decompose.js. */
   const NEVER_DELETE_FROM = new Set(["leagues", "seasons"]);
 
+  /* WHAT THE BLOB CAN ACTUALLY SPEAK FOR - issue #56.
+   *
+   * The delete pass below removes every row of a writable table that is absent from the
+   * decomposed picture, on the reasoning that absence means the commissioner deleted it.
+   * That reasoning is inherited from the artifact, where persistence was one key holding
+   * the whole state (`window.storage.set(KEY, JSON.stringify(state))`, legacy line 2187)
+   * and absence really did mean gone. On tables whose rows outlive a single write it is
+   * simply false, and it was destroying data on the ORDINARY path, not just the unusual
+   * one:
+   *
+   *   - `decomposeLeague` emits roster_slots and stat_lines for the CURRENT period only.
+   *     The app-state shape has nowhere to put a finalized week's per-slot detail - see
+   *     the header of decompose.js - and `finalizeCurrentPeriod` clears statsEntry and
+   *     wipes every roster as it rolls to the next week. So on a finalize the picture
+   *     legitimately contained zero of both, and the delete pass read that as "delete
+   *     them all". Eighteen stat lines to none, every week, in every league, keeping only
+   *     the aggregates in period_results - so there was no way to check or correct what
+   *     an individual player scored in a finished week.
+   *
+   *   - `schemes` are worse than incomplete, they are invisible. Their RLS policy opens
+   *     only once `resolved_at` is set (OQ-9), so a blob built in the browser - which is
+   *     every replaceLeague call - can never carry an unresolved scheme, and hydrate()
+   *     drops the resolved ones on purpose. No blob from any caller can speak for a
+   *     scheme row, which is why they are not deletable through here at all.
+   *
+   * So deletion is scoped to what the picture is actually authoritative for. Anything
+   * belonging to a finalized period is outside what a blob write knows about, and a
+   * scheme is outside it entirely.
+   *
+   * Rows still go when they should: teams, players and stat/roster rows for the current
+   * period are all fully carried by the blob, and removing a team or a player CASCADES
+   * to its period-scoped rows in the database (see the foreign keys in
+   * 20260818000000_initial_schema.sql) rather than relying on this pass. */
+  const CURRENT_PERIOD_ONLY = new Set(["roster_slots", "stat_lines"]);
+  const BLOB_CANNOT_SPEAK_FOR = new Set(["schemes"]);
+
+  /* The current period's row id, as `next` knows it. decomposeLeague always emits a row
+   * for state.currentPeriod - freshly, or as the historical one when the two coincide -
+   * so this is a lookup rather than a second derivation of the id. */
+  const curKey = blob.currentPeriod
+    ? blob.currentPeriod.type + "-" + blob.currentPeriod.number
+    : null;
+  const curPeriodId = curKey
+    ? next.periods.find((p) => p.type + "-" + p.number === curKey)?.id ?? null
+    : null;
+
   for (const table of WRITABLE) {
     const before = new Map((previous?.[table] ?? []).map((r) => [r.id, r]));
     const rows = (next[table] ?? []).map((row) => {
@@ -112,10 +176,17 @@ export async function persistBlob(db, previous, blob, opts) {
       if (error) throw new Error("upsert " + table + ": " + error.message);
     }
 
-    // Delete rows that no longer exist (e.g. a removed team, a cleared scheme).
+    // Delete rows that no longer exist (e.g. a removed team, a deleted player).
     if (NEVER_DELETE_FROM.has(table)) continue;
+    if (BLOB_CANNOT_SPEAK_FOR.has(table)) continue;
     const keep = new Set(rows.map((r) => r.id));
-    const gone = (previous?.[table] ?? []).filter((r) => !keep.has(r.id)).map((r) => r.id);
+    let absent = (previous?.[table] ?? []).filter((r) => !keep.has(r.id));
+    if (CURRENT_PERIOD_ONLY.has(table)) {
+      // Absent AND outside this period means unseen, not deleted. Leave it alone.
+      if (!curPeriodId) continue;
+      absent = absent.filter((r) => r.period_id === curPeriodId);
+    }
+    const gone = absent.map((r) => r.id);
     if (gone.length) {
       const { error } = await db.from(table).delete().in("id", gone);
       if (error) throw new Error("delete " + table + ": " + error.message);

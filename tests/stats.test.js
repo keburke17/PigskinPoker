@@ -11,6 +11,10 @@ import {
   resultsFromGames,
 } from "../server/feed/nflverse.js";
 import { planStatsPull, statWriteRows } from "../server/stats.js";
+import { digitsOnly } from "../src/components/stats.jsx";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /* ------------------------------------------------------------- fetching -- */
 
@@ -343,5 +347,65 @@ describe("planning a stats pull", () => {
       newId: () => "made-" + ++n,
     });
     expect(chunk.map((r) => r.id)).toEqual(["made-1", "already-here"]);
+  });
+});
+
+
+/* ------------------------------------------------- what a stat box takes -- */
+
+/* Issue #60, from Scott's recording on 2026-09-08: Jalen Coker's yards box read `e345`
+ * while the row beside it read `0 pts`, and stayed that way. Chrome allows `e`, `E`, `+`
+ * and `-` into an `<input type="number">` and then reports the value as "" - so the box
+ * showed one thing, the app had stored another, and nothing on screen said which was
+ * real. On the last box of the night that is a starter scoring zero into a finalized
+ * week. */
+describe("the stat boxes take digits and nothing else", () => {
+  it("drops the letters that used to make a box disagree with the app", () => {
+    expect(digitsOnly("e345")).toBe("345");
+    expect(digitsOnly("3e45")).toBe("345");
+    expect(digitsOnly("abc")).toBe("");
+  });
+
+  it("refuses a negative, which the number box had no min to stop", () => {
+    expect(digitsOnly("-40")).toBe("40");
+  });
+
+  it("keeps a plain number exactly as typed, leading zeros and all", () => {
+    expect(digitsOnly("321")).toBe("321");
+    expect(digitsOnly("0")).toBe("0");
+    expect(digitsOnly("007")).toBe("007");
+  });
+
+  it("takes a pasted number apart rather than storing nothing", () => {
+    expect(digitsOnly("1,234")).toBe("1234");
+    expect(digitsOnly(" 91 ")).toBe("91");
+  });
+
+  /* Yards and touchdowns are whole numbers and the columns are `int`. The decimals OQ-15
+   * introduced belong to the POINTS these convert into, which nobody types. */
+  it("does not accept a decimal point", () => {
+    expect(digitsOnly("12.5")).toBe("125");
+  });
+
+  it("survives what the feed and an empty box hand it", () => {
+    expect(digitsOnly(91)).toBe("91");
+    expect(digitsOnly("")).toBe("");
+    expect(digitsOnly(null)).toBe("");
+    expect(digitsOnly(undefined)).toBe("");
+  });
+
+  /* The filter is only half the fix; the element type is the other half, and it is the
+   * half a later edit would put back without noticing. `type="number"` also lets the
+   * scroll wheel change a focused box - autosave fires 400ms later - on a screen that is
+   * six teams of six rows to scroll past. */
+  it("is not rendered as a number input", () => {
+    const src = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "components", "stats.jsx"),
+      "utf8"
+    );
+    const box = src.slice(src.indexOf("const box = (c) =>"), src.indexOf("return (", src.indexOf("const box = (c) =>")));
+    expect(box).not.toContain('type="number"');
+    expect(box).toContain('inputMode="numeric"');
+    expect(box).toContain("digitsOnly(e.target.value)");
   });
 });

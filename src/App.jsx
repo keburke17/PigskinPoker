@@ -12,12 +12,13 @@
  *
  * DELIBERATELY UNCHANGED - see docs/DATA-MODEL.md "Do not change":
  *   - the refusal to silently start blank on a load error (the blocking screen below);
- *   - the save guarantee: aggressive saving, retries, the status bar, and Save Now;
+ *   - the save guarantee: aggressive saving, retries, and the status bar;
  *   - the commissioner-driven weekly flow.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
+import { viewLeagueId } from "./storage/types.js";
 import { useRoute } from "./routing/useRoute.js";
 import { DEFAULT_TAB } from "./routing/index.js";
 import { LandingScreen } from "./components/LandingScreen.jsx";
@@ -69,7 +70,6 @@ export default function App() {
     loadErrorDetail,
     retryLoad,
     saveState,
-    saveNow,
     conflict,
     dismissConflict,
     opError,
@@ -417,7 +417,7 @@ export default function App() {
       });
     });
 
-  /* ---- commissioner: scoring / standings / playoffs / reset ---- */
+  /* ---- commissioner: scoring / standings / playoffs / delete ---- */
   const onSaveScoring = (cfg) => ops.mutate("scoring", (s) => { s.scoringConfig = cfg; });
   const onSaveStandingsCfg = (arr) =>
     ops.mutate("standingsCfg", (s) => { s.standingsPointsOverride = arr; });
@@ -429,23 +429,6 @@ export default function App() {
     ops.mutate("playoffSettings", (s) => {
       s.playoffConfig = Object.assign({}, s.playoffConfig, cfg);
     });
-  const onResetLeague = () =>
-    ops.mutate("reset", (s) => {
-      s.teams = [];
-      s.schemes = {};
-      s.statsEntry = {};
-      s.weeklyResults = [];
-      s.activityLog = [];
-      s.lockedPlayerIds = {};
-      s.rosterLocked = false;
-      s.currentPeriod = { type: "week", number: 1, phase: "pre-deal" };
-      s.playoffConfig = {
-        bracketSize: 4, advancement: [4, 2, 1], started: false, completed: false,
-        currentRoundIndex: 0, activeTeamIds: [], champion: null,
-      };
-      s.standingsPointsOverride = null;
-    });
-
 
   /* Deleting the league, OQ-18. NOT an ops.mutate() like its neighbours above, and it
    * cannot be: mutate saves a new version of the league, and a moment later there is no
@@ -621,8 +604,26 @@ export default function App() {
    * identity lookup are two independent round trips, and the read usually wins - so
    * without it there is a window with the league loaded and the role still unknown,
    * which the test below reads as "signed out". That is the sign-in screen appearing
-   * for a moment on the way into a league someone is perfectly entitled to. */
-  if (loading || !state || !accountChecked) {
+   * for a moment on the way into a league someone is perfectly entitled to.
+   *
+   * AND SO DOES `showingAnotherLeague`, which is the blank screen of 2026-09-08.
+   *
+   * Moving between leagues repoints the STORE and re-reads, both in effects - and an
+   * effect runs after the render that follows the click. So there is one render where
+   * the address bar already says league B and everything under this line is still
+   * league A's: A's rows, A's role, A's team id. That is wrong on its own, and with
+   * more than one league it was fatal. Arriving from the landing page there is no A at
+   * all, because a store with no league in the URL cannot choose between two and says
+   * so; the view held a shape with no `teams` on it, `state.teams.find` threw, React
+   * unmounted the tree, and the whole page went white until a reload - which worked
+   * only because reloading makes /l/<id> the URL the store is BUILT from.
+   *
+   * The view carries the league it describes, so it can simply be asked. Note this sits
+   * BELOW the noLeague and loadFailed screens deliberately: both of those are answers
+   * about a league, and swallowing them here would hang on "Loading..." forever at a
+   * URL that genuinely has nothing behind it. */
+  const showingAnotherLeague = !!state && viewLeagueId(state) !== routeLeagueId;
+  if (loading || !state || !accountChecked || showingAnotherLeague) {
     return (
       <div className="pp-root">
         <div className="pp-login-wrap"><p className="pp-sub">Loading Pigskin Poker...</p></div>
@@ -717,7 +718,7 @@ export default function App() {
             </div>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLogout}>Log Out</button>
           </div>
-          <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} onSaveNow={saveNow} />
+          <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} />
           <AccountBar
             account={account}
             accountChecked={accountChecked}
@@ -732,7 +733,10 @@ export default function App() {
             />
           ) : null}
           {opError ? <ErrorBanner message={opError} onDismiss={dismissOpError} /> : null}
-          {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically. You can also tap Save Now.", detail: saveErrorDetail }} /> : null}
+          {/* No button here, deliberately (issue #69). The retry is automatic and the banner
+            * says so; the only thing a manual flush could add is skipping a backoff of at most
+            * 15 seconds, which is not worth a control. */}
+          {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically.", detail: saveErrorDetail }} /> : null}
           <div className="pp-nav-wrap">
             <nav className="pp-nav">
               {NAV.map((n) => (
@@ -776,7 +780,6 @@ export default function App() {
               kickoffReport={kickoffReport}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
               onSavePlayoffSettings={onSavePlayoffSettings}
-              onResetLeague={onResetLeague}
               onDeleteLeague={onDeleteLeague}
             />
           )}

@@ -26,6 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import * as ops from "../server/operations.js";
+import { fetchLeagueRows, hydrate } from "../server/league.js";
 
 const SEED_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), "..", "supabase", "seed.sql"
@@ -261,6 +262,83 @@ gate()("stat entry: versioning and phase guards", () => {
   });
 });
 
+gate()("the SERVER read is ordered too (issue #60)", () => {
+  beforeEach(() => resetDemo());
+
+  /* THE BUG THIS EXISTS FOR, and why the client-side fix passing let it sit for a week.
+   *
+   * Issue #29 gave the client's read `order("created_at").order("id")`. `server/league.js`
+   * never got it - and every write returns a freshly hydrated league that the client adopts
+   * wholesale (`handle` in src/hooks/useLeague.js), so the ordered list was replaced by
+   * Postgres heap order on every save, and put back by the ordered re-read a moment later.
+   * On Scott's recording the team cards traded places under a cursor parked on a stat box.
+   *
+   * The half that outlives the flicker: finalize runs on THESE rows, and
+   * rankTeamsWithTiebreak leaves teams it cannot separate in input order - so array order
+   * is what slices a dead tie at the playoff cut, and OQ-A says that goes to whichever
+   * team joined first.
+   *
+   * DELIBERATELY NOT WRITTEN AS "save twice and see if it moves". Whether heap order
+   * actually shifts on a given write depends on the plan and on how the row happened to be
+   * updated; a test that waits for the shuffle passes with the bug present most of the
+   * time, which is exactly how this got missed. So the fixture makes created_at order the
+   * REVERSE of insertion order - the demo seed inserts all six teams in one statement, so
+   * they share a timestamp and nothing distinguishes them - and then asserts the contract
+   * directly: hydrate hands back created_at order, not whatever came off the heap. */
+  const backdate = async (table, legacyIds) => {
+    /* One day apart, newest first, so the correct answer is the reverse of the order the
+     * rows were written in and no read can be accidentally right. */
+    const base = Date.parse("2026-01-01T00:00:00Z");
+    for (let i = 0; i < legacyIds.length; i++) {
+      const at = new Date(base - i * 86400000).toISOString();
+      const { error } = await db
+        .from(table).update({ created_at: at })
+        .eq("league_id", leagueId).eq("legacy_id", legacyIds[i]);
+      if (error) throw new Error(error.message);
+    }
+    return [...legacyIds].reverse();
+  };
+
+  it("hydrates teams in created_at order, not heap order", async () => {
+    const expected = await backdate("teams", [
+      "demo_team_1", "demo_team_2", "demo_team_3", "demo_team_4", "demo_team_5", "demo_team_6",
+    ]);
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view.teams.map((t) => t.id)).toEqual(expected);
+  });
+
+  it("hands the same order back on the view a write returns", async () => {
+    const expected = await backdate("teams", [
+      "demo_team_1", "demo_team_2", "demo_team_3", "demo_team_4", "demo_team_5", "demo_team_6",
+    ]);
+    const token = await asCommissioner();
+    const r = await ops.setStatLine(db, {
+      leagueId, token, teamId: T1, slot: "QB", line: { passYards: "555", passTds: "3" },
+    });
+    expect(r.status).toBe(200);
+    /* The view the client ADOPTS. This is the one that moved the cards. */
+    expect(r.body.view.teams.map((t) => t.id)).toEqual(expected);
+  });
+
+  it("orders the player pool too, so the deal replays from a stable list", async () => {
+    const expected = await backdate("players", ["p1", "p2", "p3", "p4", "p5"]);
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view.playerPool.slice(0, 5).map((p) => p.id)).toEqual(expected);
+  });
+
+  it("matches the order the client's own read asks for", async () => {
+    await backdate("teams", [
+      "demo_team_1", "demo_team_2", "demo_team_3", "demo_team_4", "demo_team_5", "demo_team_6",
+    ]);
+    /* Literally the client's query (src/storage/supabase.js). Both sides hydrate the same
+     * league, so they have to agree - a write's view lands in the same state as a read's. */
+    const { data } = await db
+      .from("teams").select("legacy_id").eq("league_id", leagueId).order("created_at").order("id");
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view.teams.map((t) => t.id)).toEqual(data.map((r) => r.legacy_id));
+  });
+});
+
 gate()("a decimal score survives the round trip (OQ-15 regression)", () => {
   beforeEach(() => resetDemo());
 
@@ -430,6 +508,162 @@ gate()("the weekly cycle, server-side", () => {
     // Either it is not their starter (400) or the phase has closed (409) - both are
     // refusals, and neither silently accepts a block on someone else's player.
     expect([400, 409]).toContain(view.status);
+  });
+});
+
+gate()("issue #56: a blob write only deletes what the blob can speak for", () => {
+  beforeEach(() => resetDemo());
+
+  /* THE BUG THESE EXIST FOR.
+   *
+   * `persistBlob` deleted every row of a writable table that was absent from the
+   * decomposed blob, and `decomposeLeague` can only ever describe the CURRENT period -
+   * the app-state shape the engine hands back has nowhere to put a finished week's
+   * per-slot detail. So finalizing a week took it from eighteen stat lines to none,
+   * keeping only the aggregates in period_results: nothing left to check a wrong number
+   * against, on the ordinary path, every week, in every league. Schemes went the same
+   * way despite OQ-9 deliberately retaining them.
+   *
+   * It was found on 2026-09-07 while working out what the clock in OQ-14 would be
+   * committing unattended, and written up as issue #56. `replaceLeague` had no test at
+   * all, which is why the admin-tool half of it went unnoticed for so long; there is one
+   * below now. */
+
+  const weekPeriod = async (number) => {
+    const { data } = await db
+      .from("periods").select("id").eq("type", "week").eq("number", number).maybeSingle();
+    return data?.id ?? null;
+  };
+  const countIn = async (table, periodId) => {
+    const { data } = await db.from(table).select("id").eq("period_id", periodId);
+    return (data ?? []).length;
+  };
+
+  it("keeps a finished week's stat lines and rosters through an ordinary finalize", async () => {
+    const token = await asCommissioner();
+    const week2 = await weekPeriod(2);
+
+    const statsBefore = await countIn("stat_lines", week2);
+    const slotsBefore = await countIn("roster_slots", week2);
+    expect(statsBefore).toBeGreaterThan(0);
+    expect(slotsBefore).toBeGreaterThan(0);
+
+    const fin = await ops.finalizePeriod(db, { leagueId, token });
+    expect(fin.status).toBe(200);
+
+    // The week really did finish - otherwise the assertions below prove nothing.
+    const { data: p } = await db.from("periods").select("phase").eq("id", week2).maybeSingle();
+    expect(p.phase).toBe("finalized");
+    expect(await countIn("period_results", week2)).toBeGreaterThan(0);
+
+    // ...and the detail behind those aggregates is still there. Was 0 and 0.
+    expect(await countIn("stat_lines", week2)).toBe(statsBefore);
+    expect(await countIn("roster_slots", week2)).toBe(slotsBefore);
+  });
+
+  it("keeps a resolved scheme through the finalize that follows it (OQ-9)", async () => {
+    const token = await asCommissioner();
+
+    await ops.finalizePeriod(db, { leagueId, token });                  // week 2 -> week 3
+    const dealt = await ops.dealPeriod(db, { leagueId, token, refresh: false });
+    expect(dealt.status).toBe(200);
+
+    const mgr = await asManager(T1);
+    const qb = dealt.body.view.teams.find((t) => t.id === T1).roster.starters.QB;
+    const sub = await ops.submitScheme(db, {
+      leagueId, token: mgr, teamId: T1, scheme: { type: "block", position: "QB", playerId: qb },
+    });
+    expect(sub.status).toBe(200);
+
+    expect((await ops.processSchemes(db, { leagueId, token })).status).toBe(200);
+    const { data: resolved } = await db.from("schemes").select("id, resolved_at, outcome");
+    expect(resolved.length).toBe(1);
+    expect(resolved[0].resolved_at).toBeTruthy();
+
+    /* The point of OQ-9: the row is retained rather than deleted, so the history is
+     * queryable once the gate opens. The very next blob write used to remove it - and
+     * finalize is a blob write. */
+    expect((await ops.finalizePeriod(db, { leagueId, token })).status).toBe(200);
+    const { data: after } = await db.from("schemes").select("id, resolved_at");
+    expect(after.length).toBe(1);
+    expect(after[0].resolved_at).toBeTruthy();
+  });
+
+  /* `replaceLeague` is the whole-blob write behind every ops.mutate() call - renaming a
+   * team, adding a player, editing the scoring. It had NO test, and it is the half of
+   * this that docs/FOR-THE-DESIGNER.md reports as "commissioner admin tools throw away
+   * schemes and past weeks". */
+  it("replaceLeague: renaming a team keeps past weeks and pending schemes", async () => {
+    const token = await asCommissioner();
+    const week2 = await weekPeriod(2);
+
+    const statsBefore = await countIn("stat_lines", week2);
+    const slotsBefore = await countIn("roster_slots", week2);
+
+    await ops.finalizePeriod(db, { leagueId, token });                  // week 2 -> week 3
+    const dealt = await ops.dealPeriod(db, { leagueId, token, refresh: false });
+    const mgr = await asManager(T1);
+    const qb = dealt.body.view.teams.find((t) => t.id === T1).roster.starters.QB;
+    expect((await ops.submitScheme(db, {
+      leagueId, token: mgr, teamId: T1, scheme: { type: "block", position: "QB", playerId: qb },
+    })).status).toBe(200);
+
+    const blob = JSON.parse(JSON.stringify(dealt.body.view));
+    delete blob._meta;
+    /* THE BLINDNESS IS THE POINT, so reproduce it rather than sending the server's
+     * fuller picture. A browser cannot read an unresolved scheme - the RLS gate opens
+     * only once resolved_at is set (OQ-9, tests/rls.test.js) - so the blob it sends back
+     * genuinely carries none, and it never held a past week's rosters at all. */
+    blob.schemes = {};
+    blob.teams.find((t) => t.id === T1).name = "Renamed Mid-Week";
+
+    const r = await ops.replaceLeague(db, { leagueId, token, blob });
+    expect(r.status).toBe(200);
+
+    // The edit landed...
+    const { data: team } = await db
+      .from("teams").select("name").eq("league_id", leagueId).eq("legacy_id", T1).maybeSingle();
+    expect(team.name).toBe("Renamed Mid-Week");
+
+    // ...and took nothing with it. All three were emptied before the fix.
+    expect((await db.from("schemes").select("id")).data.length).toBe(1);
+    expect(await countIn("stat_lines", week2)).toBe(statsBefore);
+    expect(await countIn("roster_slots", week2)).toBe(slotsBefore);
+  });
+
+  /* The other side of the same fix: scoping the delete pass must not quietly turn it
+   * into a no-op that leaves orphans behind. A player the blob genuinely dropped still
+   * goes - `players` is a table the blob really is authoritative for, and the pool is
+   * carried whole. */
+  it("still deletes a player the blob dropped", async () => {
+    const token = await asCommissioner();
+    const week2 = await weekPeriod(2);
+    const statsBefore = await countIn("stat_lines", week2);
+
+    const blob = hydrate(await fetchLeagueRows(db, leagueId));
+    delete blob._meta;
+    blob.schemes = {};
+
+    /* A free agent, so the delete cannot be confused with a cascade off a roster slot
+     * or a scheme - and so it exercises the unscoped branch of the pass on its own. */
+    const rostered = new Set();
+    blob.teams.forEach((t) => {
+      if (!t.roster) return;
+      Object.values(t.roster.starters).forEach((id) => id && rostered.add(id));
+      t.roster.bench.forEach((id) => id && rostered.add(id));
+    });
+    const free = blob.playerPool.find((p) => !rostered.has(p.id));
+    expect(free).toBeTruthy();
+    blob.playerPool = blob.playerPool.filter((p) => p.id !== free.id);
+
+    const r = await ops.replaceLeague(db, { leagueId, token, blob });
+    expect(r.status).toBe(200);
+
+    const { data: still } = await db
+      .from("players").select("id").eq("league_id", leagueId).eq("legacy_id", free.id);
+    expect(still.length).toBe(0);
+    // ...and the week's detail is still not collateral.
+    expect(await countIn("stat_lines", week2)).toBe(statsBefore);
   });
 });
 

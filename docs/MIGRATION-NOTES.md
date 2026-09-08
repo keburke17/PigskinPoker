@@ -1802,10 +1802,11 @@ Three things about its shape:
   has gone wrong, so this resolves the role straight from `league_members` - a league too
   broken to load is still removable.
 - **The commissioner types the league's name, and the server checks it.** Deliberately
-  twice, and deliberately not a stock phrase like Reset League's. Everywhere else a write
-  aimed at the wrong league is corrected by writing again; this one cannot be, so the id
-  is never the only thing pointing at what dies. Case and stray spaces are forgiven -
-  those are transcription, not intent.
+  twice, and deliberately not a stock phrase - the comparison at the time was Reset
+  League's `RESET LEAGUE`, which was removed the following day (below). Everywhere else a
+  write aimed at the wrong league is corrected by writing again; this one cannot be, so
+  the id is never the only thing pointing at what dies. Case and stray spaces are forgiven
+  - those are transcription, not intent.
 - **It is not an `ops.mutate()`.** Mutate saves a new version of the league, and a moment
   later there is no league to save into. `onDeleteLeague` calls the server directly and
   leaves for the front door on success.
@@ -1816,3 +1817,259 @@ Every screen inside a league used to open with the same three words, which said 
 about which league you were in; that only started mattering when one person could be in
 several. The name is user-typed, so `.pp-league-title` clamps and wraps it rather than
 letting a long one push the nav further down a phone (OQ-8).
+
+### The stat screen stopped moving under the commissioner (2026-09-08, issue #60)
+
+Two bugs on the same screen, from a recording Scott made of entering a week: the team
+cards traded places at the instant each save landed, and a box could show `e345` while
+the row beside it read `0 pts`.
+
+**The cards.** `server/league.js` read `teams` with no `ORDER BY`. The client's read has
+ordered by `created_at, id` since issue #29 - but every write returns a whole freshly
+hydrated league (`return good({ view: hydrate(...) })`) and the client adopts it wholesale
+in `handle`, so the ordered list was replaced by Postgres heap order on every save, and put
+back 500ms later when the Realtime event triggered the client's own ordered re-read. Save,
+shuffle, re-read, unshuffle - once per box, under a cursor parked on the next one. Nothing
+was ever lost; what moved was the row, which is worse, because it reads as loss and invites
+retyping into whatever team is now underneath. **The fix for issue #29 went into the client
+read and never reached the server read**, and the server read is the one the engine runs
+on. Both now carry the same two `.order()` calls, `players` included.
+
+**That fixes a rule as well as a flicker.** Finalize runs server-side, on these rows, and
+`rankTeamsWithTiebreak` leaves teams it cannot separate in *input* order - so array order is
+what picks the champion out of a dead-tied final (`standings.js:259`) and what slices the
+last playoff slot between two teams level on all six tiebreakers (`standings.js:276`). That
+was Postgres heap order. OQ-A says it goes to whichever team joined first; now it does.
+Rare, like every tie at that depth, but it was being decided by nothing. The engine is
+untouched and `tests/parity.test.js` is unaffected - it feeds the engine directly.
+
+**`players` was ordered on the same beat**, on both sides. It is the pool and free-agent
+lists on screen, and `dealRosters` shuffles it, so a seeded deal is only replayable from a
+stable input order.
+
+**The test is written against the contract, not the symptom.** Whether heap order actually
+shifts on a given write depends on the plan; a test that saves twice and looks for a
+shuffle passes with the bug present most of the time, which is how this sat for a week
+behind a green client-side fix. So the fixture backdates `created_at` to the *reverse* of
+insertion order and asserts the server's hydrate hands back created_at order - which no
+unordered read can be accidentally right about. Four assertions in `tests/server.test.js`,
+all four red without the change.
+
+**The boxes.** `<input type="number">` accepts `e`, `E`, `+` and `-` in Chrome and then
+reports `e.target.value` as `""` when the text is not a number. So `e345` stayed on screen,
+nothing reached state, and `0 pts` sat beside it with nothing to say which was real. On the
+last box of the night that is a starter scoring zero into a finalized week. They are now
+text boxes filtered to digits (`digitsOnly` in `src/components/stats.jsx`), so what is on
+screen is always what is stored. Two smaller holes close with it: the scroll wheel can no
+longer increment a focused box - autosave fires 400ms later, on a screen six teams deep -
+and negatives are out, which no `min` was stopping.
+
+`inputMode` is `numeric` rather than the `decimal` the issue suggested: yards and
+touchdowns are whole numbers and both columns are `int`. The decimals OQ-15 introduced
+belong to the *points* these convert into, which nobody types, and a mobile keypad offering
+a point the box will not take is a worse box.
+
+**Not fixed here, and still Scott's call:** the boxes are too narrow for their own labels
+(`Pass Y`, `Rec Yc`, `Rush >`) - the OQ-4c split to six categories kept widths sized for the
+artifact's two. Losing the number spinner buys a few pixels back but does not solve it.
+
+
+### The white screen on the way into a league (2026-09-08)
+
+Scott reported a white screen when he signed in, cured by hitting reload. It was not a slow
+load: it was a crash. React unmounted the tree, and `body` has no background of its own -
+the felt is on `.pp-root` - so what was left was the browser's blank page. `#root` had zero
+children and `document.body.innerText` was empty.
+
+**Three things had to line up, and a second league lined the last one up.**
+
+1. **The store is built from the URL you arrived at.** `createStore` sits in a `useMemo`
+   with no dependencies, on purpose: moving between leagues repoints the existing store so
+   the Realtime channel and the write queue survive the move. Arrive at `/` and it has no
+   league pinned, so `fetchRows` falls back to scanning - and with two leagues visible it
+   cannot choose. It returns `{ _ambiguous }`, which `useLeague` then parked in `view`.
+   Nothing has ever read that field.
+2. **A stale role survives the landing page.** With no league pinned, the store's internal
+   `leagueId` was still null when `whoami` went out, `verifySession` cannot resolve a role
+   without one, and the answer was 401. App reads a non-ok `whoami` as "a blip, keep what
+   we had" - right for a blip, and here it means the role left in `localStorage` by the
+   last league was still in hand.
+3. **Tapping a league re-renders before the effect that repoints the store.** `go()` fires
+   `popstate` synchronously inside the click handler, so there is one render where the
+   address bar says league B, the state is `{ _ambiguous }`, and a truthy role walks it
+   past the sign-in gate.
+
+`state.teams.find(...)` on the line that resolves a manager's team. `state.teams` was
+undefined. As commissioner it died one line further on, in `currentPeriod.phase`, which is
+the same bug wearing a different stack.
+
+Reload fixed it because reloading makes `/l/<id>` the URL the store is *built* from, and a
+pinned store never returns `_ambiguous`.
+
+**Why now.** Only from the landing page, and only with two or more leagues visible. With
+one league the scan picks it and the click-through merely flashes the wrong league's data
+for a moment. Scott got his second league on 2026-09-08. It reads as "when I log in"
+because that is when you are on `/`: the magic link returns you to the landing page, "Your
+Leagues" appears, you tap one.
+
+**Three fixes, because there were three holes.**
+
+- **The view says which league it is, and the gate asks.** `showingAnotherLeague` compares
+  `_meta.leagueId` against the URL and holds the loading screen until they agree. It sits
+  *below* the no-league and load-failed screens deliberately - both of those are answers
+  about a league, and swallowing them would hang forever at a URL with nothing behind it.
+  This also closes the wrong-league flash on any move between leagues, which was never a
+  crash but was never right either.
+- **An ambiguous read no longer becomes a view.** `view` means "a league or nothing" again.
+- **The store names its league from the moment it is built** (`let leagueId = pinnedLeagueId`).
+  That closes the same race on a direct `/l/<id>` load, where `whoami` could beat the league
+  read and 401 for want of a league the store already knew.
+
+**What is not covered by a test.** The render gate itself. The suites run in `node` with no
+DOM (`vite.config.js`), and jsdom is a dependency this fix does not justify on its own -
+CLAUDE.md is explicit that they stay boring. `tests/leagueSwitch.test.js` pins the two
+predicates the gate turns on and the store's league id, and the gate was checked by hand
+against the real stack, both roles, before and after. An error boundary would turn any
+future version of this into a message rather than a blank page; it is a seatbelt, not this
+fix, and it is not here.
+
+---
+
+### Reset League was removed (2026-09-08)
+
+One day after Delete League shipped beside it. The Commish tab's **Reset / Delete** is now
+just **Delete League**, and `CommResetPanel` and `onResetLeague` are gone. Closes issues #47
+(what is Reset for?) and #49 (it fails once a manager has joined).
+
+**Reset was the artifact's, and the artifact's constraints are gone.** There, it was the
+only way to start a new year, because there was one league, one blob, and no way to make a
+second of anything. Sorted by who serves each of its jobs today, it had none left:
+
+| The job | Who does it now |
+|---|---|
+| Clear out a test league | **Delete League** - which is why Scott asked for it |
+| "I set this league up wrong" | Delete and recreate |
+| Start next season | **Nothing yet.** OQ-2's archive, unbuilt - and Reset was never right for it, because an archive exists to keep last year and Reset threw it away |
+
+**It had also been broken since accounts shipped, and nobody reported it.** `onResetLeague`
+set `teams = []` and went through `ops.mutate` -> `replaceLeague` -> `persistBlob`, whose
+delete pass removed the team rows. `league_members.team_id` is
+`references teams(id) on delete set null`, and the same table carries
+`check (role = 'commissioner' or team_id is not null)`
+(`20260818040000_profiles_and_league_members.sql`), so the cascade violated the check:
+
+```
+ERROR:  new row for relation "league_members" violates check constraint "league_members_check"
+CONTEXT:  SQL statement "UPDATE ONLY "public"."league_members" SET "team_id" = NULL WHERE $1 = "team_id""
+```
+
+`persistBlob` threw, the function returned the raw Postgres message as a 500, and the write
+queue retried five times with backoff. So the commissioner typed RESET LEAGUE, watched
+nothing happen for about fifteen seconds, and got a constraint violation in the save bar. It
+worked only in a league nobody had joined - that is, only before it was worth pressing. No
+lasting damage, and only by luck: `teams` is third in `persistBlob`'s table order, so it
+failed before reaching `roster_slots` and `stat_lines`.
+
+**The other half of #49 had already dissolved.** `replaceLeague` was also how Restore from
+backup wrote, and a cross-league restore left a league with *twice* the teams - the upsert
+pass lands before the delete pass fails, and nothing wraps the two. The Backup tab was
+removed on 2026-09-07 (OQ-7), taking that path with it.
+
+**What this does NOT change.** `replaceLeague` is untouched and just as load-bearing:
+`mutateLeague` (`src/storage/supabase.js`) is the write behind *every* `ops.mutate` call
+(`src/hooks/useLeague.js`), which is every commissioner edit in the app. Removing Reset
+retires no code path and does nothing for #56 or #58 - `persistBlob`'s delete pass is
+exactly where it was.
+
+**What a commissioner lost.** Reset kept the league's id, its scoring and standings
+settings, its playoff config, its lineup-lock and auto-cycle switches, and its corrected
+player pool. Delete and recreate keeps none of those - a new league takes a fresh
+`copy_player_pool_into` from a template that goes stale from the day it is taken - and drops
+every membership, so all his managers need re-inviting. That gap belongs to OQ-2's archive,
+which now carries a date: the 2026 season began in September, so the first league to finish
+one lands around January 2027.
+
+**One sentence went with it.** Playoff Settings, once a bracket has started, ended "Use
+Reset League to start over." Dropped rather than repointed at Delete: those settings are
+locked for the season precisely so a bracket cannot be re-cut around teams already playing
+in it, and Reset was never a good escape from that.
+
+**Provenance, because the reversal is quick.** OQ-18's decision 2, recorded 2026-09-08, was
+Scott confirming Reset stayed. His agreement to remove it came the same day, relayed by
+Kyle, and softly - "he seems fine with it." Recorded that way in OQ-18's follow-up rather
+than as a second direct answer, so the file does not gain false precision about a decision
+that flipped inside a day.
+
+### The delete pass stopped speaking for rows it cannot see (2026-09-08, issue #56)
+
+Finalizing a week deleted every `stat_lines` row for it. Measured against the local demo
+league, finalizing Week 2 went from eighteen stat lines to none, keeping only the six
+aggregate rows in `period_results` - rank, raw score, standings points, tds, yards, best
+player. The per-slot detail behind those numbers was gone, so there was no way to see,
+check or correct what an individual player had scored in a finished week. `roster_slots`
+and `schemes` went the same way in the same write.
+
+**The seam, and which side of it is ours.** The blob-shaped write is the artifact's:
+`window.storage.set(LEAGUE_KEY, JSON.stringify(s), true)`, legacy line 2187. One key, the
+whole state, on every change - and no delete pass, because there is nothing to delete.
+Overwriting the key *is* the state, so anything absent from the object stops existing by
+construction. The port kept that call shape and put it on top of tables whose rows have
+independent lifetimes. `persistBlob`'s delete pass is ours, added with the Supabase adapter
+in `538234b`. Under `window.storage`, "absent from the blob" meant *was never there*. Under
+Postgres we made it mean *delete this row*, and the blob is structurally incapable of
+speaking for a finished week - `decomposeLeague` emits `roster_slots` and `stat_lines` for
+the CURRENT period only, because the artifact's state shape has nowhere else to put them,
+and `finalizeCurrentPeriod` clears `statsEntry`, clears `schemes` and nulls every roster as
+it rolls to the next week. We told the delete pass to read incompleteness as intent.
+
+**Schemes were not merely incomplete, they were invisible.** Their RLS policy opens only
+once `resolved_at` is set (OQ-9), so a blob built in a browser - which is every
+`replaceLeague` call, and so every `ops.mutate` - can never carry an unresolved scheme, and
+`hydrate` drops the resolved ones deliberately. No blob from any caller can describe a
+scheme row. So schemes are not deletable through `persistBlob` at all now, rather than
+scoped like the other two. Nothing needs them to be: a manager changing a scheme upserts on
+`(period_id, team_id)`, and removing a team or a player reaches them through the foreign
+key's `on delete cascade`, not through this pass.
+
+**Two paths, one bug, and only one of them was suspected.**
+`docs/FOR-THE-DESIGNER.md` had carried this since 2026-08-27 as "commissioner admin tools
+throw away schemes and past weeks" - correct about the cause, too narrow about the reach. It
+happens on the ordinary, correct path too: every finalize, by every commissioner, doing
+nothing unusual. That half was found on 2026-09-07 while working out what the clock in OQ-14
+would be committing unattended, which is what makes it sharper than it reads - a finalize
+cannot be undone, and until now it deleted the evidence needed to work out whether its own
+result was right, in the same write.
+
+**Tests.** Four, in `tests/server.test.js`. Three of them fail on the previous code with
+exactly the numbers the issue reported (`expected 0 to be 18`): a finished week keeps its
+stat lines and rosters through an ordinary finalize; a resolved scheme survives the finalize
+after it, which is OQ-9's retention actually holding; and a `replaceLeague` rename keeps past
+weeks and pending schemes. The fourth guards the other direction - a player the blob really
+did drop is still deleted - so the fix cannot be a delete pass quietly turned off.
+`replaceLeague` had no test of any kind before this, which is why the admin-tool half went
+unnoticed for six weeks.
+
+**The bug found on the way, and it is older.** Removing a team that has already finished a
+week fails: the `teams` delete lands first, then `period_results` is upserted from
+`weeklyResults`, which still lists that team for the weeks it played, and the foreign key
+refuses it. `persistBlob` has no transaction, so the team row is already gone when the error
+is raised - the same partial-write shape as the decimal `raw_score` failure recorded above.
+Verified against `origin/main` to be older than this change rather than caused by it, and
+left alone: what *should* happen to a removed team's finished weeks is a designer question,
+not a technical one. Raised as issue #70 and recorded as item 5 in
+`docs/FOR-THE-DESIGNER.md`. The measured shape: six teams and six Week 1 results before,
+five and five after, with the team row already gone when the foreign key raised - and a
+retry then succeeds cleanly, so it reads on screen as a spurious error rather than as a
+week's record being destroyed.
+
+**What this does not undo.** Weeks finalized before the fix have already lost their stat
+lines, rosters and schemes; only `period_results` remains for them. `decompose.js`'s header
+said the gap stopped "from the first period played on this schema" - it did not, and now it
+does.
+
+**What it does not answer.** Whether read-whole-league / modify / write-whole-league is the
+right persistence design at all is issue #58, and this fix is deliberately compatible with
+every option there. What it does not do is remove the class: the next table added to
+`decompose` inherits the same trap unless authority is declared rather than assumed, which
+is #58's option 2. Two tables in `persistBlob` now carry a hand-maintained scope, and
+nothing enforces that a third one added later gets the same thought.

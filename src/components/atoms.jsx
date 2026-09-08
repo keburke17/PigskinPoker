@@ -113,13 +113,21 @@ export function TypedConfirm({ phrase, onConfirm, label, confirmLabel = "Confirm
   );
 }
 
-export function SaveStatusBar({ status, lastSavedAt, onSaveNow, error }) {
+/* NO Save Now BUTTON HERE, DELIBERATELY - issue #69. The artifact had one and it was a
+ * real escape hatch there: the league was a single blob saved on every change, so a failed
+ * write left it stale and pressing the button rewrote the lot. In the port the button called
+ * `queue.flush()`, which returns immediately when nothing is pending - so in the "Saved"
+ * state, which is what this bar reads almost all of the time, it did nothing at all while
+ * claiming to save. The one thing it could still do - skip the retry backoff after a failed
+ * write, a wait of at most 15 seconds - was judged not to earn a permanently visible
+ * control, and NO replacement button was built: the failed write retries on its own, and
+ * the banner underneath this bar says so. Do not put it back. */
+export function SaveStatusBar({ status, lastSavedAt }) {
   const color = status === "saving" ? "var(--gold)" : status === "error" ? "var(--danger)" : "var(--ok)";
   const text = status === "saving" ? "Saving..." : status === "error" ? "Save failed" : (lastSavedAt ? "Saved at " + formatClock(lastSavedAt) : "Saved");
   return (
     <div className="pp-savebar">
       <span><span className="pp-savedot" style={{ background: color }} />{text}</span>
-      <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onSaveNow}>Save Now</button>
     </div>
   );
 }

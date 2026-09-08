@@ -92,6 +92,11 @@ retrofit later, because once a second year has been played on top of a season-le
 the first year's data is already gone. "Reset league" becomes "archive this season and
 open a new one." This is **[OQ-2]** - the schema assumes yes.
 
+> **Since 2026-09-08:** the `seasons` table shipped, and `CommResetPanel` was removed
+> without the archive being built - so today there is NO way to start a new year in the
+> app. The rename this paragraph imagines is off the table; the archive is a new operation.
+> See OQ-2 and OQ-18's follow-up in `docs/OPEN-QUESTIONS.md`.
+
 ### Rosters become historical
 
 `finalizeCurrentPeriod` (line 792) does `next.teams.forEach((t) => { t.roster = null; })`.
@@ -634,17 +639,28 @@ does not.
 
 ### The save guarantee is preserved (Do-not-change #2)
 
-Kept: the save-status bar, the manual **Save Now** button, the retry-on-failure timer,
-and the promise that nothing is lost. Changed: what a save costs.
+Kept: the save-status bar, the retry-on-failure timer, and the promise that nothing is
+lost. Changed: what a save costs.
+
+**The guarantee is unchanged by issue #69**, which removed the header's **Save Now**
+button. Coalescing, the debounce, the retries, the backoff and the never-lose-a-write
+promise are all exactly as described below; what went was a control that duplicated them.
+Against the blob it rewrote the whole league and was a genuine escape hatch. Against this
+queue it called `flush()`, which returns immediately when nothing is pending - so in the
+"Saved" state it did nothing while saying it saved. The one case where it bit - skipping
+the retry backoff after a failed write - was deliberately NOT re-homed as a button
+somewhere else: the retry is automatic, the save-failure banner says so, and the wait it
+skipped is at most 15 seconds.
 
 - Stat inputs stay controlled and responsive (local state, per keystroke, unchanged feel),
   but the *write* is debounced ~400 ms and coalesced per `(period, team, slot)`.
-- Flush immediately on blur, `visibilitychange`, and `beforeunload`.
+- Flush immediately on `visibilitychange` and `beforeunload`. (This used to say "on blur"
+  as well; no blur handler was ever wired, and the 400 ms timer covers it regardless.)
 - The write is one row, not the league. Typing `127` in a yards box becomes **one** write
   of one small row, instead of three full clones + three full serializations + three
   writes of the whole league.
-- A pending-writes queue drives the status bar; **Save Now** flushes it. The bar can now
-  tell the truth about *which* write failed, which the blob version could not.
+- A pending-writes queue drives the status bar. The bar can now tell the truth about
+  *which* write failed, which the blob version could not.
 
 This is not "it saves less." It is the same guarantee at roughly 1% of the cost.
 
@@ -707,7 +723,7 @@ addTeam(name) / removeTeam(teamId, expect)
 addPlayer(p) / setPlayerStatus(playerId, status, expect) / deletePlayer(playerId, expect)
 saveScoring(seasonId, cfg, expect)
 saveStandingsConfig(seasonId, arr, expect)
-archiveSeasonAndStartNew(seasonId)          // was onResetLeague
+archiveSeasonAndStartNew(seasonId)          // still unbuilt; onResetLeague was removed 2026-09-08
 
 // Identity. As sketched, this was a localStorage code check - per the prompt at the
 // time. What shipped, and what remains after codes were retired on 2026-08-20:
@@ -828,7 +844,7 @@ All four blocking questions are answered. Recorded here because `MIGRATION-NOTES
 | # | Decision | Consequence |
 |---|---|---|
 | OQ-1 | Decompose into real tables; follow standard web conventions | Sections 1-3. This is what actually fixes P1 and P3. |
-| OQ-2 | `seasons` is a first-class entity now | Reset becomes archive-and-start-new; past seasons survive. |
+| OQ-2 | `seasons` is a first-class entity now | Archive-and-start-new; past seasons survive. (Reset was removed 2026-09-08 rather than renamed.) |
 | OQ-4 | Manual stat entry is a stopgap, not the destination | `stat_lines` carries provenance from day one (below). |
 | OQ-9 | Resolved schemes are public; `submitted_at` is not | Column grant above; unlocks the OQ-3 history features. |
 | OQ-A | Tiebreak defect deferred to the original designer | Engine and tests preserve **current** behaviour (below). |

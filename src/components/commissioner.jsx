@@ -845,7 +845,7 @@ export function CommPlayoffsPanel({ state, onSave }) {
         <p className="pp-sub">
           The playoffs are under way - {cfg.bracketSize} teams, {(cfg.advancement || []).join(" -> ")}.
           These settings are locked for the season, so the bracket cannot be re-cut around
-          teams already playing in it. Use Reset League to start over.
+          teams already playing in it.
         </p>
       </div>
     );
@@ -945,23 +945,17 @@ export function CommPlayoffsPanel({ state, onSave }) {
   );
 }
 
-export function CommResetPanel({ onReset }) {
-  return (
-    <div className="pp-card">
-      <h3 className="pp-h3">Reset League</h3>
-      <p className="pp-sub">Wipes teams, rosters, stats, standings, and the activity log. The player pool and scoring settings stay intact. This cannot be undone.</p>
-      <TypedConfirm phrase="RESET LEAGUE" label="Reset League" onConfirm={onReset} />
-    </div>
-  );
-}
-
-
 
 /**
  * Delete the league itself (OQ-18, 2026-09-08).
  *
- * The neighbour above wipes a league and leaves it standing, ready to be played again.
- * This one removes it: the league, its teams, every week ever played in it, and every
+ * THE ONLY PANEL IN THIS TAB since Reset League was removed on 2026-09-08 - see OQ-18's
+ * follow-up. Reset stood beside it for a day, offered as the gentler option for a
+ * commissioner who only wanted to start the season over; it could not do that job (it
+ * threw the season away rather than archiving it) and it failed outright in any league a
+ * manager had joined. Starting the next season is OQ-2's archive, still unbuilt.
+ *
+ * This one removes the league: its teams, every week ever played in it, and every
  * invitation and membership pointing at it. Nobody who was in it can reach it
  * afterwards, and there is no undo - so the panel says the number of teams and finished
  * weeks about to go, and asks for the league's own NAME rather than a stock phrase. A
@@ -987,7 +981,7 @@ export function CommDeleteLeaguePanel({ state, onDeleteLeague }) {
         Deletes <strong>{name}</strong> and everything in it - {teams} team{teams === 1 ? "" : "s"},
         {" "}{weeks} finished week{weeks === 1 ? "" : "s"}, the player pool, the settings, and every
         invitation. Everyone else in the league loses it too, and it does not go to a bin: there is
-        no way to bring it back. Use Reset League above if you only want to start the season over.
+        no way to bring it back.
       </p>
       {error ? <p className="pp-warn">{error}</p> : null}
       <TypedConfirm
@@ -1194,8 +1188,8 @@ export function CommissionerTab(props) {
   const setupPhase = !midWeek
     && props.state.currentPeriod.type === "week"
     && props.state.currentPeriod.number === 1;
-  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "reset"];
-  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", reset: "Reset / Delete" };
+  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "delete"];
+  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", delete: "Delete League" };
   return (
     <div>
       {setupPhase ? (
@@ -1227,12 +1221,7 @@ export function CommissionerTab(props) {
       {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
       {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />}
       {sub === "invite" && <CommInvitePanel state={props.state} invites={props.invites} onCreateInvite={props.onCreateInvite} onRevokeInvite={props.onRevokeInvite} />}
-      {sub === "reset" && (
-        <>
-          <CommResetPanel onReset={props.onResetLeague} />
-          <CommDeleteLeaguePanel state={props.state} onDeleteLeague={props.onDeleteLeague} />
-        </>
-      )}
+      {sub === "delete" && <CommDeleteLeaguePanel state={props.state} onDeleteLeague={props.onDeleteLeague} />}
     </div>
   );
 }

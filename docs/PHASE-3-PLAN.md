@@ -349,17 +349,25 @@ than an infrastructure project.
 Not auth, but it is the one place where an **answered** question is only half delivered, so
 it should not sit unnoticed.
 
-OQ-2 was answered *yes, seasons should exist*, and the `seasons` table shipped. But the app
-still only offers **Reset League**, and reset goes through `replaceLeague`, whose delete
-pass removes every row not present in the new blob - teams, periods, rosters, stat lines,
-results. `seasons` is in `NEVER_DELETE_FROM`, so the season row survives; everything that
-made it interesting does not. In other words the schema can keep last year, and the app
-still throws it away.
+OQ-2 was answered *yes, seasons should exist*, and the `seasons` table shipped. The archive
+did not.
 
-Proposal: an `archiveSeasonAndStartNew` operation - end the current season, create the next
-year's, carry the teams forward, leave every history row attached to the old season.
-`hydrateLeague(db, { seasonId })` already takes a season, so the read seam exists.
-Destructive reset stays, renamed to what it is.
+**Updated 2026-09-08: Reset League has been removed, so this is no longer a rename.** As
+written, this slice proposed keeping destructive reset alongside the archive, "renamed to
+what it is." Reset went instead (OQ-18's follow-up): it was redundant with Delete League,
+structurally wrong for starting a season, and broken in any league a manager had joined -
+`teams = []` through `replaceLeague` tripped the `league_members` check constraint. So
+`archiveSeasonAndStartNew` is now a new operation designed on its own terms rather than an
+existing button relabelled, and nothing in the app competes with it for the job.
+
+Proposal, unchanged in substance: an `archiveSeasonAndStartNew` operation - end the current
+season, create the next year's, carry the teams forward, leave every history row attached to
+the old season. `hydrateLeague(db, { seasonId })` already takes a season, so the read seam
+exists.
+
+**And it has a deadline now.** Until it is built, the only way to a second season is Delete
+and recreate, which loses the pool corrections, the settings and every membership. The 2026
+season began in September, so the first league to finish one lands around January 2027.
 
 **This is the one item that touches real league data, so it does not ship mid-season.**
 

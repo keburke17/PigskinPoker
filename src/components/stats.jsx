@@ -28,6 +28,29 @@ import {
 import { ConfirmButton, EmptyState, ErrorBanner, PositionCard } from "./atoms.jsx";
 import { RosterSlotRow, slotMetaLine } from "./roster.jsx";
 
+/* What a stat box will accept, and the reason it is not `type="number"`.
+ *
+ * Chrome lets `e`, `E`, `+` and `-` into a number input and then reports the value as ""
+ * when the result is not a number. Typing `e345` therefore left `e345` on screen, nothing
+ * in state, and `0 pts` beside it - the box and the app disagreeing with nothing to say
+ * which was real (issue #60, from Scott's recording on 2026-09-08). On the last box of the
+ * night that is a starter scoring zero.
+ *
+ * A text box filtered to digits cannot do that: the value shown is always the value
+ * stored, because anything else never becomes state. It also closes two smaller holes in
+ * the same element - the scroll wheel over a focused number box silently increments it,
+ * and autosave fires 400ms later, on a screen that is six teams of six rows; and there was
+ * no `min`, so -40 yards was enterable.
+ *
+ * DIGITS ONLY, not decimals. Yards and touchdowns are whole numbers and the columns are
+ * `int`; decimals belong to the POINTS these convert into (OQ-15), which nobody types.
+ * So the keyboard hint is `numeric` rather than `decimal` - a mobile keypad offering a
+ * point that the box will not accept is a worse box.
+ */
+export function digitsOnly(raw) {
+  return String(raw == null ? "" : raw).replace(/[^0-9]/g, "");
+}
+
 /* The stat boxes for one non-Coach starter.
  *
  * Yards and touchdowns split into passing / rushing / receiving on 2026-08-28 (OQ-4c),
@@ -63,11 +86,13 @@ export function StatCategoryInputs({ position, stats, onChange }) {
       key={c.field}
       className="pp-input"
       style={{ width: c.kind === "yards" ? 74 : 58 }}
-      type="number"
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
       placeholder={c.label}
       title={c.label}
       value={stats[c.field] != null ? stats[c.field] : ""}
-      onChange={(e) => set(c.field, e.target.value)}
+      onChange={(e) => set(c.field, digitsOnly(e.target.value))}
     />
   );
 

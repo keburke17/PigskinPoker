@@ -86,6 +86,21 @@ season and start a new one." Last year's champion stays on the wall, and season-
 records become possible. Nearly free today; effectively unrecoverable once a second year has
 been played on a season-less schema, because the first year is already gone by then.
 
+**Half delivered, and the other half is no longer a rename (2026-09-08).** The `seasons`
+table shipped. The archive did not, and **Reset League was removed on 2026-09-08** - see
+OQ-18's follow-up - so there is nothing left to rename. That is deliberate rather than a
+loss: Reset was the wrong shape for this job, because the whole point of an archive is that
+last year survives and Reset threw it away. `archiveSeasonAndStartNew` is now a new
+operation to be designed on its own terms, not an existing button wearing a better label.
+
+**It also now has a date.** Until it exists, a commissioner whose season ends has no way to
+start the next one except Delete and recreate - losing every player-pool correction (a new
+league takes a fresh `copy_player_pool_into` from a template that is stale by design),
+scoring, standings point values, playoff config, the lineup-lock and auto-cycle switches,
+and every membership, so all his managers need re-inviting. Nobody is exposed to that yet:
+the 2026 season began in September, so the first league to finish one lands around January
+2027. That is the deadline.
+
 ### OQ-3. Should history be queryable rather than prose? **[assumed: yes]**
 
 `activityLog` is strings and `weeklyResults` is a flat array. Also, `finalizeCurrentPeriod`
@@ -927,6 +942,18 @@ the defect actually did while it was live:**
   `id`, which is worth keeping on its own account: it makes team order deterministic
   everywhere, not only here. **If a tie of this kind ever fired before 2026-09-06, the winner
   may not have been the team the old text said it was.**
+
+  **Half of that sentence was untrue until 2026-09-08 (issue #60).** The `ORDER BY` went
+  into the CLIENT's read. `server/league.js` read teams unordered - and finalize runs
+  server-side, on those rows, so the read that actually decides an OQ-A tie was still
+  handing the engine Postgres heap order. What is left to decide, now that two teams level
+  on all six share a rank and share standings points, is where equal ranks are sliced by
+  array order: the champion of a dead-tied final (`standings.js:259`) and the last playoff
+  slot (`standings.js:276`). Both were going to an arbitrary team; both now go to the one
+  that joined first, which is what this page has said all along. **Nothing here was
+  decided, and no rule moved** - a sentence that was aspirational became true. Scott is
+  told because it makes a documented rule real, not because it changes one. The visible
+  half was worse: the team cards traded places on every save while he entered stats.
 - **It was visible mid-week, not only at finalize.** The live scoreboard added for issues #29
   and #30 ranks the week in progress through `rankTeamsWithTiebreak`, which was the point of
   routing the projection through the same function finalize uses. So the sixth tiebreaker now
@@ -1240,6 +1267,10 @@ answered:
 - **OQ-14 is answered and built, and two things in it are yours to look at**: the
   Tuesday hour (6am was chosen, not asked for), and whether to actually switch either
   one on in your league. Nothing is on until you say so.
+- **OQ-19**, the Save Now button - removed 2026-09-08 from issue #69, because against the
+  write queue it did nothing in the state the bar is in almost all of the time. Nothing
+  replaced it: a failed write retries itself, and the banner says so. Putting it back is
+  two lines if you want it back.
 - **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
   button and leave the engine field, or take the rule off the board. Recommendation: hide.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
@@ -1473,6 +1504,105 @@ at the very top it says PIGSKIN POKER, which is fine, but maybe it says the leag
 then pigskin poker is displayed somewhere else." Built as an eyebrow: PIGSKIN POKER in 11px
 gold caps, the league's name in the h1 below it with the suits, the role badge under that.
 **Confirmed by him on 2026-09-08 - "header looks good."** Nothing further is open here.
+
+#### Follow-up, the same day: Reset League was removed after all
+
+**Decision 2 above lasted a day.** It said Reset stayed - "different answers to different
+questions" - and that is now reversed. Recording the provenance honestly, because the two
+entries are hours apart: **Scott's agreement was relayed by Kyle rather than given here
+directly, and it was soft** - "he seems fine with it." If Scott reads this and disagrees,
+the decision is his and this is the entry to reopen; putting Reset back is a small change.
+
+**What prompted it.** Kyle's reading, which the code bears out, is that the remaining case
+for Reset was a scenario nobody actually has: resetting a *real* league. Sorted by who
+serves each job once Delete exists:
+
+- **A test league** - Delete serves it better, and it is the reason Scott asked for Delete
+  (*"i have run a few test leagues on the live site and would like to delete a few of
+  them"*). Locally it is `npm run db:reset`.
+- **"I set this league up wrong"** - Delete and recreate. The cost is re-inviting managers,
+  which only bites once managers have joined - and that is precisely the case where Reset
+  failed anyway (see below). It covered this job only in the situation where nobody needed
+  it.
+- **"Start next season"** - Reset was structurally wrong for it, and always had been. See
+  OQ-2.
+
+Redundant on two, wrong on the third.
+
+**It was also broken, and had been since accounts shipped.** Reset set `teams = []` and went
+through `replaceLeague` -> `persistBlob`, whose delete pass removed the team rows;
+`league_members.team_id` is `on delete set null` and the same table carries
+`check (role = 'commissioner' or team_id is not null)`, so the cascade violated the check.
+The commissioner typed RESET LEAGUE, watched five retries over ~15 seconds, and got a raw
+Postgres message in the save bar. It worked only in a league nobody had joined. Issues #47
+and #49 carry the detail; both close with this change. Nobody had reported hitting it,
+which is its own evidence about how wanted the button was.
+
+**One thing it did that Delete does not, and it is worth knowing.** Reset kept the league's
+id, its settings and its corrected player pool. That gap is real, it is the archive's job,
+and OQ-2 now carries it along with the January 2027 date by which it matters.
+
+**A related sentence went with it.** The Playoff Settings card, once a bracket has started,
+used to end "Use Reset League to start over." Scott's instruction was to drop it entirely
+rather than repoint it at Delete, and that is the honest answer: those settings are locked
+for the season precisely so a bracket cannot be re-cut around teams already playing in it,
+and Reset was never a good escape from that.
+
+### OQ-19. The Save Now button did nothing. **[ANSWERED 2026-09-08: it stays gone]**
+
+**Raised as issue #69 by Kyle, built the same day, and the decision is still Scott's** - it
+takes a control off the header, which is a look-and-feel call rather than a port cleanup.
+If the answer is "put it back", putting it back is a two-line change.
+
+**What it was.** The header save bar carried a **Save Now** button, straight out of the
+artifact (`LegacyProject/PigskinPokerCode.jsx:942`). There it called `doSave(state)` - a
+full write of the whole league blob - and it was a genuine escape hatch, because a failed
+write left the league stale and there was nothing else to press.
+
+**What it had become.** In the port it called `queue.flush()`. That opens with "if nothing
+is pending, re-emit the same status and return". The bar reads **Saved** almost all of the
+time, and in that state pressing the button wrote nothing, retried nothing, and changed
+nothing on the screen. A control that claims to save and does not is worse than no control,
+because somebody presses it and believes something happened.
+
+The other theory - that it flushes a debounced write early - does not survive the numbers:
+the debounce is 400ms and fires on its own regardless. No finger gets there first.
+
+**What it could still do, and why nothing replaced it.** One case was real. After a failed
+write the entry goes back on the queue behind a backoff of `3s x attempts`, up to 15
+seconds, and a flush skips that wait. Issue #69 recommended re-homing that as a **Retry
+now** button inside the save-failure banner, and it was built that way first.
+
+**Kyle sent it back on 2026-09-08 - "drop it" - and he was right.** The banner already
+appears under the bar and already says the retry is automatic, so the button would have been
+a new control invented on the way out of removing one, for a wait of at most 15 seconds, in
+a state almost nobody ever sees. Nothing was lost by not building it: the write still
+retries, five times, on its own. **So the manual flush has no button anywhere in the app
+now.** `queue.flush` is still called by `visibilitychange` and `beforeunload`; nothing
+presses it by hand.
+
+**Why it is worth the change at all.** OQ-8 measured the sticky header at 217px of an 812px
+phone and every control under the 44px touch target - the header buttons at 28px, this one
+among them. Removing it does not fix the header, but it is the easiest row to give back,
+because nothing is lost with it.
+
+**Nothing about the save guarantee moved.** Coalescing, the debounce, the retries, the
+backoff and the promise that nothing is lost are all exactly as they were. What went is a
+button, not a behaviour.
+`docs/DATA-MODEL.md` says so in the "save guarantee" section, which used to list the button
+among what was kept.
+
+**The question for Scott:** the bar now reads "Saved at 3:42" with no button beside it. Is
+that the header you want, or would you rather have the button back?
+
+**Answered by Scott on 2026-09-08: "yeah im fine with save now being gone."** So the
+removal stands and this is closed - no two-line change needed, and nothing is waiting on
+him here.
+
+One knock-on, recorded because it lands somewhere else: the button was 16px of the sticky
+header, so its removal is also a small down-payment on OQ-8, which is about that header
+being 217px of an 812px phone. Measured after the merge, the header is 236px for a manager
+with the league name in it - see OQ-20 for where that number comes from.
 
 ### OQ-22. Can a team block the same player two weeks running? **[ANSWERED 2026-09-08: yes - no cooldown]**
 
