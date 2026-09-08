@@ -1342,3 +1342,53 @@ Where it lives: `playoffsDueToStart` and `seedPlayoffBracket` in `src/engine/sta
 `seasons.playoff_start_nfl_week` from `supabase/migrations/20260908000000_playoff_start_week.sql`.
 The `startPlayoffs` server route and its storage plumbing are gone; the engine function of
 that name survives only as the seam `tests/parity.test.js` replays the artifact through.
+
+
+---
+
+### OQ-17. A failed write leaves the league half-changed. **[FOUND 2026-09-08 - one for Kyle]**
+
+**How it surfaced.** Scott played test weeks locally the day after OQ-15 shipped and hit:
+
+> couldn't save that change. upsert period_results: invalid input syntax for type integer: "26.2"
+
+The immediate cause was a column that had been missed - `period_results.raw_score` was still
+an `integer` after scoring gained decimals, fixed by
+`supabase/migrations/20260908010000_raw_score_decimal.sql`. That part is closed.
+
+**The part that is still open is what the failure DID.** `persistBlob` in `server/league.js`
+walks the tables in order and upserts each one on its own:
+
+```js
+for (const table of WRITABLE) {
+  ...
+  const { error } = await db.from(table).upsert(rows, { onConflict: "id" });
+  if (error) throw new Error("upsert " + table + ": " + error.message);
+}
+```
+
+There is no transaction around the loop. `periods` is written before `period_results`, so
+when the second one threw, the first had already committed. Scott's league advanced three
+weeks with **no results rows behind them** - the Scoreboard showed nothing for weeks 3, 4
+and 5 while the app cheerfully offered to deal week 6. Two facts that must always agree -
+"this week is finalized" and "this week has results" - had silently come apart, and the only
+sign was an error banner about a different thing.
+
+**Why it has not bitten before.** Every previous failure in that loop was an authorization
+or version conflict, and those are refused by `guard()` before any table is touched. A
+mid-loop failure needs a write that is legal, passes every check, and is then rejected by
+the database itself - which, until a column type went stale, essentially could not happen.
+
+**Recommendation, and it is Kyle's call because it is his layer.** Wrap the whole decompose
+write in one Postgres function and call it over RPC, so the loop either lands completely or
+not at all. supabase-js cannot open a transaction across separate `.upsert()` calls, so this
+is a schema change rather than a client one. The alternative - ordering the tables so the
+most fragile writes go first - only narrows the window and would have to be re-reasoned
+every time a table is added.
+
+**Until then**, a write that dies mid-loop needs the league restored from the previous state
+rather than retried, and the retry banner ("Save failed - retrying automatically") is
+actively misleading in that case: it retries a write whose earlier half already succeeded.
+
+Not urgent for a league that is not yet live on this branch, and squarely in the way of one
+that is.

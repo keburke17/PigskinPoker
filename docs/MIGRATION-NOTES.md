@@ -1763,3 +1763,21 @@ never crowns a champion. Every league that existed before this migration has a n
 It is guarded in three places rather than left to memory: the setup checklist carries it as
 a step that will not tick, the Playoffs panel says so in as many words, and the scheduler's
 end-of-season log line now names it instead of pointing at a button that no longer exists.
+
+### The column that was missed (2026-09-08)
+
+`period_results.raw_score` was still an `integer`. Finalizing a week died on
+`invalid input syntax for type integer: "26.2"`, and because `persistBlob` has no
+transaction, `periods` had already committed - the league advanced three weeks with no
+results behind them. Fixed by `20260908010000_raw_score_decimal.sql`, which widens the
+column to `numeric(8,1)`; the scale is the rule, matching `roundPoints`.
+
+**Why the tests did not catch it.** The engine tests that cover decimal scoring never
+touch a database, and the server suite finalized weeks with stat lines that happened to
+land on whole numbers. `tests/server.test.js` now has two tests that force a fractional
+score through a real finalize and read it back out of the table - both reproduce the exact
+error when the column is put back to `integer`.
+
+The partial-write behaviour that turned a type error into three broken weeks is recorded
+separately as **OQ-17**; it is a pre-existing gap that this was simply the first thing to
+expose.
