@@ -62,8 +62,9 @@
 /* The league's own name, in the header (2026-09-08). It is typed by whoever created the
    league, so it can be two words or eight - this lets a long one shrink and wrap instead
    of pushing the nav further down a phone, where the header is already 217px of an 812px
-   screen (OQ-8). */
-.pp-league-title{ font-size: clamp(18px, 5.4vw, 26px); overflow-wrap: anywhere; }
+   screen (OQ-8). Scott asked for it smaller on a phone on 2026-09-08: 17px at 375px wide,
+   where names up to about 22 characters sit on one line, and 26px from tablet up. */
+.pp-league-title{ font-size: clamp(16px, 4.6vw, 26px); overflow-wrap: anywhere; }
 
 .pp-period-banner{
   display:flex; align-items:center; gap:10px; flex-wrap:wrap;
