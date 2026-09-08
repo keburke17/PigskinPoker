@@ -1872,3 +1872,62 @@ a point the box will not take is a worse box.
 (`Pass Y`, `Rec Yc`, `Rush >`) - the OQ-4c split to six categories kept widths sized for the
 artifact's two. Losing the number spinner buys a few pixels back but does not solve it.
 
+
+### The white screen on the way into a league (2026-09-08)
+
+Scott reported a white screen when he signed in, cured by hitting reload. It was not a slow
+load: it was a crash. React unmounted the tree, and `body` has no background of its own -
+the felt is on `.pp-root` - so what was left was the browser's blank page. `#root` had zero
+children and `document.body.innerText` was empty.
+
+**Three things had to line up, and a second league lined the last one up.**
+
+1. **The store is built from the URL you arrived at.** `createStore` sits in a `useMemo`
+   with no dependencies, on purpose: moving between leagues repoints the existing store so
+   the Realtime channel and the write queue survive the move. Arrive at `/` and it has no
+   league pinned, so `fetchRows` falls back to scanning - and with two leagues visible it
+   cannot choose. It returns `{ _ambiguous }`, which `useLeague` then parked in `view`.
+   Nothing has ever read that field.
+2. **A stale role survives the landing page.** With no league pinned, the store's internal
+   `leagueId` was still null when `whoami` went out, `verifySession` cannot resolve a role
+   without one, and the answer was 401. App reads a non-ok `whoami` as "a blip, keep what
+   we had" - right for a blip, and here it means the role left in `localStorage` by the
+   last league was still in hand.
+3. **Tapping a league re-renders before the effect that repoints the store.** `go()` fires
+   `popstate` synchronously inside the click handler, so there is one render where the
+   address bar says league B, the state is `{ _ambiguous }`, and a truthy role walks it
+   past the sign-in gate.
+
+`state.teams.find(...)` on the line that resolves a manager's team. `state.teams` was
+undefined. As commissioner it died one line further on, in `currentPeriod.phase`, which is
+the same bug wearing a different stack.
+
+Reload fixed it because reloading makes `/l/<id>` the URL the store is *built* from, and a
+pinned store never returns `_ambiguous`.
+
+**Why now.** Only from the landing page, and only with two or more leagues visible. With
+one league the scan picks it and the click-through merely flashes the wrong league's data
+for a moment. Scott got his second league on 2026-09-08. It reads as "when I log in"
+because that is when you are on `/`: the magic link returns you to the landing page, "Your
+Leagues" appears, you tap one.
+
+**Three fixes, because there were three holes.**
+
+- **The view says which league it is, and the gate asks.** `showingAnotherLeague` compares
+  `_meta.leagueId` against the URL and holds the loading screen until they agree. It sits
+  *below* the no-league and load-failed screens deliberately - both of those are answers
+  about a league, and swallowing them would hang forever at a URL with nothing behind it.
+  This also closes the wrong-league flash on any move between leagues, which was never a
+  crash but was never right either.
+- **An ambiguous read no longer becomes a view.** `view` means "a league or nothing" again.
+- **The store names its league from the moment it is built** (`let leagueId = pinnedLeagueId`).
+  That closes the same race on a direct `/l/<id>` load, where `whoami` could beat the league
+  read and 401 for want of a league the store already knew.
+
+**What is not covered by a test.** The render gate itself. The suites run in `node` with no
+DOM (`vite.config.js`), and jsdom is a dependency this fix does not justify on its own -
+CLAUDE.md is explicit that they stay boring. `tests/leagueSwitch.test.js` pins the two
+predicates the gate turns on and the store's league id, and the gate was checked by hand
+against the real stack, both roles, before and after. An error boundary would turn any
+future version of this into a message rather than a blank page; it is a seatbelt, not this
+fix, and it is not here.

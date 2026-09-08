@@ -45,7 +45,16 @@ export function createSupabaseStore(config) {
     auth: { persistSession: true, detectSessionInUrl: true, autoRefreshToken: true },
   });
 
-  let leagueId = null;
+  /* The league every server call names, and it starts as the pinned one.
+   *
+   * It used to start null and was first assigned inside fetchRows, which meant that on a
+   * fresh load of /l/<id> it was null until the league read came back - and `call()`
+   * reads it synchronously. `whoami` races that read, so roughly half the time it went
+   * out naming no league at all; verifySession cannot resolve a role without one, so the
+   * answer was a 401. App reads a non-ok whoami as "a blip, keep what we had", which is
+   * right for a blip and wrong here: what it kept was whatever role localStorage held
+   * from the last league. The scan below still assigns it when nothing was pinned. */
+  let leagueId = pinnedLeagueId;
   let listeners = new Set();
   let channel = null;
   let pushTimer = null;
