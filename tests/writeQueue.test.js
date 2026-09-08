@@ -33,7 +33,7 @@ describe("createWriteQueue", () => {
     expect(runs).toEqual(["dealt"]);
   });
 
-  it("flush() forces everything now - this is Save Now", async () => {
+  it("flush() forces everything now - this is the lifecycle flush", async () => {
     const runs = [];
     const q = createWriteQueue({ debounceMs: 100000 });
     q.enqueue("a", async () => runs.push("a"));

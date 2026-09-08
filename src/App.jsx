@@ -12,7 +12,7 @@
  *
  * DELIBERATELY UNCHANGED - see docs/DATA-MODEL.md "Do not change":
  *   - the refusal to silently start blank on a load error (the blocking screen below);
- *   - the save guarantee: aggressive saving, retries, the status bar, and Save Now;
+ *   - the save guarantee: aggressive saving, retries, and the status bar;
  *   - the commissioner-driven weekly flow.
  */
 
@@ -70,7 +70,6 @@ export default function App() {
     loadErrorDetail,
     retryLoad,
     saveState,
-    saveNow,
     conflict,
     dismissConflict,
     opError,
@@ -728,7 +727,7 @@ export default function App() {
             </div>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLogout}>Log Out</button>
           </div>
-          <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} onSaveNow={saveNow} />
+          <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} />
           <AccountBar
             account={account}
             accountChecked={accountChecked}
@@ -743,7 +742,10 @@ export default function App() {
             />
           ) : null}
           {opError ? <ErrorBanner message={opError} onDismiss={dismissOpError} /> : null}
-          {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically. You can also tap Save Now.", detail: saveErrorDetail }} /> : null}
+          {/* No button here, deliberately (issue #69). The retry is automatic and the banner
+            * says so; the only thing a manual flush could add is skipping a backoff of at most
+            * 15 seconds, which is not worth a control. */}
+          {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically.", detail: saveErrorDetail }} /> : null}
           <div className="pp-nav-wrap">
             <nav className="pp-nav">
               {NAV.map((n) => (
