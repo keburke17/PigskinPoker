@@ -1597,7 +1597,8 @@ points on it at all. That is long fixed.
 So the week card is now the part that answers "how am I doing" in one glance - week, team,
 rank, gap to the leader, top scorer - plus a **"My lineup" link** to where the lineup lives.
 That link was not asked for; it is one line and exists so a manager used to finding his
-starters here is told where they went. Say the word and it goes.
+starters here is told where they went. **Scott kept it on 2026-09-08** - "keep the my
+lineup link, looks good."
 
 Measured after the change, same phone: the card is **121px**, the action card starts at
 **462px** and all but its last 23px is on the first screen, and the league table follows at
