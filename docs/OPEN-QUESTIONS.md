@@ -432,6 +432,11 @@ outlined and measured. His read: **"the buttons dont seem to be that big a deal 
 targets, with Log Out and Save Now folded into a single button rather than sitting in the
 header. He did not choose the bottom nav.
 
+**Part of it has since happened by another route.** Kyle removed the Save Now button
+altogether on 2026-09-08 (OQ-19, issue #69) because it did nothing in the port, which took
+16px off the header on its own. What is left of the fold-away idea is Log Out and the
+signed-in-as line.
+
 So the three pieces, in the order he would take them:
 
 1. **Raise the targets to 44px** - one stylesheet, no game logic. On its own it makes the
@@ -1469,7 +1474,7 @@ then pigskin poker is displayed somewhere else." Built as an eyebrow: PIGSKIN PO
 gold caps, the league's name in the h1 below it with the suits, the role badge under that.
 **Confirmed by him on 2026-09-08 - "header looks good."** Nothing further is open here.
 
-### OQ-19. Can a team block the same player two weeks running? **[ANSWERED 2026-09-08: yes - no cooldown]**
+### OQ-22. Can a team block the same player two weeks running? **[ANSWERED 2026-09-08: yes - no cooldown]**
 
 Scott raised it and answered it in the same breath on 2026-09-08: **"sure. why not. thats what
 they were dealt they can do whatever they want."**
@@ -1492,3 +1497,7 @@ is a star who keeps being dealt to the same team.
 for a victim (`src/engine/schemes.js:86`); he is not protected from anything else, and blocking
 does not hold him on the roster into next week. So the cost of repeating it is the same as it
 ever was: the manager spent his one action for the week.
+
+*Numbered OQ-22 rather than OQ-19: this was written on 2026-09-08 against a main that did
+not yet have Kyle's OQ-19 (the Save Now removal, issue #69), and OQ-20 and OQ-21 went to the
+week screen the same afternoon.*
