@@ -17,6 +17,11 @@ import {
   formatKickoff,
   kickoffsFor,
   lineupLockMode,
+  advanceDeadlineWords,
+  autoAdvanceWeek,
+  autoProcessSchemes,
+  leagueTimeZone,
+  schemeDeadlineWords,
   periodLabel,
   standingsPointsArray,
 } from "../engine/index.js";
@@ -242,7 +247,128 @@ function LockChoice({ checked, onChoose, title, body }) {
   );
 }
 
-export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport }) {
+/* The zones a US league is plausibly in. Six entries rather than the whole IANA list,
+ * because a searchable list of six hundred names is a worse answer to "which morning is
+ * my morning" than six. Anything else is still storable - setAutoCycle takes any zone
+ * the runtime knows - it just is not offered here. */
+const TIME_ZONES = [
+  ["America/New_York", "Eastern"],
+  ["America/Chicago", "Central"],
+  ["America/Denver", "Mountain"],
+  ["America/Phoenix", "Arizona (no DST)"],
+  ["America/Los_Angeles", "Pacific"],
+  ["Pacific/Honolulu", "Hawaii"],
+];
+
+/* Issue #52 / OQ-14: let the clock press the two buttons that move a week along.
+ *
+ * WORDED AS WHAT IT DOES TO THE LEAGUE, not as a feature name, because both of these
+ * change how the game is played rather than only who is holding the mouse:
+ *
+ *   - the scheme deadline stops being "whenever the commissioner gets to it" and starts
+ *     being a time. A manager who forgets loses his scheme for the week.
+ *   - the finalize happens without anyone having looked at the numbers first. It waits
+ *     for every game of the week to be final, but a finalize is still the one step in
+ *     this app with no undo.
+ *
+ * So the copy says both of those out loud, above the checkboxes rather than under them.
+ * Off is the default and staying off is a perfectly good answer.
+ */
+export function CommAutomationPanel({ state, onSetAutoCycle }) {
+  const [busy, setBusy] = useState(false);
+  const schemes = autoProcessSchemes(state);
+  const advance = autoAdvanceWeek(state);
+  const tz = leagueTimeZone(state);
+
+  const send = async (patch) => {
+    setBusy(true);
+    try {
+      await onSetAutoCycle(patch);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Run the week on a clock</h3>
+      <p className="pp-sub">
+        Off by default. With these on, the same two buttons you press get pressed for
+        you at a fixed time each week - nothing else changes, and you can still press
+        them yourself at any point.
+      </p>
+
+      <label className="pp-field" style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: busy ? "wait" : "pointer" }}>
+        <input
+          type="checkbox"
+          checked={schemes}
+          disabled={busy}
+          style={{ marginTop: 4 }}
+          onChange={(e) => send({ processSchemes: e.target.checked })}
+        />
+        <span>
+          <strong>Process schemes at {schemeDeadlineWords(state)}</strong>
+          <span className="pp-sub" style={{ display: "block" }}>
+            Like waivers. This makes the deadline real: a manager who has not submitted
+            by then gets No Action for the week, and rosters lock straight afterwards.
+            Tell your league before you switch it on.
+          </span>
+        </span>
+      </label>
+
+      <label className="pp-field" style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: busy ? "wait" : "pointer" }}>
+        <input
+          type="checkbox"
+          checked={advance}
+          disabled={busy}
+          style={{ marginTop: 4 }}
+          onChange={(e) => send({ advanceWeek: e.target.checked })}
+        />
+        <span>
+          <strong>Finalize and deal the next week at {advanceDeadlineWords(state)}</strong>
+          <span className="pp-sub" style={{ display: "block" }}>
+            Only once every game of the week has finished - a postponed game makes it
+            wait rather than score a blank week. It stops at the end of the regular
+            season and hands the playoffs back to you.
+          </span>
+        </span>
+      </label>
+
+      <label className="pp-field" style={{ display: "block", marginTop: 10 }}>
+        <span className="pp-label">Your league&apos;s timezone</span>
+        <select
+          className="pp-input"
+          value={TIME_ZONES.some(([z]) => z === tz) ? tz : ""}
+          disabled={busy}
+          onChange={(e) => e.target.value && send({ tz: e.target.value })}
+        >
+          {!TIME_ZONES.some(([z]) => z === tz) ? <option value="">{tz}</option> : null}
+          {TIME_ZONES.map(([zone, label]) => (
+            <option key={zone} value={zone}>{label}</option>
+          ))}
+        </select>
+        <span className="pp-sub" style={{ display: "block" }}>
+          Decides what &quot;3am Thursday&quot; means. It follows daylight saving on its
+          own, so the deadline does not move an hour in November.
+        </span>
+      </label>
+
+      {schemes || advance ? (
+        <p className="pp-sub" style={{ marginTop: 10 }}>
+          Anything that happens on its own is written into the activity log on the League
+          tab, so the week always says who moved it.
+        </p>
+      ) : (
+        <p className="pp-sub" style={{ marginTop: 10 }}>
+          With both off, nothing moves without you - deal, process, lock, finalize, in
+          your own time. That is how the league has always worked.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport, onSetAutoCycle }) {
   const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
   /* `state.schemes` only ever holds what THIS browser was told, and a manager's
    * pending scheme is hidden from every browser read by design - so on the
@@ -304,6 +430,7 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
         onRefreshKickoffs={onRefreshKickoffs}
         kickoffReport={kickoffReport}
       />
+      <CommAutomationPanel state={state} onSetAutoCycle={onSetAutoCycle} />
     </>
   );
 }
@@ -922,7 +1049,7 @@ export function CommissionerTab(props) {
         />
       )}
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
-      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} />}
+      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onSetAutoCycle={props.onSetAutoCycle} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}

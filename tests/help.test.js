@@ -109,7 +109,13 @@ describe("the Help prose tells the truth about locking", () => {
   it("never invents a weekday or a clock of its own", () => {
     /* "Thursday" stays banned outright, for the reason #34 gives: `weekly` locks on the
      * week's FIRST kickoff, whatever weekday that lands on - the 2026 season opens on a
-     * Wednesday. A named weekday in static prose is a rule nobody implemented. */
+     * Wednesday. A named weekday in static prose is a rule nobody implemented.
+     *
+     * STILL TRUE AFTER #52, and worth saying why. A league CAN now have a real Thursday
+     * deadline - but the day and the hour come from CYCLE_DEADLINES via
+     * schemeDeadlineWords(), rendered per league, never typed into a sentence here. So
+     * a literal weekday in this file is still a rule that has drifted from the code,
+     * and moving the deadline would still leave this screen lying. */
     expect(prose).not.toMatch(/thursday|sunday night|deadline of|midnight/i);
   });
 
@@ -211,5 +217,105 @@ describe("the tab renders", () => {
     // The manager walkthrough is for everybody - a commissioner runs a team too.
     expect(asManager).toContain("Your week, as a manager");
     expect(asComm).toContain("Your week, as a manager");
+  });
+});
+
+/* ========================== the clock (issue #52) ==========================
+ *
+ * The same trap #34 sprang, in two more places: this screen told every manager "there
+ * is no clock" and told every commissioner he presses each button himself. Both are
+ * false for a league that has opted in (OQ-14), and false in the direction that costs
+ * somebody their week. The source can carry both branches and still render the wrong
+ * one, so these render it.
+ */
+describe("the Help prose tells the truth about the clock", () => {
+  const stateWith = (meta = {}) => ({
+    leagueName: "Test League",
+    teams: [{ id: "t1", name: "Burke", roster: null }],
+    schemes: {},
+    rosterLocked: false,
+    weeklyResults: [{ id: "r1" }],
+    currentPeriod: { type: "week", number: 3, phase: "dealt" },
+    _meta: { tz: "America/New_York", ...meta },
+  });
+  const team = { id: "t1", name: "Burke", roster: { starters: {}, bench: [] } };
+  const render = (state, role, t) =>
+    renderToStaticMarkup(React.createElement(HelpTab, { state, role, team: t, onGoTo: () => {} }));
+
+  it("has a card saying what moves without anybody pressing anything", () => {
+    expect(HELP).toContain('<RuleCard title="What happens on its own">');
+  });
+
+  it("tells a league with nothing automated exactly that", () => {
+    const html = render(stateWith(), "manager", team);
+    expect(html).toMatch(/Nothing deals or finalizes on its own/i);
+    expect(html).toMatch(/there is no clock/i);
+    expect(html).not.toMatch(/Thursday 3am/);
+  });
+
+  it("names the scheme deadline for a league that has switched it on", () => {
+    const html = render(stateWith({ autoProcessSchemes: true }), "manager", team);
+    expect(html).toMatch(/Thursday 3am/);
+    expect(html).toMatch(/No Action/);
+    /* The sentence this replaces must be gone, not merely joined. */
+    expect(html).not.toMatch(/there is no clock/i);
+  });
+
+  it("names the Tuesday rollover, and says the football has to be over first", () => {
+    const html = render(stateWith({ autoAdvanceWeek: true }), "manager", team);
+    expect(html).toMatch(/Tuesday 6am/);
+    expect(html).toMatch(/postponed or still running/i);
+    expect(html).not.toMatch(/Nothing deals or finalizes on its own/i);
+  });
+
+  /* The clock never deals the first week of a season, and never starts the playoffs.
+   * Both are things a manager will otherwise sit and wait for. */
+  it("says which weeks the clock will not deal", () => {
+    const html = render(stateWith({ autoAdvanceWeek: true }), "manager", team);
+    expect(html).toMatch(/first week of a season is never dealt automatically/i);
+  });
+
+  it("tells the commissioner where the switches are", () => {
+    const html = render(stateWith(), "commissioner", null);
+    expect(html).toMatch(/Run the week on a clock/);
+  });
+
+  /* ISSUE #56: finalizing keeps the totals and deletes the per-slot lines behind them,
+   * so "check before" is the only advice there is - and it matters most in the league
+   * that finalizes unattended. Measured, not assumed: a finalize takes the demo week
+   * from 18 stat_lines rows to 0. */
+  it("warns that a finalized week's stat lines cannot be corrected", () => {
+    const html = render(stateWith({ autoAdvanceWeek: true }), "commissioner", null);
+    expect(html).toMatch(/cannot be corrected/i);
+    expect(html).toMatch(/before Tuesday 6am/i);
+  });
+
+  it("gives a manager the same warning, since it is his points", () => {
+    const html = render(stateWith({ autoAdvanceWeek: true }), "manager", team);
+    expect(html).toMatch(/Check your stat lines before Tuesday 6am/i);
+  });
+
+  it("says what to check when something automatic did not happen", () => {
+    const html = render(stateWith({ autoAdvanceWeek: true }), "commissioner", null);
+    expect(html).toMatch(/did not happen/i);
+    expect(html).toMatch(/timezone/i);
+  });
+
+  it("reads the deadline in the league's own timezone", () => {
+    const html = render(
+      stateWith({ autoProcessSchemes: true, tz: "America/Los_Angeles" }), "manager", team
+    );
+    expect(html).toMatch(/Thursday 3am P[DS]T/);
+  });
+
+  it("renders in every combination of the two switches", () => {
+    for (const autoProcessSchemes of [true, false]) {
+      for (const autoAdvanceWeek of [true, false]) {
+        for (const [role, t] of [["commissioner", null], ["manager", team]]) {
+          const html = render(stateWith({ autoProcessSchemes, autoAdvanceWeek }), role, t);
+          expect(html).toContain("What happens on its own");
+        }
+      }
+    }
   });
 });

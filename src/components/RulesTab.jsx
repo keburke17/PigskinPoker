@@ -11,6 +11,10 @@
  *     refresh may not do), the coaches line, and the tiebreaker card, which had
  *     documented six tiebreakers since the artifact while the engine applied five.
  *     That is OQ-A, now fixed, so the screen and the game finally agree.
+ *   2026-09-07 - the scheme deadline and the weekly rollover, because a league can now
+ *     run either on a clock (issue #52, OQ-14). "Schemes close when the commissioner
+ *     processes the week" is the rule for a league that has not switched that on, and
+ *     the wrong rule - in the expensive direction - for one that has.
  *
  * docs/RULES.md is the long form of the same thing. Change both together. */
 
@@ -19,11 +23,15 @@ import {
   DEFAULT_SCORING,
   LINEUP_LOCK,
   SUIT_CH,
+  advanceDeadlineWords,
+  autoAdvanceWeek,
+  autoProcessSchemes,
   currentStandingsPointsArray,
   firstKickoff,
   formatKickoff,
   kickoffsFor,
   lineupLockMode,
+  schemeDeadlineWords,
 } from "../engine/index.js";
 
 export function QuickRefTile({ label, value }) {
@@ -69,6 +77,9 @@ export function RulesTab({ state }) {
 
       <RuleCard title={SUIT_CH.spade + " The Weekly Deal"}>
         <li>Every week (or playoff round), each team gets a fresh, random 12-player roster - nothing carries over.</li>
+        {autoAdvanceWeek(state) ? (
+          <li><strong>The week is scored and the next one dealt at {advanceDeadlineWords(state)}</strong>, once every game of the NFL week is final. The first week of a season, and every playoff round, still wait for the commissioner.</li>
+        ) : null}
         <li>6 starters: Coach, QB, WR, RB, TE, FLEX.</li>
         <li>6 bench: one more of each (Coach, QB, WR, RB, TE), plus one more FLEX-eligible player.</li>
         <li>FLEX can only be a WR or RB - never a TE.</li>
@@ -86,6 +97,11 @@ export function RulesTab({ state }) {
         <li>Dropped players go straight back into the free-agent pool, even mid-processing.</li>
         <li>Steals resolve in random order - no submission-order advantage.</li>
         <li>Schemes are never shown to other managers - only the resulting roster.</li>
+        {autoProcessSchemes(state) ? (
+          <li><strong>Schemes are processed at {schemeDeadlineWords(state)}</strong>, on the clock. Submit nothing by then and you play No Action.</li>
+        ) : (
+          <li>Schemes are processed when the commissioner presses the button - there is no clock on it.</li>
+        )}
       </RuleCard>
 
       <RuleCard title={SUIT_CH.diamond + " Scoring"}>
@@ -159,7 +175,7 @@ export function LineupLockCard({ state }) {
 
   return (
     <RuleCard title="Lineup Lock & Injury Swaps">
-      <li>After schemes are processed, the commissioner can lock rosters for the weekend, which closes further scheme submission.</li>
+      <li>After schemes are processed, the commissioner can lock rosters for the weekend, which closes further scheme submission.{autoProcessSchemes(state) ? " In this league that happens on its own at " + schemeDeadlineWords(state) + ", when the schemes are processed." : ""}</li>
       {mode === LINEUP_LOCK.WEEKLY ? (
         <>
           <li><strong>This league locks every lineup at the week's first kickoff</strong>{first ? " - " + formatKickoff(first) + " this week" : ""}. What you have in your lineup then is what plays.</li>

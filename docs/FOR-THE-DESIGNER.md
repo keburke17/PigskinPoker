@@ -272,6 +272,73 @@ and your own lock always wins.
 **If you switch it, tell the league before the week starts.** Someone who thinks he has
 until Sunday, in a league that locked on Thursday, finds out by losing a week.
 
+### OQ-14 - running the week on a clock *(built 2026-09-07; both switches are OFF)*
+
+This is the one you asked for. You described the league you want:
+
+> Rosters are dealt automatically Tuesday morning. Schemes are processed Thursday morning
+> at like 3am (just how waivers would process in real fantasy football) ... Tuesday
+> morning rosters are dealt automatically for the next week. Standings are updated.
+
+It is built, and **nothing is switched on**. You will find it under **Commissioner ->
+Weeks -> Run the week on a clock**, as two separate tick boxes plus your league's
+timezone.
+
+**Two things to know before you tick either one**, because they change how the league
+feels rather than just who is holding the mouse.
+
+**1. The 3am Thursday deadline becomes real.** Right now you wait until everyone has
+submitted a scheme. On the clock, whatever is on file at 3am Thursday is what plays -
+and a manager who has not submitted gets No Action for the week, with no appeal. That is
+exactly the waivers behaviour you described, and it is still worth saying out loud in the
+group chat before the first week it applies. Somebody will forget once.
+
+**2. Finalizing is the one step that cannot be undone.** With the second switch on, a
+week gets scored and turned into standings points with nobody having looked at the
+numbers first. It will not do that until every game of the NFL week is genuinely over -
+if a game is postponed it waits, and tries again an hour later - but if a stat line is
+wrong when it fires, the standings are wrong and the only fix is another week.
+
+**That is why they are two switches and not one.** Ticking only the first gives you the
+Thursday deadline and leaves the finalize in your hands, which is probably the setting to
+start with.
+
+**And there is a reason to leave the second one off for now.** Finalizing keeps each
+team's totals and standings points, but **not the individual stat boxes behind them** - so
+once a week is finalized there is no way to see, check or correct what one player scored.
+That is a separate bug rather than anything about the clock (issue #56, and it is already
+item 1 of "things waiting to be fixed" below), but it makes an unattended finalize sharper
+than it sounds: it is not only that the standings are committed, it is that the working
+has been rubbed out too. Worth fixing before you switch that one on.
+
+**What the clock will never do**, whatever you tick:
+
+- deal the **first week of a season** - it waits for you to have your teams in;
+- deal **past the last week of the regular season** - it finalizes week 18, writes a note
+  in the activity log and stops;
+- **start the playoffs** - that needs a bracket size, which is your call.
+
+**Everything you press yourself still works and still wins.** If you deal on Monday
+night, Tuesday morning finds nothing to do. Anything the clock does gets written into the
+activity log on the League tab with a little clock beside it, so the week always says who
+moved it.
+
+**Two things I chose that you did not ask for**, and either is a one-line change if you
+disagree:
+
+- **"Tuesday morning" is 6am.** You named 3am Thursday exactly and left this one loose.
+  6am gives the longest gap after Monday night football for the real stats to be
+  published, and still has the new roster waiting before anyone is up.
+- **Both times are fixed in the code**, not settings on a screen. Your nav already has
+  eleven buttons on it.
+
+**The one thing that is missing, and it is not small.** Nobody gets told anything. If the
+roster lands at 6am Tuesday and schemes lock at 3am Thursday, a manager only finds out by
+opening the app. Today that works because you deal and then post in the group chat - and
+that is exactly the bit the clock takes away. Email notifications are the obvious next
+piece (they would use the same setup the sign-in links already use), and are worth doing
+before you lean on the second switch. Written up as issue #57.
+
 ### OQ-A - a real bug in the tiebreakers *(most important)*
 
 The Rules page lists six tiebreakers. The code only ever applies **five**. The sixth -
@@ -378,6 +445,12 @@ Rename a team, add a player, mark someone OUT, or edit the scoring, and the app 
 deletes every scheme managers have submitted for the current week - plus every scheme from
 every past week, and every past week's rosters and stat lines. The standings survive; the
 detail behind them does not.
+
+**It is not only those buttons - an ordinary Finalize does it too**, found on 2026-09-07
+while checking what the clock in OQ-14 would be committing. Finalizing a week takes it from
+eighteen stat lines to none, keeping only each team's totals. So this is not a rare
+admin-tool accident; it happens every single week, to every league, on the normal path.
+Tracked as issue #56.
 
 Why: those buttons send the *whole league* back to the server, rebuilt from what your
 browser can see. Your browser deliberately cannot see a pending scheme, and it never holds

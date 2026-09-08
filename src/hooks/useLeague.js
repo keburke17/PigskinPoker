@@ -458,6 +458,15 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* Let the schedule press Deal and Process Schemes too (issue #52, OQ-14). Off by
+   * default, and unlike the pull these DO change how the league is played - the scheme
+   * deadline becomes a time, and a finalize can happen with nobody looking. The guards
+   * are in server/autoCycle.js. */
+  const setAutoCycle = useCallback(
+    (patch) => immediate("setAutoCycle", () => store.setAutoCycle(patch)),
+    [store, immediate]
+  );
+
   /** Commissioner admin: low-frequency, genuinely league-wide. */
   const mutate = useCallback(
     (key, fn) => immediate(key, () => store.mutateLeague(fn)),
@@ -512,6 +521,7 @@ export function useLeague(store) {
       setLineupLock,
       refreshKickoffs,
       setAutoPullStats,
+      setAutoCycle,
       processSchemes,
       finalizePeriod,
       startPlayoffs,

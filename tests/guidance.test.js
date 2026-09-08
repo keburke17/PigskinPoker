@@ -168,3 +168,89 @@ describe("the lock copy tells the truth about when things freeze", () => {
     }
   });
 });
+
+/* ============================== the clock (issue #52) =======================
+ *
+ * A league can have the scheme deadline and the Tuesday finalize-and-deal run on their
+ * own (OQ-14; both off by default). The failure this guards is precise and expensive:
+ * telling a manager "there is no clock, so do it now" when 3am Thursday will take his
+ * scheme off him. The copy has to name the league's own arrangement, never the other
+ * one - the same discipline the lineup-lock assertions above enforce.
+ */
+describe("nextStep, when the week runs on a clock", () => {
+  const clocked = (over, meta) => stateWith({ ...over, _meta: { tz: "America/New_York", ...meta } });
+
+  it("tells a manager the scheme deadline is a real time", () => {
+    const state = clocked(
+      { currentPeriod: { type: "week", number: 3, phase: "dealt" } },
+      { autoProcessSchemes: true }
+    );
+    const step = nextStep(state, "manager", withRoster(state.teams[0]));
+    expect(step.detail).toMatch(/Thursday 3am/);
+    expect(step.detail).toMatch(/No Action/);
+    expect(step.detail).not.toMatch(/there is no clock/i);
+  });
+
+  /* And the other way round, which is the sentence that was there before. */
+  it("keeps 'there is no clock' for a league that has not switched it on", () => {
+    const state = stateWith({ currentPeriod: { type: "week", number: 3, phase: "dealt" } });
+    const step = nextStep(state, "manager", withRoster(state.teams[0]));
+    expect(step.detail).toMatch(/there is no clock/i);
+    expect(step.detail).not.toMatch(/Thursday 3am/);
+  });
+
+  it("tells a manager with a scheme on file when it stops being changeable", () => {
+    const team = withRoster({ id: "t1", name: "Burke" });
+    const state = clocked(
+      { currentPeriod: { type: "week", number: 3, phase: "dealt" }, schemes: { t1: { type: "block" } } },
+      { autoProcessSchemes: true }
+    );
+    expect(nextStep(state, "manager", team).detail).toMatch(/right up until Thursday 3am/);
+  });
+
+  it("tells the commissioner he has nothing to press on a clocked week", () => {
+    const state = clocked(
+      { currentPeriod: { type: "week", number: 3, phase: "dealt" } },
+      { autoProcessSchemes: true }
+    );
+    const step = nextStep(state, "commissioner", null);
+    expect(step.headline).toMatch(/process themselves at Thursday 3am/i);
+  });
+
+  it("says the week finalizes itself, and warns that it cannot be undone", () => {
+    const state = clocked(
+      { currentPeriod: { type: "week", number: 3, phase: "schemes-processed" } },
+      { autoAdvanceWeek: true }
+    );
+    const step = nextStep(state, "commissioner", null);
+    expect(step.headline).toMatch(/finalizes itself on Tuesday 6am/i);
+    expect(step.detail).toMatch(/no undo/i);
+  });
+
+  /* THE CLOCK NEVER DEALS THE FIRST WEEK - there is no finished week behind it, so
+   * dealEligibility refuses (server/autoCycle.js). Promising a Tuesday that will never
+   * come is worse than saying nothing. */
+  it("does not promise an automatic deal for a season's first week", () => {
+    const state = clocked({}, { autoAdvanceWeek: true });
+    state.weeklyResults = [];
+    const step = nextStep(state, "commissioner", null);
+    expect(step.headline).toMatch(/Deal Week 1/);
+    expect(step.detail).toMatch(/never deals the first one/i);
+  });
+
+  it("does promise one once a week has been played", () => {
+    const state = clocked({}, { autoAdvanceWeek: true });
+    state.weeklyResults = [{ id: "r1" }];
+    const step = nextStep(state, "commissioner", null);
+    expect(step.headline).toMatch(/dealt for you at Tuesday 6am/i);
+  });
+
+  it("reads the deadline in the league's own timezone", () => {
+    const state = clocked(
+      { currentPeriod: { type: "week", number: 3, phase: "dealt" } },
+      { autoProcessSchemes: true, tz: "America/Los_Angeles" }
+    );
+    const step = nextStep(state, "manager", withRoster(state.teams[0]));
+    expect(step.detail).toMatch(/Thursday 3am P[DS]T/);
+  });
+});

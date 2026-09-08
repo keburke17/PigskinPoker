@@ -327,6 +327,18 @@ export function hydrateLeague(db, opts = {}) {
        * in the state proper: the artifact's shape has no field for it and decompose
        * must not carry it. See server/autoPull.js. */
       autoPullStats: league.auto_pull_stats === true,
+      /* Issue #52: whether the weekly cycle runs on a clock for this league, and which
+       * clock. Same family as autoPullStats - operational, server-owned, deliberately
+       * not in the state proper, because the artifact's shape has no field for it and
+       * decompose must not carry it.
+       *
+       * The BROWSER needs these to tell people what happens next and when: the Help
+       * tab, the welcome card and the "your next step" line all read them, so a manager
+       * finds out the scheme deadline is a real time from the app rather than from
+       * losing a week. See src/components/guidance.js. */
+      autoProcessSchemes: league.auto_process_schemes === true,
+      autoAdvanceWeek: league.auto_advance_week === true,
+      tz: league.tz || "America/New_York",
       versions: buildVersionMap(db, season, current, slotsForCurrent, teamLegacy),
     },
   };

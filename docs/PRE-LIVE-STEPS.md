@@ -46,8 +46,29 @@ stack does not, and no unit test can see the difference. See `docs/DEPLOYMENT.md
 | 7 | Scott | Add the teams | |
 | 8 | Scott | Commissioner -> Invite, one per manager | An account nobody invited is nobody. There is no join code any more |
 | 9 | Scott | **Refresh Player Pool** | `pre-deal` only. Pulls the live depth chart *and* real injury status |
-| 10 | Scott | Set the lineup lock and `auto_pull_stats` | Both have silent defaults - `gametime`, and auto-pull OFF |
+| 10 | Scott | Set the lineup lock, `auto_pull_stats`, and the two clock switches | All four have silent defaults - `gametime`, and OFF, OFF, OFF. See below |
 | 11 | Kyle | `npm run db:backup` again | A clean baseline, before a single week is played |
+
+### Step 10 in full: four silent defaults
+
+None of these announces itself, and three of them are new. Left alone the league plays
+exactly as it always has, which is a perfectly good answer for week 1.
+
+| Setting | Where | Default | What turning it on does |
+|---|---|---|---|
+| Lineup lock | Commissioner -> Weeks | `gametime` | Already what the rules describe. `weekly` makes Thursday's first kickoff the whole-lineup deadline |
+| Pull automatically | Commissioner -> Enter Stats | off | Fills stat boxes from the feed every three hours. Never overwrites a typed number |
+| Process schemes on a clock | Commissioner -> Weeks | off | **3am Thursday becomes a real deadline.** No scheme on file by then = No Action, no appeal |
+| Finalize and deal on a clock | Commissioner -> Weeks | off | Scores the week and deals the next at 6am Tuesday, once every game is final. **A finalize has no undo** |
+
+**The timezone selector is on the same panel and matters only for the last two.** It is
+Eastern by default and follows daylight saving on its own, so the deadline does not move
+an hour when the clocks change on 1 November.
+
+**Recommendation for week 1: leave all four alone.** Play a week by hand first, see the
+whole cycle work, then switch the Thursday deadline on for week 2 - after telling the
+league in the group chat. The finalize switch is worth leaving off longer, because
+nothing yet notifies anybody that their week has been scored.
 
 ### The two flags that are easy to get wrong
 
@@ -84,7 +105,9 @@ nothing mechanically; it is worth fixing because Scott will see it.
 ## Part 2 - what week 1 actually looks like
 
 The phases are `pre-deal -> dealt -> schemes-processed -> stats -> finalized`, and the
-commissioner drives every transition. Nothing advances on its own.
+commissioner drives every transition. **With the two clock switches off - which is how the
+league starts - nothing advances on its own**, and everything below describes that. What
+changes when they are on is noted at the end of each step.
 
 ### pre-deal - the commissioner deals
 
@@ -92,8 +115,13 @@ Each team gets twelve players: six starters - **Coach, QB, WR, RB, TE, FLEX** - 
 the bench. Dealing also reads that week's kickoff times out of the schedule and stores
 them, best effort, so a slow schedule file cannot fail a deal.
 
-Confirm on screen that league week 1 is mapped to **NFL week 1** before dealing. It should
-be automatic for a league opening on opening weekend; `setNflWeek` corrects it if not.
+Confirm on screen that league week 1 is mapped to **NFL week 1** before dealing. Since
+issue #45 the mapping is taken from the calendar - the NFL week about to be played - so a
+league created mid-season no longer starts on week 1 by default; `setNflWeek` still
+corrects it either way.
+
+**The clock never deals a season's first week.** There is no finished week behind it to
+follow, so week 1 is yours no matter what is switched on.
 
 ### dealt - the managers' window
 
@@ -114,6 +142,10 @@ nothing keeps what he was dealt, and pays no penalty for it.
 > **The gotcha that will bite you.** A scheme can only be submitted while the phase is
 > `dealt`, so **pressing Process Schemes closes the window.** Give the managers a stated
 > deadline rather than pressing it once four of six are in.
+>
+> **This is the gotcha the clock exists to remove.** Switch on "Process schemes at
+> Thursday 3am" and the stated deadline is enforced instead of announced - which also
+> means a manager who misses it has genuinely missed it. See OQ-14.
 
 ### Process Schemes
 
@@ -124,6 +156,10 @@ target is skipped and logged; the roster is unchanged.
 
 The phase becomes `schemes-processed` and **the rosters lock automatically**. There is no
 separate Lock Rosters step in the normal flow.
+
+**On a clock** this happens at 3am Thursday, league local time, and it happens whether or
+not everyone has submitted - a team with nothing on file plays No Action. Pressing the
+button earlier is always allowed; the clock then finds nothing to do.
 
 ### schemes-processed - lineups are still live
 
@@ -164,6 +200,11 @@ decided until the week is finalized.
 
 The next period then opens at `pre-deal`, mapped to NFL week 2.
 
+**On a clock** this runs at 6am Tuesday, and only once every team with a kickoff in the
+NFL week has a result - a postponed game makes it wait an hour and try again rather than
+score a week that is not over. The next week is dealt in the same run, pool refreshed
+first. It stops after week 18 and leaves the playoffs to you.
+
 ---
 
 ## Things to keep an eye on
@@ -177,3 +218,8 @@ The next period then opens at `pre-deal`, mapped to NFL week 2.
 - **If something breaks live**, the fastest fix is Netlify's rollback to the previous
   deploy, not a hurried commit. That does not roll the database back; nothing does except a
   backup.
+- **If a clock switch is on and nothing happened**, it is nearly always the job refusing
+  on purpose: a game of the week has not finished, the week is not mapped to an NFL week,
+  or the regular season is over. The Netlify log for `run-cycle-scheduled` prints one line
+  per hour naming every league it considered and why it skipped each one. It re-checks
+  every hour, so nothing is stuck.

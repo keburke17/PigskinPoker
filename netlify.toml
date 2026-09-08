@@ -47,6 +47,32 @@
 [functions."pull-stats-scheduled"]
   schedule = "0 */3 * * *"
 
+# Issue #52: the weekly cycle on a clock, for leagues that opted in
+# (leagues.auto_process_schemes / auto_advance_week, both default false).
+#
+# EVERY HOUR, and unlike the stats pull that frequency is not about freshness - this job
+# only ever acts twice a week. It is about TIMEZONES.
+#
+# Both deadlines Scott named are local: schemes at 3am Thursday, the next week dealt on
+# Tuesday morning. Cron is UTC, and 3am Eastern is 07:00Z under EDT and 08:00Z under EST
+# - the 2026 season crosses the change on 1 November, so any single UTC schedule is an
+# hour wrong for half the year. For the 3am job that means firing at 2am or 4am relative
+# to the deadline the league was told about. Running hourly and having each league
+# answer for its own `leagues.tz` is the fix, and it is the only one that also works for
+# a league that is not on Eastern.
+#
+# Hourly ALSO makes a missed tick harmless. The guard is "has the deadline passed with
+# this week still sitting there", not "is it 3am right now", so an hour lost to a deploy
+# or a cold start is picked up on the next one rather than costing a league its week.
+#
+# THE COST IS FAR LOWER THAN 168 RUNS A WEEK SUGGESTS. The eligibility guards are pure
+# comparisons on two rows (server/autoCycle.js) and run BEFORE anything is fetched, so
+# an ordinary hour is one small query against leagues that opted in - usually returning
+# nothing at all - and no outbound request. The schedule file is only read on a Tuesday
+# morning for a league whose week is actually ready to be finalized.
+[functions."run-cycle-scheduled"]
+  schedule = "0 * * * *"
+
 # The old address, sent to the new one.
 #
 # This is FIRST on purpose. Rules are evaluated top to bottom, and the SPA fallback

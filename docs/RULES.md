@@ -31,7 +31,8 @@ on a schedule (section 2) - but neither moves the week on.
 
 ## 2. The weekly cycle
 
-Five phases, in order, each moved along by the commissioner:
+Five phases, in order, each moved along by the commissioner - or, in a league that has
+opted in, partly by the clock (see below):
 
 | Phase | What happens |
 |---|---|
@@ -47,8 +48,45 @@ guessed at.
 **Where the stat lines come from.** The commissioner can type them, or press *Pull Stats* to
 fill every starter's boxes from the real NFL week. **A pull never overwrites a number he
 typed** - his line stands and the feed's opinion is recorded beside it. A league can also
-opt in to having that pull run on a schedule, which is the one thing in the game that
-happens with nobody pressing anything; it still cannot finalize the week.
+opt in to having that pull run on a schedule.
+
+### The clock `[configurable]`
+
+Two of the phase changes can run on a clock instead of on the commissioner's attention.
+Both are **per league and off by default** (OQ-14, answered 2026-09-07), so a league that
+changes nothing plays exactly as it always has.
+
+| Switch | What runs, and when |
+|---|---|
+| **Process schemes automatically** | `dealt` -> `schemes-processed` at **3am Thursday**, league local time. Like waivers. |
+| **Finalize and deal automatically** | `stats` -> `finalized`, and the next week dealt, on **Tuesday morning at 6am** local. |
+
+**What the deadline does to a manager.** A team with no scheme on file when the schemes
+are processed plays **No Action** - that has always been true, but until now the
+commissioner was waiting for stragglers. On a clock the deadline is real and there is no
+appeal.
+
+**The finalize waits for the football, not for the stat boxes.** Every team with a
+kickoff in the mapped NFL week must have a result before the week is scored. A postponed
+game makes it wait and try again an hour later. It is deliberately *not* "every stat box
+is filled", because an empty box is also what a healthy starter who did not play looks
+like, and he scores 0 (section 6).
+
+**Three things the clock never does:**
+
+- deal the **first week of a season** - there is no finished week behind it, and week 1
+  waits until the teams are in;
+- deal **past week 18** - it finalizes the last week of the regular season, says so in the
+  activity log, and stops;
+- **start the playoffs** - that takes a bracket size, which is a decision.
+
+**Every button still belongs to the commissioner.** He can deal, process or finalize
+earlier at any point, and doing so simply means the clock finds nothing to do. Anything
+the clock does is written into the activity log with its own marker, so the week always
+says who moved it.
+
+**Nobody is notified.** A manager finds out the roster is dealt, or that the deadline is
+approaching, by opening the app. That is the known gap (OQ-6).
 
 ---
 
@@ -275,7 +313,8 @@ Implemented in `server/pool.js` and `src/engine/pool.js`.
 ## 10. Lineup lock and injury swaps
 
 After schemes are processed the commissioner can **lock rosters** for the weekend, which
-closes scheme submission.
+closes scheme submission. In a league whose schemes are processed on a clock (section 2)
+that happens at the same moment, without anyone pressing it.
 
 **When lineups stop being changeable is a league option** `[configurable]`, set once by the
 commissioner and then fired by the real NFL kickoff times rather than by anyone pressing a
@@ -314,8 +353,14 @@ numbers onto another (OQ-E). Nothing in normal play can trigger it.
 
 **The commissioner** advances every phase, deals the week, refreshes and edits the player
 pool, enters or pulls the stats, locks rosters, sets the scoring rates and standings points,
-chooses when lineups lock, and configures the playoff bracket. **Every phase change is his**
-- nothing moves the week along on its own.
+chooses when lineups lock, decides whether the week runs on a clock, and configures the
+playoff bracket. **Every phase change is his to make**, and in a league with the clock
+switched off nothing moves the week along on its own.
+
+**The clock**, where a league has opted in, presses two of those buttons on his behalf -
+the scheme processing and the Tuesday finalize-and-deal. It presses the same buttons under
+the same rules, it never gets a decision he would not have had, and he can always move
+first. See section 2.
 
 **A manager** submits one scheme a week, and manages his starting lineup.
 
@@ -332,6 +377,16 @@ chooses when lineups lock, and configures the playoff bracket. **Every phase cha
 - **Whether the clock may open the stats window.** Under the weekly lock, lineups freeze on
   the clock but the stats phase still waits on the commissioner pressing a button, so a
   scheduled pull can sit idle. Recorded as OQ-12; it is a rules decision, not a bug.
+  Largely moot in a league that processes schemes on a clock, since that locks rosters
+  anyway - but still live for one that does not.
+- **Telling anybody a deadline exists.** The week can now run on a clock, and nothing
+  emails or notifies a manager that his roster is dealt or that schemes close in twelve
+  hours. Recorded as OQ-6 and issue #57, and it is the real prerequisite for leaning on
+  the clock.
+- **Correcting a finalized week.** Finalizing keeps each team's totals, rank and standings
+  points but not the per-slot stat lines behind them, so a wrong number cannot be found or
+  fixed afterwards. A bug rather than a rule (issue #56), and the reason to check the
+  numbers before a week is finalized.
 - **Season archive.** Past seasons are preserved in the schema but there is no way to browse
   them. Tabled 2026-09-06.
 

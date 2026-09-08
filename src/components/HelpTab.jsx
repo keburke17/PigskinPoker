@@ -20,14 +20,26 @@
  * the single fact a manager most needs right. It now branches the way the Rules tab's
  * "Lineup Lock & Injury Swaps" card does, off the same lineupLockMode(). Whichever of
  * these two screens someone reads, they get their own league's rule.
+ *
+ * THE SAME TRAP, TWICE OVER, SINCE ISSUE #52. A league can now have its scheme deadline
+ * and its Tuesday finalize-and-deal run on a clock (OQ-14, off by default). Every
+ * sentence on this screen that said "your commissioner presses X" or "there is no
+ * clock" is FALSE for a league that has switched them on - and it is false in the
+ * direction that costs a manager his week. So each of those sentences branches on
+ * autoProcessSchemes()/autoAdvanceWeek(), and there is a card whose whole job is to
+ * list what moves without anybody pressing anything.
  */
 
 import {
   LINEUP_LOCK,
+  advanceDeadlineWords,
+  autoAdvanceWeek,
+  autoProcessSchemes,
   firstKickoff,
   formatKickoff,
   kickoffsFor,
   lineupLockMode,
+  schemeDeadlineWords,
 } from "../engine/index.js";
 import { nextStep } from "./guidance.js";
 import { RuleCard } from "./RulesTab.jsx";
@@ -41,6 +53,11 @@ export function HelpTab({ state, role, team, onGoTo }) {
    * buttons, and saying so is better than naming a deadline that is not there. */
   const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
   const first = firstKickoff(kickoffsFor(state));
+  /* This league's clock, read once. Both off is the default and the ordinary case. */
+  const autoSchemes = autoProcessSchemes(state);
+  const autoWeek = autoAdvanceWeek(state);
+  const schemeDeadline = schemeDeadlineWords(state);
+  const advanceDeadline = advanceDeadlineWords(state);
 
   return (
     <div>
@@ -63,23 +80,24 @@ export function HelpTab({ state, role, team, onGoTo }) {
       </div>
 
       <RuleCard title="Your week, as a manager">
-        <li><strong>1. The roster is dealt.</strong> Your commissioner presses Deal. Until then there is genuinely nothing for you to do, and My Team will show empty slots.</li>
+        <li><strong>1. The roster is dealt.</strong> {autoWeek ? "Every week after the first is dealt for you at " + advanceDeadline + "; the first one waits for your commissioner." : "Your commissioner presses Deal."} Until then there is genuinely nothing for you to do, and My Team will show empty slots.</li>
         <li><strong>2. Set your lineup.</strong> My Team - swap a bench player into a matching starting slot. Every change routes through the bench; you can never swap two starters directly.</li>
-        <li><strong>3. Submit a scheme.</strong> Same screen, at the bottom. Block, Steal, Redraw or No Action. You can change it as often as you like until it is processed.</li>
-        <li><strong>4. Schemes are processed.</strong> All blocks resolve first, then steals and redraws together in random order. Your roster can change here - someone may take a starter you did not protect.</li>
+        <li><strong>3. Submit a scheme.</strong> Same screen, at the bottom. Block, Steal, Redraw or No Action. You can change it as often as you like {autoSchemes ? "until " + schemeDeadline : "until it is processed"}.</li>
+        <li><strong>4. Schemes are processed.</strong> {autoSchemes ? "At " + schemeDeadline + ", on the clock - like waivers. Submit nothing by then and you get No Action." : "When your commissioner presses Process Schemes."} All blocks resolve first, then steals and redraws together in random order. Your roster can change here - someone may take a starter you did not protect.</li>
         <li><strong>5. The weekend.</strong> Rosters get locked, which closes scheme submission. Lineup swaps stay open per player until that player's real game starts.</li>
-        <li><strong>6. Results.</strong> The commissioner enters or pulls the stats and finalizes. Standings points are awarded and the next week opens.</li>
+        <li><strong>6. Results.</strong> {autoWeek ? "The week is scored at " + advanceDeadline + ", once every game of the NFL week is final, and the next week is dealt the same morning." : "The commissioner enters or pulls the stats and finalizes."} Standings points are awarded and the next week opens.</li>
       </RuleCard>
 
       {isCommissioner ? (
         <RuleCard title="Running a week, as commissioner">
           <li><strong>First time only:</strong> add your teams (Commissioner {ARROW} Teams), then send invites (Commissioner {ARROW} Invite). Optionally refresh the player pool, set your scoring rates, and set which NFL week this period plays.</li>
-          <li><strong>1. Deal.</strong> Commissioner {ARROW} Weeks {ARROW} Deal Rosters. Needs at least one team.</li>
+          <li><strong>1. Deal.</strong> Commissioner {ARROW} Weeks {ARROW} Deal Rosters. Needs at least one team.{autoWeek ? " Done for you at " + advanceDeadline + " from week two onwards." : ""}</li>
           <li><strong>2. Wait for schemes.</strong> The same panel lists who is in and who is still out. Managers can keep changing theirs until you move.</li>
-          <li><strong>3. Process Schemes.</strong> Resolves every block, steal and redraw at once. This is the real scheme deadline - there is no clock, so tell your league when you intend to press it.</li>
+          <li><strong>3. Process Schemes.</strong> Resolves every block, steal and redraw at once. {autoSchemes ? "This runs itself at " + schemeDeadline + "; press it earlier if everyone is in." : "This is the real scheme deadline - there is no clock, so tell your league when you intend to press it."}</li>
           <li><strong>4. Lock Rosters for the Weekend.</strong> Commissioner {ARROW} Enter Stats. Closes scheme submission. Lock individual players as their games kick off to stop late lineup swaps.</li>
           <li><strong>5. Stats.</strong> Type them, or press Pull Stats to fill every starter's boxes from the NFL week. Pulling never overwrites a line you typed yourself. Tick <em>Pull automatically</em> beside the button and it checks every few hours instead - the same rules, just without you pressing it.</li>
-          <li><strong>6. Finalize.</strong> Scores the week, awards standings points, opens the next one. This one commits.</li>
+          <li><strong>6. Finalize.</strong> Scores the week, awards standings points, opens the next one. This one commits.{autoWeek ? " On the clock it happens at " + advanceDeadline + ", and only once every game of the week is final." : ""}</li>
+          <li><strong>Turning the clock on or off:</strong> Commissioner {ARROW} Weeks {ARROW} Run the week on a clock. Both switches are off unless you turn them on, and your own buttons keep working either way.</li>
         </RuleCard>
       ) : null}
 
@@ -92,8 +110,39 @@ export function HelpTab({ state, role, team, onGoTo }) {
         {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup; Manage Rosters acts on a manager's behalf; Backup and Reset are the escape hatches.</li> : null}
       </RuleCard>
 
+      {/* ISSUE #52. The one card whose entire job is "what moves without anybody
+          pressing anything, and when". It renders in BOTH states on purpose: a league
+          with nothing automated still has the stats pull, and "nothing else moves on
+          its own" is a fact worth stating rather than leaving people to infer. */}
+      <RuleCard title="What happens on its own">
+        {autoSchemes ? (
+          <li><strong>Schemes are processed at {schemeDeadline}, every week.</strong> Like waivers in a normal fantasy league. Whatever is on file then is what plays; no scheme on file means No Action, and there is no appeal.</li>
+        ) : (
+          <li><strong>Schemes close when your commissioner processes the week</strong> - not on a clock. Get yours in early.</li>
+        )}
+        {autoWeek ? (
+          <>
+            <li><strong>The week is scored and the next one dealt at {advanceDeadline}.</strong> Standings update at the same moment, and you wake up to a fresh 12-player roster.</li>
+            <li><strong>It waits for the football to actually finish.</strong> If a game is postponed or still running, nothing happens and it tries again an hour later - it will not score a week that is not over.</li>
+            <li><strong>The first week of a season is never dealt automatically</strong>, and neither is a playoff round before your commissioner starts the playoffs. Both need decisions a clock cannot make.</li>
+            <li><strong>Check your stat lines before {advanceDeadline}.</strong> Finalizing keeps the totals and the standings points but not the individual boxes behind them, so a wrong number cannot be corrected afterwards.</li>
+          </>
+        ) : (
+          <li><strong>Nothing deals or finalizes on its own.</strong> Your commissioner drives every week from start to finish.</li>
+        )}
+        <li><strong>Stat lines fill themselves in</strong> if your commissioner ticked <em>Pull automatically</em> - every few hours through the weekend. A number he typed himself is never overwritten.</li>
+        <li><strong>Kickoff times and the player pool refresh when a week is dealt</strong>, so lineups lock on the real schedule and you are dealt players who are actually starting.</li>
+        {autoSchemes || autoWeek ? (
+          <li><strong>Everything the clock does is written into the activity log</strong> on the League tab. If a roster appeared overnight, that is where it says so.</li>
+        ) : null}
+      </RuleCard>
+
       <RuleCard title="When something locks">
-        <li><strong>Schemes close when your commissioner processes the week.</strong> There is no clock on that one - it happens when they press the button, so get yours in early.</li>
+        {autoSchemes ? (
+          <li><strong>Schemes close at {schemeDeadline}.</strong> That one IS a clock - your commissioner can process earlier if everyone is in, but never later.</li>
+        ) : (
+          <li><strong>Schemes close when your commissioner processes the week.</strong> There is no clock on that one - it happens when they press the button, so get yours in early.</li>
+        )}
         {weekly ? (
           <>
             <li><strong>Your whole lineup closes at the week&apos;s first kickoff</strong>{first ? ", which is " + formatKickoff(first) + " this week" : ""}. What you have set then is what plays, all weekend.</li>
@@ -128,6 +177,12 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>A greyed-out Deal button</strong> means the league has no teams yet.</li>
         <li><strong>A greyed-out Pull Stats</strong> means either no NFL week is set for this period, or the rosters are not locked yet - it will tell you which.</li>
         <li><strong>Automatic pulls that never seem to happen</strong> need the same two things, plus the rosters locked - the schedule skips a week it is not allowed to write to rather than forcing it.</li>
+        <li><strong>An automatic deal or finalize that did not happen</strong> is nearly always the clock refusing on purpose: a game of the week has not finished, this week is not mapped to an NFL week, the league has no teams, or the regular season is over and the playoffs are waiting on the commissioner. Nothing is stuck - it re-checks every hour, and he can always press the button himself.</li>
+        {/* ISSUE #56. Worth saying on the screen rather than only in the docs: the
+            per-slot numbers do not survive a finalize, so "check it before" is the only
+            advice there is. It matters more once a week can finalize unattended. */}
+        <li><strong>A wrong stat in a week that is already finalized cannot be corrected.</strong> Finalizing keeps each team&apos;s totals and standings points, but not the individual boxes behind them - so check the numbers <em>before</em> the week is finalized, and especially before {advanceDeadline} if your league finalizes on a clock.</li>
+        <li><strong>A deadline that feels an hour out</strong> means the league&apos;s timezone is wrong. Commissioner {ARROW} Weeks {ARROW} Run the week on a clock.</li>
         <li><strong>A LOCKED pill</strong> on a player means the commissioner froze that slot. Ask them if it looks wrong.</li>
         <li><strong>Sign-in links</strong> arrive by email and are single-use. If one has expired, ask for another from the sign-in screen.</li>
       </RuleCard>

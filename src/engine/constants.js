@@ -41,6 +41,10 @@ export const ICON = {
   /* The separator between the facts on a roster row - team, kickoff, position. A
    * middot rather than a hyphen because the parts are a list, not a phrase. */
   dot: CP(0x00b7),
+  /* Marks an activity-log entry the CLOCK wrote rather than a person (issue #52). The
+   * distinction is the whole reason those entries exist: a roster that appeared
+   * overnight with nobody pressing anything has to say so. */
+  clock: CP(0x23f0),
 };
 
 export const SUIT_GLYPH = {

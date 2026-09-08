@@ -3,7 +3,8 @@
 A custom fantasy-football league game: every week each team is dealt a fresh random
 12-player roster, managers play one scheme (block / steal / redraw), the commissioner
 enters stats, and the week is finalized into standings. Playoffs run the same cycle
-until a champion is left.
+until a champion is left. A league can opt into running the scheme deadline and the
+weekly rollover on a clock instead - both off by default.
 
 Originally designed and built as a single-file React app running as a published
 Claude.ai Artifact. This repo is that app, ported to run as a real website. The original
@@ -206,7 +207,8 @@ Not done yet:
 
 | | |
 |---|---|
-| **Phase 4** | Live NFL data. The pool refreshes from nflverse depth charts, scoring splits by category, the weekly stats pull fills the boxes in, lineups lock on the real kickoff times, and the pull runs on a schedule for leagues that opt in (done); the disagreement view beside each box is not built yet |
+| **Phase 4** | Live NFL data. The pool refreshes from nflverse depth charts, scoring splits by category, the weekly stats pull fills the boxes in, lineups lock on the real kickoff times, the pull runs on a schedule, and the whole weekly cycle can run on a clock for leagues that opt in (done); the disagreement view beside each box is not built yet |
+| **Notifications** | Nothing tells a manager his roster is dealt or that schemes close in twelve hours. Recorded as OQ-6, and the real prerequisite for leaning on the clock |
 | **Phase 6** | `docs/RULES.md` - the game rules written down outside the code |
 
 Phase 3 is done. Accounts and magic links are the only way in; join codes, the hand-rolled
