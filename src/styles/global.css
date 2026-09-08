@@ -68,6 +68,11 @@
 .pp-h2{ font-family: var(--font-display); font-weight:700; font-size: 19px; margin:0 0 10px 0; color:var(--gold-bright); }
 .pp-h3{ font-family: var(--font-display); font-weight:700; font-size: 15px; margin:0 0 6px 0; color:var(--text); }
 .pp-eyebrow{ font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--gold-dim); font-weight:700; }
+/* The league's own name, in the header (2026-09-08). It is typed by whoever created the
+   league, so it can be two words or eight - this lets a long one shrink and wrap instead
+   of pushing the nav further down a phone, where the header is already 217px of an 812px
+   screen (OQ-8). */
+.pp-league-title{ font-size: clamp(18px, 5.4vw, 26px); overflow-wrap: anywhere; }
 
 .pp-period-banner{
   display:flex; align-items:center; gap:10px; flex-wrap:wrap;

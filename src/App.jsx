@@ -446,6 +446,27 @@ export default function App() {
       s.standingsPointsOverride = null;
     });
 
+
+  /* Deleting the league, OQ-18. NOT an ops.mutate() like its neighbours above, and it
+   * cannot be: mutate saves a new version of the league, and a moment later there is no
+   * league to save into. So this calls the server directly, and on success leaves for
+   * the front door - staying on a screen drawn from a league that no longer exists would
+   * be showing someone a ghost, and the first autosave would fail against it.
+   *
+   * Returns the server's answer rather than swallowing it, so the panel can say why a
+   * refusal happened (the wrong name typed, or not the commissioner) instead of just
+   * doing nothing. */
+  const onDeleteLeague = async (confirmName) => {
+    const r = await store.deleteLeague?.(confirmName);
+    if (!r || r.ok === false) {
+      return r ?? { ok: false, message: "Deleting a league is not available here." };
+    }
+    setMyLeagues((ls) => ls.filter((l) => l.id !== r.leagueId));
+    store.setLeagueId?.(null);
+    go({ name: "landing" }, { replace: true });
+    return r;
+  };
+
   /* ------------------------------- render ------------------------------- */
 
   /* THE LANDING PAGE COMES FIRST, before every league gate below.
@@ -684,7 +705,14 @@ export default function App() {
         <div className="pp-header">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <h1 className="pp-h1">{SUIT_CH.spade} Pigskin Poker {SUIT_CH.diamond}</h1>
+              {/* THE LEAGUE'S OWN NAME IS THE MASTHEAD, and the app's name is the line above it
+                * (Scott, 2026-09-08). He plays in more than one league on this site now, and every
+                * screen inside one used to open with the same three words - so nothing on the page
+                * said which league you were looking at except the teams in it. The eyebrow keeps
+                * Pigskin Poker where the eye already expects a brand, and costs 14px rather than a
+                * second row of header. */}
+              <div className="pp-eyebrow">Pigskin Poker</div>
+              <h1 className="pp-h1 pp-league-title">{SUIT_CH.spade} {state.leagueName} {SUIT_CH.diamond}</h1>
               <span className="pp-badge-role">{isCommissioner ? "Commissioner" : myTeam ? myTeam.name : "Manager"}</span>
             </div>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLogout}>Log Out</button>
@@ -749,6 +777,7 @@ export default function App() {
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
               onSavePlayoffSettings={onSavePlayoffSettings}
               onResetLeague={onResetLeague}
+              onDeleteLeague={onDeleteLeague}
             />
           )}
         </div>

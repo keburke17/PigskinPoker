@@ -44,6 +44,11 @@ const ROUTES = {
   setMemberRole: (db, p) => ops.setMemberRole(db, p),
   setLeagueVisibility: (db, p) => ops.setLeagueVisibility(db, p),
 
+  /* The one route that removes a league rather than changing one. Commissioner-only and
+   * name-confirmed in server/operations.js - it is listed here beside its neighbours
+   * because it is a league-scoped write like any other, not because it is ordinary. */
+  deleteLeague: (db, p) => ops.deleteLeague(db, p),
+
   /* Issue #40. The only routes authorized by `site_admins` rather than by a
    * league_members row - the head-coach list is one table shared by every league, so it
    * has no league to resolve a role against. They take an accountToken like createLeague

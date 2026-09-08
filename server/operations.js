@@ -648,6 +648,52 @@ export async function setLeagueVisibility(db, { leagueId, token, visibility }) {
   return good({ visibility });
 }
 
+/**
+ * Delete a league, and everything that was ever in it.
+ *
+ * Scott asked for this on 2026-09-08 (OQ-18). The live site had collected test leagues
+ * from him learning the app, and nothing in the product could be rid of one - the only
+ * way was a database console, which is Kyle's.
+ *
+ * IT IS THE ONE OPERATION WITH NOTHING BEHIND IT. Every league-scoped table hangs off
+ * `leagues` with `on delete cascade` (supabase/migrations/20260818000000_initial_schema.sql),
+ * so deleting the row takes the teams, players, rosters, schemes, stat lines, results,
+ * standings, invites, memberships and the activity log with it, in one statement. There
+ * is no bin and no undo. `npm run db:backup` is the only copy there is, and it is Kyle's
+ * - so a league deleted between backups is gone.
+ *
+ * THE COMMISSIONER MUST NAME THE LEAGUE. The screen makes him type it and this checks it
+ * again, deliberately twice. Everywhere else here, a write aimed at the wrong league is
+ * corrected by writing again; this one cannot be, so the id is not allowed to be the only
+ * thing pointing at what dies.
+ *
+ * Deliberately NOT built on `context()`. That hydrates the whole league to reach a role,
+ * and the league most likely to be deleted is the one that has gone wrong - a league too
+ * broken to load should still be removable. The role comes from `league_members`, which
+ * is the only authority on it anyway.
+ */
+export async function deleteLeague(db, { leagueId, token, confirmName }) {
+  const session = await verifySession(db, token, { leagueId });
+  if (!session) return fail(AUTH_ERRORS.noSession.status, AUTH_ERRORS.noSession.error);
+  if (!isCommissioner(session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+
+  const { data: league, error: readError } = await db
+    .from("leagues").select("name").eq("id", leagueId).maybeSingle();
+  if (readError) return fail(500, readError.message);
+  if (!league) return fail(404, "League not found.");
+
+  const typed = String(confirmName ?? "").trim().toLowerCase();
+  if (!typed || typed !== String(league.name ?? "").trim().toLowerCase()) {
+    return fail(400, "Type the league's name exactly - " + league.name + " - to delete it.");
+  }
+
+  const { error } = await db.from("leagues").delete().eq("id", leagueId);
+  if (error) return fail(500, "Could not delete the league: " + error.message);
+  return good({ leagueId, name: league.name });
+}
+
 /* -------------------- fine-grained writes: the hot path ------------------- */
 
 export async function setStatLine(db, { leagueId, token, teamId, slot, line, expect }) {
