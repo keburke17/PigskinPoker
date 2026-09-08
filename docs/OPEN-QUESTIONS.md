@@ -1447,3 +1447,27 @@ at the very top it says PIGSKIN POKER, which is fine, but maybe it says the leag
 then pigskin poker is displayed somewhere else." Built as an eyebrow: PIGSKIN POKER in 11px
 gold caps, the league's name in the h1 below it with the suits, the role badge under that.
 **Confirmed by him on 2026-09-08 - "header looks good."** Nothing further is open here.
+
+### OQ-19. Can a team block the same player two weeks running? **[ANSWERED 2026-09-08: yes - no cooldown]**
+
+Scott raised it and answered it in the same breath on 2026-09-08: **"sure. why not. thats what
+they were dealt they can do whatever they want."**
+
+**This is a confirmation, not a change.** Nothing in the game remembers last week's scheme.
+`processSchemes` clears the board when it is done (`next.schemes = {}`,
+`src/engine/schemes.js:182`), so a new week opens with no record of who protected whom, and the
+Block picker offers a manager all six of his current starters with nothing filtered out
+(`src/components/scheme.jsx:58`). No code moved for this answer. It is written down so that a
+later session reading "can you block the same guy every week?" as a loophole does not add a
+cooldown to close it.
+
+**What makes it rarer than it sounds, and it is worth knowing.** Rosters are re-dealt from the
+whole active pool every week (`src/engine/deal.js`) - a manager does not carry a player forward
+by choice. So blocking the same player two weeks running only comes up when the deal hands him
+back, which is luck rather than strategy. The one case where it is a genuine repeated decision
+is a star who keeps being dealt to the same team.
+
+**And Block only stops a steal.** A protected player is skipped when another team's Steal looks
+for a victim (`src/engine/schemes.js:86`); he is not protected from anything else, and blocking
+does not hold him on the roster into next week. So the cost of repeating it is the same as it
+ever was: the manager spent his one action for the week.
