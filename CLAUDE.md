@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **679 passed, 29 files**. If the output says
+2. `npm test` before committing: **680 passed, 29 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -199,6 +199,15 @@ in a league that is actually being played is worse than a bug everyone has adapt
 
   **This does not reopen the rule.** Anything else that would move the week without him
   is still his to ask for, and still gets written into `docs/OPEN-QUESTIONS.md` first.
+- **`standingsPointsOverride` is still in the state shape, in `decompose.js` and in the
+  database, and NOTHING READS IT** (`src/engine/scoring.js`). **OQ-13, answered by Kyle on
+  2026-09-08 after discussing it with Scott:** the standings ladder is a reverse ladder,
+  fixed - N teams, the winner of the week takes N and each place below takes one fewer,
+  down to 1. The Standings Cfg tab is gone and the Scoring tab explains the ladder instead.
+  The field survives so the decision is one line to reverse; `tests/finalize.test.js` and
+  `tests/live.test.js` assert it is IGNORED, and those assertions used to say the opposite.
+  **Do not "wire it back up" because it looks orphaned, and do not delete it** - parity and
+  roundtrip pin the shape.
 - **`commissionerCode` and each team's `joinCode` still exist in the engine's state
   shape** (`src/engine/state.js`, `src/storage/demoLeague.js`) even though nothing
   persists or checks them any more. That shape is the artifact's, and
@@ -363,7 +372,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-679 tests. Three groups worth knowing about:
+680 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -372,7 +381,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 184 of the 679
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 184 of the 680
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

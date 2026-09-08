@@ -60,6 +60,15 @@ Each has a recommendation so you have something to say yes or no to.
 > decimals apply to the split scoring path only, and every line recorded before the
 > 2026-08-28 split still scores exactly as it did.
 
+> **Answered 2026-09-08 by Kyle - OQ-13, the standings ladder stops being a setting.**
+> "Per discussion - should just stick with a simple reverse ladder for reg season scoring;
+> if X teams in league, winner gets X points and 2nd place getting one less and so forth."
+> That is the third option below, taken part-way: the ladder is now fixed in the engine at
+> `teamCount .. 1` and the Standings Cfg tab is gone, but `standingsPointsOverride` stays
+> in the state shape and in the database, unread. Nothing about any existing league moves,
+> because no league ever changed the default. In its place the Scoring tab opens with a
+> plain-English explanation of how a week becomes standings points.
+
 ---
 
 ## Part 1 - Constraints that are gone
@@ -664,7 +673,7 @@ the position described above.
 It only bites a league playing `weekly`. Under `gametime` - the default - the two locks
 are answering different questions anyway.
 
-### OQ-13. Is "Standings Point Values by Rank" a rule anyone wants? **[FOR SCOTT]**
+### OQ-13. Is "Standings Point Values by Rank" a rule anyone wants? **[ANSWERED 2026-09-08: no - the reverse ladder is fixed]**
 
 Raised 2026-09-07 by Kyle, who opened the panel, could not work out what it was for, and
 still could not once it was explained. Nothing is broken. The question is whether a knob
@@ -726,6 +735,35 @@ be saved and then disregarded.
 **Nothing has been changed.** This is the boundary `CLAUDE.md` protects - the panel is
 yours, it came over from the artifact working exactly as it does now, and taking a rule off
 the board is still a rules change. Tracked as issue #48.
+
+**ANSWERED 2026-09-08 by Kyle, on issue #48, after discussing it with Scott:** *"should
+just stick with a simple reverse ladder for reg season scoring; if X teams in league,
+winner gets X points and 2nd place getting one less and so forth."*
+
+So the answer is the third option, done the cheap half of the way:
+
+- **The ladder is fixed in the engine.** `currentStandingsPointsArray` returns
+  `standingsPointsArray(teamCount)` and nothing else. Six teams pay `6, 5, 4, 3, 2, 1`;
+  add a seventh and it pays `7, 6, 5, 4, 3, 2, 1` from that week on. The silent-discard
+  bug above is gone with it - there is no longer anything that can be saved and then
+  disregarded.
+- **`standingsPointsOverride` stays.** It is still in `createInitialState`, still in
+  `decompose`/`hydrate`, still in `seasons.standings_points_override`. Removing it means a
+  parity edit, a roundtrip edit and a forward-only migration for a column that costs
+  nothing, and leaving it means the day a top-heavy season sounds fun the reinstatement is
+  one line. `tests/finalize.test.js` and `tests/live.test.js` now assert it is IGNORED,
+  which is the guard against it quietly coming back to life.
+- **The Standings Cfg tab is gone**, and the Scoring tab opens with "How Scoring Works" -
+  what scores, at what rate, and then the ladder, stated rather than typed. That is the
+  half of the recommendation about the crowded phone nav (**OQ-8**): the commissioner nav
+  is nine buttons now rather than ten.
+
+**No league's rules moved.** The default was never changed anywhere, so every league was
+already on the reverse ladder; a league that had saved an override would come back to it
+silently, which is why the tests pin that case rather than deleting it.
+
+**Still Scott's if he wants it back.** Taking a lever off the board is reversible - the
+engine field survived exactly so that it is.
 
 ---
 

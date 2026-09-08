@@ -126,9 +126,21 @@ export function computeStarterPoints(state, statLine, position) {
   return Math.floor(yards / n) + tds * cfg.pointsPerTD;
 }
 
+/**
+ * The standings ladder every league plays: N teams, the winner of the week takes N and
+ * each place below takes one fewer, down to 1 for last.
+ *
+ * IT IS NO LONGER A SETTING (OQ-13, issue #48, Kyle 2026-09-08). The artifact let a
+ * commissioner type any ladder he liked, and `standingsPointsOverride` still carries one
+ * through state and storage because the artifact's shape is pinned by parity - but
+ * NOTHING READS IT any more, and the panel that wrote it is gone. A league that saved
+ * one before today is back on the reverse ladder, which for every league that exists is
+ * the ladder it was already playing: the default was never changed.
+ *
+ * `state` stays in the signature on purpose. Both callers pass it, and the day a
+ * top-heavy season sounds fun the override is a one-line reinstatement here rather than
+ * a change threaded back through finalize and the projection.
+ */
 export function currentStandingsPointsArray(state, teamCount) {
-  if (state.standingsPointsOverride && state.standingsPointsOverride.length >= teamCount) {
-    return state.standingsPointsOverride;
-  }
   return standingsPointsArray(teamCount);
 }

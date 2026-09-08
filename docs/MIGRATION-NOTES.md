@@ -2073,3 +2073,45 @@ every option there. What it does not do is remove the class: the next table adde
 `decompose` inherits the same trap unless authority is declared rather than assumed, which
 is #58's option 2. Two tables in `persistBlob` now carry a hand-maintained scope, and
 nothing enforces that a third one added later gets the same thought.
+
+---
+
+## The standings ladder stopped being a setting (2026-09-08, OQ-13, issue #48)
+
+**What changed.** `currentStandingsPointsArray` (`src/engine/scoring.js`) no longer reads
+`state.standingsPointsOverride`. It returns `standingsPointsArray(teamCount)` and nothing
+else: N teams, the winner of the week takes N, each place below takes one fewer, down to 1
+for last. Kyle's words on the issue, after discussing it with Scott - "should just stick
+with a simple reverse ladder for reg season scoring; if X teams in league, winner gets X
+points and 2nd place getting one less and so forth."
+
+**Why no league moved.** The override defaulted to `null`, meaning "derive from team
+count", and no league in the artifact or since ever set it. Every league was already
+playing this ladder; what changed is that it can no longer be changed.
+
+**What was kept, and why.** `standingsPointsOverride` is still in `createInitialState`,
+still decomposed into and hydrated out of `seasons.standings_points_override`. Removing it
+would mean editing `tests/parity.test.js` (which compares the artifact's state shape field
+by field), `tests/roundtrip.test.js`, and writing a forward-only migration to drop a column
+that costs nothing - all to delete a seam that makes the decision reversible in one line.
+`tests/finalize.test.js` and `tests/live.test.js` now assert the override is IGNORED by
+both finalize and the mid-week projection; those two tests used to assert the opposite, and
+were inverted rather than deleted precisely so the field cannot quietly come back to life.
+
+**Parity is unaffected.** Parity never set an override, so both engines were always on the
+reverse ladder in every replayed season. `tests/parity.test.js` needed no change, which is
+the strongest available evidence that no finalized week moves.
+
+**The bug it took with it.** A saved ladder shorter than the team count was discarded
+whole, silently, back to the default - so adding a seventh team to a six-team league with a
+saved ladder returned it to `7 .. 1` mid-season with nothing on screen saying so. It was
+the only setting in the app that could be saved and then disregarded. There is now nothing
+to save.
+
+**On screen.** The commissioner's **Standings Cfg** tab is gone, and the **Scoring** tab
+opens with a "How Scoring Works" card - what scores and at what rate, read live from the
+league's own config, then the ladder stated in prose. That takes the commissioner nav from
+ten buttons to nine, which is the small half of OQ-8. The Rules tab's standings card names
+the reverse ladder and says it is fixed, rather than printing a list of numbers with no
+account of where they came from. `docs/RULES.md` section 7 dropped its `[configurable]`
+marker in the same change.
