@@ -12,7 +12,7 @@
  *
  * DELIBERATELY UNCHANGED - see docs/DATA-MODEL.md "Do not change":
  *   - the refusal to silently start blank on a load error (the blocking screen below);
- *   - the save guarantee: aggressive saving, retries, the status bar, and Save Now;
+ *   - the save guarantee: aggressive saving, retries, and the status bar;
  *   - the commissioner-driven weekly flow.
  */
 
@@ -719,7 +719,7 @@ export default function App() {
             </div>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLogout}>Log Out</button>
           </div>
-          <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} onSaveNow={saveNow} />
+          <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} />
           <AccountBar
             account={account}
             accountChecked={accountChecked}
@@ -734,7 +734,16 @@ export default function App() {
             />
           ) : null}
           {opError ? <ErrorBanner message={opError} onDismiss={dismissOpError} /> : null}
-          {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically. You can also tap Save Now.", detail: saveErrorDetail }} /> : null}
+          {/* The manual retry lives HERE and only here (issue #69). A failed write goes back on
+            * the queue behind a backoff of up to 15 seconds, and this skips the wait. It is the
+            * only state in which forcing a flush does anything, so it is the only state that
+            * shows a button for it. */}
+          {saveStatus === "error" && saveErrorDetail ? (
+            <ErrorBanner
+              message={{ headline: "Save failed - retrying automatically.", detail: saveErrorDetail }}
+              action={{ label: "Retry now", onClick: saveNow }}
+            />
+          ) : null}
           <div className="pp-nav-wrap">
             <nav className="pp-nav">
               {NAV.map((n) => (

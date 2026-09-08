@@ -1241,6 +1241,10 @@ answered:
 - **OQ-14 is answered and built, and two things in it are yours to look at**: the
   Tuesday hour (6am was chosen, not asked for), and whether to actually switch either
   one on in your league. Nothing is on until you say so.
+- **OQ-19**, the Save Now button - removed 2026-09-08 from issue #69, because against the
+  write queue it did nothing in the state the bar is in almost all of the time. The one
+  thing it could still do is now a Retry now button inside the save-failure banner. Putting
+  it back is two lines if you want it back.
 - **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
   button and leave the engine field, or take the rule off the board. Recommendation: hide.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
@@ -1517,3 +1521,43 @@ used to end "Use Reset League to start over." Scott's instruction was to drop it
 rather than repoint it at Delete, and that is the honest answer: those settings are locked
 for the season precisely so a bracket cannot be re-cut around teams already playing in it,
 and Reset was never a good escape from that.
+
+### OQ-19. The Save Now button did nothing. **[BUILT 2026-09-08 - one call for Scott]**
+
+**Raised as issue #69 by Kyle, built the same day, and the decision is still Scott's** - it
+takes a control off the header, which is a look-and-feel call rather than a port cleanup.
+If the answer is "put it back", putting it back is a two-line change.
+
+**What it was.** The header save bar carried a **Save Now** button, straight out of the
+artifact (`LegacyProject/PigskinPokerCode.jsx:942`). There it called `doSave(state)` - a
+full write of the whole league blob - and it was a genuine escape hatch, because a failed
+write left the league stale and there was nothing else to press.
+
+**What it had become.** In the port it called `queue.flush()`. That opens with "if nothing
+is pending, re-emit the same status and return". The bar reads **Saved** almost all of the
+time, and in that state pressing the button wrote nothing, retried nothing, and changed
+nothing on the screen. A control that claims to save and does not is worse than no control,
+because somebody presses it and believes something happened.
+
+The other theory - that it flushes a debounced write early - does not survive the numbers:
+the debounce is 400ms and fires on its own regardless. No finger gets there first.
+
+**What it could still do, and where that went.** One case was real. After a failed write the
+entry goes back on the queue behind a backoff of `3s x attempts`, up to 15 seconds, and a
+flush skips that wait. So the capability is kept and moved: a **Retry now** button now sits
+inside the save-failure banner, which already appears directly under the bar and already
+says the retry is automatic. It is shown only when there is something to retry, which is the
+only time it was ever true.
+
+**Why it is worth the change at all.** OQ-8 measured the sticky header at 217px of an 812px
+phone and every control under the 44px touch target - the header buttons at 28px, this one
+among them. Removing it does not fix the header, but it is the easiest row to give back,
+because nothing is lost with it.
+
+**Nothing about the save guarantee moved.** Coalescing, the debounce, the retries, the
+backoff and the promise that nothing is lost are all exactly as they were.
+`docs/DATA-MODEL.md` says so in the "save guarantee" section, which used to list the button
+among what was kept.
+
+**The question for Scott:** the bar now reads "Saved at 3:42" with no button beside it. Is
+that the header you want, or would you rather have the button back?

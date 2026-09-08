@@ -40,7 +40,11 @@ export function Tag({ children }) {
   return <span className="pp-tag">{children}</span>;
 }
 
-export function ErrorBanner({ message, onDismiss }) {
+/* `action` is an optional { label, onClick } shown beside Dismiss. It exists so a banner
+ * that reports something the reader can DO about it can offer that thing where the report
+ * is, rather than parking a permanent control somewhere else on the page - see the
+ * save-failure banner in App.jsx, and issue #69. */
+export function ErrorBanner({ message, onDismiss, action }) {
   if (!message) return null;
   const isObj = typeof message === "object";
   const headline = isObj ? message.headline : message;
@@ -51,7 +55,12 @@ export function ErrorBanner({ message, onDismiss }) {
         <div>{headline}</div>
         {detail ? <code>{detail}</code> : null}
       </div>
-      {onDismiss ? <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onDismiss}>Dismiss</button> : null}
+      {action || onDismiss ? (
+        <div className="pp-error-banner-actions">
+          {action ? <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={action.onClick}>{action.label}</button> : null}
+          {onDismiss ? <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onDismiss}>Dismiss</button> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -113,13 +122,20 @@ export function TypedConfirm({ phrase, onConfirm, label, confirmLabel = "Confirm
   );
 }
 
-export function SaveStatusBar({ status, lastSavedAt, onSaveNow, error }) {
+/* NO Save Now BUTTON HERE, DELIBERATELY - issue #69. The artifact had one and it was a
+ * real escape hatch there: the league was a single blob saved on every change, so a failed
+ * write left it stale and pressing the button rewrote the lot. In the port the button called
+ * `queue.flush()`, which returns immediately when nothing is pending - so in the "Saved"
+ * state, which is what this bar reads almost all of the time, it did nothing at all while
+ * claiming to save. The one thing it could still do - skip the retry backoff after a failed
+ * write - now lives as "Retry now" INSIDE the save-failure banner, where it is shown only
+ * when there is something to retry. Do not put it back on the bar. */
+export function SaveStatusBar({ status, lastSavedAt }) {
   const color = status === "saving" ? "var(--gold)" : status === "error" ? "var(--danger)" : "var(--ok)";
   const text = status === "saving" ? "Saving..." : status === "error" ? "Save failed" : (lastSavedAt ? "Saved at " + formatClock(lastSavedAt) : "Saved");
   return (
     <div className="pp-savebar">
       <span><span className="pp-savedot" style={{ background: color }} />{text}</span>
-      <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onSaveNow}>Save Now</button>
     </div>
   );
 }

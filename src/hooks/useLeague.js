@@ -507,6 +507,8 @@ export function useLeague(store) {
       load();
     },
     saveState,
+    /* One caller since issue #69: the "Retry now" button in the save-failure banner. The
+     * lifecycle flushes (visibilitychange, beforeunload) call `queue.flush` directly. */
     saveNow: () => queue.flush(),
     conflict,
     dismissConflict: () => setConflict(null),

@@ -10,12 +10,13 @@
  * What is kept, deliberately:
  *   - nothing is ever lost;
  *   - failed writes retry with backoff;
- *   - the save-status bar and the manual Save Now button both still work.
+ *   - the save-status bar still works, and a failed write can still be retried by hand -
+ *     from the save-failure banner since issue #69, from a header button before it.
  *
  * What changed:
  *   - writes COALESCE by key, so ten keystrokes in one box become one write;
- *   - the flush is DEBOUNCED, but forced on blur, visibilitychange and beforeunload,
- *     so a closing tab never drops an edit;
+ *   - the flush is DEBOUNCED, but forced on visibilitychange and beforeunload, so a
+ *     closing tab never drops an edit;
  *   - each write carries only what it touches.
  *
  * "We optimized it so it saves less" would be the wrong answer, and is not what this is.
@@ -57,7 +58,7 @@ export function createWriteQueue(opts = {}) {
   /**
    * @param {string}   key        writes with the same key coalesce (e.g. "stat:t1:QB")
    * @param {Function} run        async () => result
-   * @param {boolean}  [immediate] skip the debounce (lifecycle ops, Save Now)
+   * @param {boolean}  [immediate] skip the debounce (lifecycle ops, a deal, a swap)
    */
   function enqueue(key, run, immediate = false) {
     pending.set(key, { run, attempts: 0, immediate });
@@ -127,7 +128,7 @@ export function createWriteQueue(opts = {}) {
     if (!lastError) lastSavedAt = new Date().toISOString();
     /* Anything enqueued while that batch was on the wire goes out now, rather than
      * waiting for the next keystroke to carry it. An immediate write - a swap, a
-     * deal, Save Now - does not sit out the debounce a second time. */
+     * deal - does not sit out the debounce a second time. */
     if (pending.size > 0 && !retryTimer) {
       const urgent = [...pending.values()].some((e) => e.immediate);
       if (urgent) {
