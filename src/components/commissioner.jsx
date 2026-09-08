@@ -26,6 +26,7 @@ import {
   schemeDeadlineWords,
   periodLabel,
   standingsPointsArray,
+  ARROW,
 } from "../engine/index.js";
 import { MyTeamTab } from "./MyTeamTab.jsx";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
@@ -750,6 +751,63 @@ export function CommPlayerPoolPanel({ state, onAddPlayer, onSetStatus, onDeleteP
   );
 }
 
+/**
+ * How a week turns into standings points, stated rather than configured.
+ *
+ * This card is what replaced the Standings Cfg tab (OQ-13, issue #48, 2026-09-08). That
+ * tab held one field - a comma-separated ladder of point values by rank - and no league
+ * ever changed it from the default. The ladder is now fixed in the engine, so the honest
+ * thing to put in its place is an explanation of the rules it used to let you bend.
+ *
+ * It reads the LIVE config rather than restating DEFAULT_SCORING, so it cannot drift from
+ * the boxes directly beneath it: change a rate, save, and this paragraph changes with it.
+ * The one number it does not read from anywhere is the ladder, because there is nowhere
+ * left to read it from - it is `teamCount .. 1`, always.
+ *
+ * docs/RULES.md section 7 is the same rules at length, and the Rules tab is the version
+ * every manager sees. Change them together.
+ */
+export function CommScoringExplainer({ state }) {
+  const cfg = Object.assign({}, DEFAULT_SCORING, state.scoringConfig);
+  const teamCount = state.teams.length;
+  const n = teamCount || 6;
+  const ladder = standingsPointsArray(n).join(", ");
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">How Scoring Works</h3>
+      <p className="pp-sub">
+        Two numbers come out of every week. A team's <strong>raw score</strong> is what its
+        six starters put up; its <strong>standings points</strong> are what that finish is
+        worth in the season table. Only the first is affected by the rates below.
+      </p>
+      <ul className="pp-rule-list">
+        <li><strong>Only the six starters score.</strong> The bench never scores, whatever it puts up.</li>
+        <li><strong>Yards convert by type</strong> - 1 point per {cfg.passYardsPerPoint} passing, 1 per {cfg.rushYardsPerPoint} rushing, 1 per {cfg.recYardsPerPoint} receiving. Every yard counts for the fraction of a point it earns, and the player's total is rounded once, to one decimal.</li>
+        <li><strong>Touchdowns</strong> - {cfg.pointsPerPassTD} passing, {cfg.pointsPerRushTD} rushing, {cfg.pointsPerRecTD} receiving. Nothing else scores: no return yards, no two-point conversions, no fumble-recovery TDs.</li>
+        <li><strong>The Coach</strong> scores his NFL team's result - {cfg.coachWin} for a Win, {cfg.coachTie} for a Tie, {cfg.coachLoss} for a Loss.</li>
+      </ul>
+      <h3 className="pp-h3" style={{ marginTop: 14 }}>Standings Points: a Reverse Ladder</h3>
+      <p className="pp-sub">
+        Teams are ranked by that week's raw score, and paid by where they finished. In a
+        league of {n} teams the winner takes {n}, and every place below takes one fewer,
+        down to 1 for last: <strong>{ladder}</strong> (1st {ARROW} last).
+        {teamCount === 0 ? " That example assumes six teams - the real ladder follows your team count." : ""}
+      </p>
+      <ul className="pp-rule-list">
+        <li><strong>The ladder is the team count, always.</strong> Add a team and it grows to match - the winner of the week is always worth exactly one point more than the runner-up.</li>
+        <li><strong>Ties share the higher value.</strong> Two teams level for 2nd are both 2nd and both paid the 2nd-place number; the next team is 4th.</li>
+        <li><strong>The season table sums standings points, not raw scores.</strong> Three narrow wins beat one enormous one.</li>
+        <li><strong>The playoff bracket is seeded off that total</strong>, with six tiebreakers behind it. The Rules tab lists them in order.</li>
+      </ul>
+      <p className="pp-sub">
+        This part is not a setting. It used to be - a Standings Cfg tab let you type any
+        ladder you liked - and no league ever moved it off the reverse ladder, so it came
+        off the board rather than sitting there as a lever nobody pulled.
+      </p>
+    </div>
+  );
+}
+
 export function CommScoringPanel({ state, onSave }) {
   /* Merged over the defaults, because a league whose config was stored before the
    * 2026-08-28 split has none of the per-category keys - and a missing value would make
@@ -758,6 +816,8 @@ export function CommScoringPanel({ state, onSave }) {
     Object.assign({}, DEFAULT_SCORING, deepClone(state.scoringConfig))
   );
   return (
+    <>
+    <CommScoringExplainer state={state} />
     <div className="pp-card">
       <h3 className="pp-h3">Scoring Settings</h3>
       <p className="pp-sub">
@@ -794,26 +854,7 @@ export function CommScoringPanel({ state, onSave }) {
         coachWin: Number(cfg.coachWin) || 0, coachTie: Number(cfg.coachTie) || 0, coachLoss: Number(cfg.coachLoss) || 0,
       })}>Save Scoring</button>
     </div>
-  );
-}
-
-export function CommStandingsCfgPanel({ state, onSave }) {
-  const teamCount = state.teams.length || 1;
-  const current = state.standingsPointsOverride || standingsPointsArray(teamCount);
-  const [text, setText] = useState(current.join(", "));
-  return (
-    <div className="pp-card">
-      <h3 className="pp-h3">Standings Point Values by Rank</h3>
-      <p className="pp-sub">Comma-separated, 1st place first. Default is team count down to 1.</p>
-      <input className="pp-input" value={text} onChange={(e) => setText(e.target.value)} />
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button className="pp-btn pp-btn-gold" onClick={() => {
-          const arr = text.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n));
-          if (arr.length > 0) onSave(arr);
-        }}>Save</button>
-        <button className="pp-btn pp-btn-ghost" onClick={() => { onSave(null); setText(standingsPointsArray(teamCount).join(", ")); }}>Reset to Default</button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -1153,13 +1194,18 @@ export function CommSetupChecklist({ state, onGoToSub }) {
  * follow the set up, then have to browse the commissioner tabs to look at the settings
  * for scoring, playoffs, and standings points configuration."
  *
- * So the three settings panels are rendered here rather than only linked to. They are the
- * SAME components the Scoring, Standings Cfg and Playoffs tabs render - not copies - so a
- * change to any of them shows up in both places and neither can drift from the other.
+ * So the settings panels are rendered here rather than only linked to. They are the SAME
+ * components the Scoring and Playoffs tabs render - not copies - so a change to either
+ * shows up in both places and neither can drift from the other.
  *
- * ORDER IS DELIBERATE. Playoffs come first of the three because they are the one with a
- * consequence for leaving them alone: scoring and standings points both have defaults
- * that play perfectly well, and the playoff week does not.
+ * THERE WERE THREE OF THEM until 2026-09-08. Standings points stopped being configurable
+ * (OQ-13, issue #48) and the panel became the explanation at the top of CommScoringPanel,
+ * so a commissioner setting up still reads what the ladder pays - he just cannot change
+ * it any more.
+ *
+ * ORDER IS DELIBERATE. Playoffs come first because they are the one with a consequence
+ * for leaving them alone: the scoring rates have defaults that play perfectly well, and
+ * the playoff week does not.
  */
 export function CommSetupScreen(props) {
   return (
@@ -1175,7 +1221,6 @@ export function CommSetupScreen(props) {
       </div>
       <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />
       <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />
-      <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />
     </>
   );
 }
@@ -1188,8 +1233,8 @@ export function CommissionerTab(props) {
   const setupPhase = !midWeek
     && props.state.currentPeriod.type === "week"
     && props.state.currentPeriod.number === 1;
-  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "delete"];
-  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", delete: "Delete League" };
+  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "playoffs", "invite", "delete"];
+  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", playoffs: "Playoffs", invite: "Invite", delete: "Delete League" };
   return (
     <div>
       {setupPhase ? (
@@ -1198,7 +1243,6 @@ export function CommissionerTab(props) {
           onGoToSub={setSub}
           onSavePlayoffSettings={props.onSavePlayoffSettings}
           onSaveScoring={props.onSaveScoring}
-          onSaveStandingsCfg={props.onSaveStandingsCfg}
         />
       ) : null}
       <div className="pp-subnav">
@@ -1218,7 +1262,6 @@ export function CommissionerTab(props) {
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
-      {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
       {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />}
       {sub === "invite" && <CommInvitePanel state={props.state} invites={props.invites} onCreateInvite={props.onCreateInvite} onRevokeInvite={props.onRevokeInvite} />}
       {sub === "delete" && <CommDeleteLeaguePanel state={props.state} onDeleteLeague={props.onDeleteLeague} />}

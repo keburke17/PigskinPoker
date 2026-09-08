@@ -419,8 +419,9 @@ export default function App() {
 
   /* ---- commissioner: scoring / standings / playoffs / delete ---- */
   const onSaveScoring = (cfg) => ops.mutate("scoring", (s) => { s.scoringConfig = cfg; });
-  const onSaveStandingsCfg = (arr) =>
-    ops.mutate("standingsCfg", (s) => { s.standingsPointsOverride = arr; });
+  /* onSaveStandingsCfg is gone (OQ-13, issue #48, 2026-09-08). The ladder is the team
+   * count down to 1 and nothing reads `standingsPointsOverride` any more, so there is
+   * nothing left to write. The field itself stays in the state shape - parity pins it. */
   /* Playoff settings are a league rule now, not an action. OQ-16 replaced the Start
    * Playoffs button with a nominated NFL week, and finalize seeds the bracket when it
    * arrives - so this writes the rule and nothing starts. The values were already
@@ -778,7 +779,7 @@ export default function App() {
               onSetNflWeek={onSetNflWeek}
               onSetLineupLock={onSetLineupLock} onRefreshKickoffs={onRefreshKickoffs}
               kickoffReport={kickoffReport}
-              onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
+              onSaveScoring={onSaveScoring}
               onSavePlayoffSettings={onSavePlayoffSettings}
               onDeleteLeague={onDeleteLeague}
             />

@@ -74,7 +74,7 @@ So the mapping is:
 | `teams[].cumulative` / `.playoffCumulative` | `team_totals` rows, `scope = 'regular' \| 'playoff'` |
 | `playerPool[]` (408) | `players` |
 | `scoringConfig` (409) | `seasons.scoring_config` (**jsonb**) |
-| `standingsPointsOverride` (410) | `seasons.standings_points_override` (`int[]`) |
+| `standingsPointsOverride` (410) | `seasons.standings_points_override` (`int[]`) - **dead since 2026-09-08**: it still round-trips, and the engine reads it nowhere (OQ-13) |
 | `currentPeriod` (411) | `periods` - one row per week/round, not one current value |
 | `schemes{}` (412) | `schemes`, retained after resolution rather than cleared |
 | `rosterLocked` (413) | `periods.roster_locked` |
