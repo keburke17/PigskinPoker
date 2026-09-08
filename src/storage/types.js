@@ -34,3 +34,36 @@
 
 export const LEAGUE_KEY = "pigskin_league_state_v1";
 export const IDENTITY_KEY = "pigskin_my_identity_v1";
+
+/* ---------------------------------------------------------------------------
+ * Reading what a read came back as.
+ *
+ * `loadLeague` has three answers, not two, and the third is the one that got missed:
+ * a league, `null` for "nothing here", and - only when nothing named a league - a list
+ * of the ones it can see and a refusal to choose. Nothing asked which of the three it
+ * had, and the third went straight to a screen that reads every view as a league. These
+ * two predicates are what asking looks like. See tests/leagueSwitch.test.js.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Did the store decline to choose a league?
+ *
+ * Only possible with no league id in the URL, where the landing page's own picker is
+ * the answer. It is NOT a league and must never be handed to a screen: every one of
+ * them reads the view as a league, `view.teams` included.
+ */
+export function isAmbiguousRead(read) {
+  return !!read && Array.isArray(read._ambiguous);
+}
+
+/**
+ * Which league a loaded view describes, or null if it describes none.
+ *
+ * The view carries its own identity, which is what lets a screen check that the thing
+ * in its hand is the thing the URL is asking for - the two disagree for one render
+ * every time somebody moves between leagues, because the store is repointed in an
+ * effect and effects run after the render that follows the click.
+ */
+export function viewLeagueId(view) {
+  return view?._meta?.leagueId ?? null;
+}

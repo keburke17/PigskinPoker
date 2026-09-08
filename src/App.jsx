@@ -18,6 +18,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
+import { viewLeagueId } from "./storage/types.js";
 import { useRoute } from "./routing/useRoute.js";
 import { DEFAULT_TAB } from "./routing/index.js";
 import { LandingScreen } from "./components/LandingScreen.jsx";
@@ -621,8 +622,26 @@ export default function App() {
    * identity lookup are two independent round trips, and the read usually wins - so
    * without it there is a window with the league loaded and the role still unknown,
    * which the test below reads as "signed out". That is the sign-in screen appearing
-   * for a moment on the way into a league someone is perfectly entitled to. */
-  if (loading || !state || !accountChecked) {
+   * for a moment on the way into a league someone is perfectly entitled to.
+   *
+   * AND SO DOES `showingAnotherLeague`, which is the blank screen of 2026-09-08.
+   *
+   * Moving between leagues repoints the STORE and re-reads, both in effects - and an
+   * effect runs after the render that follows the click. So there is one render where
+   * the address bar already says league B and everything under this line is still
+   * league A's: A's rows, A's role, A's team id. That is wrong on its own, and with
+   * more than one league it was fatal. Arriving from the landing page there is no A at
+   * all, because a store with no league in the URL cannot choose between two and says
+   * so; the view held a shape with no `teams` on it, `state.teams.find` threw, React
+   * unmounted the tree, and the whole page went white until a reload - which worked
+   * only because reloading makes /l/<id> the URL the store is BUILT from.
+   *
+   * The view carries the league it describes, so it can simply be asked. Note this sits
+   * BELOW the noLeague and loadFailed screens deliberately: both of those are answers
+   * about a league, and swallowing them here would hang on "Loading..." forever at a
+   * URL that genuinely has nothing behind it. */
+  const showingAnotherLeague = !!state && viewLeagueId(state) !== routeLeagueId;
+  if (loading || !state || !accountChecked || showingAnotherLeague) {
     return (
       <div className="pp-root">
         <div className="pp-login-wrap"><p className="pp-sub">Loading Pigskin Poker...</p></div>

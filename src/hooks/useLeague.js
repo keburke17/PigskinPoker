@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadIdentity, saveIdentity } from "../storage/index.js";
+import { isAmbiguousRead } from "../storage/types.js";
 import { createWriteQueue } from "../storage/writeQueue.js";
 import { vkey } from "../storage/hydrate.js";
 
@@ -69,7 +70,16 @@ export function useLeague(store) {
         clearTimeout(loadRetryTimer.current);
         loadRetryTimer.current = null;
       }
-      setView(next);
+      /* An ambiguous read is not a league, so it does not become the view.
+       *
+       * It is the store saying it was asked for a league without being told which, and
+       * can see more than one. Parking it in `view` was a crash waiting for whichever
+       * render reached it first, because every screen reads the view as a league -
+       * `view.teams` and `view.currentPeriod` included - and it has neither. One did:
+       * see the league gate in App.jsx. */
+      setView(isAmbiguousRead(next) ? null : next);
+      /* Still not "no league": there are several, and none of them was named. The
+       * landing page is already showing them. */
       setNoLeague(next === null);
       setPendingStats({});
       latestStat.current = {};
