@@ -434,35 +434,46 @@ it was before. New leagues default to members-only.
 
 ## 6. Things waiting to be fixed
 
-Not decisions - actual bugs, found on 2026-08-27 while working out why the submitted-scheme
-count was stuck. All four are the same root cause wearing different hats, and all four are
-in code you can change. None of them needs the database schema touched.
+Not decisions - actual bugs. The first four were found on 2026-08-27 while working out why
+the submitted-scheme count was stuck, and were the same root cause wearing different hats.
+Two of them are now fixed. All of them are in code you can change; none needs the database
+schema touched.
 
-**The one thing to avoid until the first is fixed:** do not use the commissioner's Teams,
-Player Pool, Scoring or Standings Cfg tabs while a week is in progress. Renaming a team or
-marking a player OUT mid-week throws work away. Between weeks it is safe.
+**The standing warning about mid-week admin work is lifted**, as of the fix to 1 below.
+Renaming a team, marking a player OUT, or editing the scoring while a week is in progress
+no longer throws anything away. **Remove Team is a separate matter and is currently
+broken** - see 5.
 
-### 1. Commissioner admin tools throw away schemes and past weeks *(most important)*
+### 1. Weeks threw away their own detail - FIXED 2026-09-08 (issue #56)
 
-Rename a team, add a player, mark someone OUT, or edit the scoring, and the app quietly
-deletes every scheme managers have submitted for the current week - plus every scheme from
-every past week, and every past week's rosters and stat lines. The standings survive; the
-detail behind them does not.
+**What it was.** Rename a team, add a player, mark someone OUT, or edit the scoring, and the
+app quietly deleted every scheme managers had submitted for the current week - plus every
+scheme from every past week, and every past week's rosters and stat lines. The standings
+survived; the detail behind them did not.
 
-**It is not only those buttons - an ordinary Finalize does it too**, found on 2026-09-07
-while checking what the clock in OQ-14 would be committing. Finalizing a week takes it from
-eighteen stat lines to none, keeping only each team's totals. So this is not a rare
-admin-tool accident; it happens every single week, to every league, on the normal path.
-Tracked as issue #56.
+**And it was not only those buttons - an ordinary Finalize did it too**, found on 2026-09-07
+while checking what the clock in OQ-14 would be committing. Finalizing a week took it from
+eighteen stat lines to none, keeping only each team's totals. So it was never a rare
+admin-tool accident: it happened every single week, to every league, on the normal path.
+Which meant that if you spotted a wrong number on Tuesday afternoon, there was nothing left
+to check it against.
 
-Why: those buttons send the *whole league* back to the server, rebuilt from what your
-browser can see. Your browser deliberately cannot see a pending scheme, and it never holds
-past weeks' rosters at all. The server treats anything missing from that picture as
-something you deleted, and removes it.
+**Why it happened.** Those buttons send the *whole league* back to the server, rebuilt from
+what your browser can see. Your browser deliberately cannot see a pending scheme, and it
+never holds past weeks' rosters at all. The server treated anything missing from that
+picture as something you had deleted, and removed it.
 
-The fix is in `server/league.js`, in `persistBlob`: its delete pass should only remove rows
-the picture can actually speak for, rather than everything absent from it. It also wants a
-test - `replaceLeague` has none, which is why this went unnoticed.
+**What changed.** `persistBlob` in `server/league.js` now only removes rows the picture can
+actually speak for: this week's stat lines and rosters, and nothing belonging to a week that
+has already finished. Schemes are not removable through that path at all, because no picture
+sent from a browser can ever contain one. Four tests hold it down, including the first
+`replaceLeague` has ever had - its not having one is why the admin-tool half went unnoticed.
+
+**What it does not undo.** Weeks finalized before this fix have already lost their stat
+lines and rosters; only their totals remain. The detail is kept from here on.
+
+The wider design question this sits under - whether saving the whole league at once is the
+right shape at all - is issue #58, and it is Kyle's call rather than yours.
 
 ### 2. A manager's own scheme disappears when they reload
 
@@ -490,6 +501,21 @@ Rather than fix a file that was lying about what it held, the tab was removed (O
 backup that remains is Kyle's `npm run db:backup`, which dumps the whole hosted database and
 is strictly more complete. **What you lose is being able to take one yourself.** If you want
 that back, say so and it gets built properly - reading the database, not the browser.
+
+### 5. Remove Team fails once that team has played a week
+
+Found on 2026-09-08 while writing the tests for (1), and confirmed to be older than that
+fix rather than caused by it. Removing a team that has already finished a week errors part
+of the way through, and it does not tidy up after itself: the team row is gone by the time
+the error happens, so you are left half-removed rather than back where you started.
+
+Why: the standings history still lists that team for the weeks it played, and the app tries
+to write that history back out after deleting the team it points at.
+
+**Until it is fixed, do not use Remove Team on a team that has played.** A team removed
+before its first finished week is fine. What the fix should do is a question for you rather
+than a technical one - whether a removed team's past weeks disappear with it, or stay in the
+record as weeks that happened - so it is worth asking before anyone changes it.
 
 ---
 
