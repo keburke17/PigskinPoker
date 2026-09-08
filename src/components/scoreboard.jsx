@@ -9,7 +9,9 @@
  * through six roster cards and add up thirty-six numbers in your head, on a phone.
  *
  * This is the screen every other fantasy app opens on: your team and its score first,
- * then the league table, then the rosters if you want them.
+ * then what happened to everyone this week, then the league table. Rosters are a tab of
+ * their own and your own lineup is My Team's job - this screen stopped repeating them on
+ * 2026-09-08, which is what got the action onto the first screen (OQ-20).
  *
  * IT READS, IT DOES NOT FINALIZE. Every number here comes from projectCurrentPeriod,
  * which is the same three engine calls finalizeCurrentPeriod makes, in the same order -
@@ -18,10 +20,10 @@
  * commissioner-driven flow is unchanged.
  */
 
-import { periodLabel, projectCurrentPeriod } from "../engine/index.js";
+import { ICON, periodLabel, projectCurrentPeriod } from "../engine/index.js";
 import { WeekActivityCard } from "./activity.jsx";
 import { EmptyState, PeriodBanner } from "./atoms.jsx";
-import { TeamRosterBlock } from "./roster.jsx";
+
 
 const ordinal = (n) => {
   const rem100 = n % 100;
@@ -71,8 +73,24 @@ export function WeekScoreTable({ state, rows, myTeamId, showProjection }) {
   );
 }
 
-/** Your team, at the top, where a fantasy app puts it. */
-function MyWeekCard({ state, team, rows }) {
+/** Your team, at the top, where a fantasy app puts it.
+ *
+ * NO LINEUP HERE, from 2026-09-08 (OQ-20). It used to end with your six starters and
+ * their points, and that block was 464px of a 599px card - which pushed the week's
+ * action, the thing this screen exists to surface, to 940px on an 812px phone. A
+ * manager never saw it without scrolling; the commissioner, having no team card at all,
+ * always did.
+ *
+ * It is pure duplication rather than a loss. Both halves arrived together in issue #29,
+ * when My Team showed a lineup with no points on it at all - that is fixed, and My Team
+ * now carries your starters WITH their points, your bench, and your swaps. Everyone
+ * else's rosters and the free-agent pool are the Rosters tab. Scott's call, and his
+ * reasoning: "you dont need to see your roster under that tab."
+ *
+ * What stays is the part that answers "how am I doing" in one glance: the score, the
+ * rank, the gap to the leader, and your top scorer.
+ */
+function MyWeekCard({ state, team, rows, onGoTo }) {
   const row = rows.find((r) => r.teamId === team.id);
   if (!row) return null;
   const leader = rows[0];
@@ -91,17 +109,22 @@ function MyWeekCard({ state, team, rows }) {
         </div>
         <div className="pp-score-big">{row.rawScore}</div>
       </div>
-      {best && best.points > 0 ? (
-        <p className="pp-sub" style={{ margin: "8px 0 10px" }}>
-          Top scorer: <strong style={{ color: "var(--text)" }}>{best.name}</strong> - {best.points} pt{best.points === 1 ? "" : "s"}
-        </p>
-      ) : null}
-      <TeamRosterBlock team={team} state={state} showStats={true} showBench={false} showTotal={false} />
+      <div className="pp-card-head" style={{ marginTop: 8, marginBottom: 0 }}>
+        {best && best.points > 0 ? (
+          <p className="pp-sub" style={{ margin: 0 }}>
+            Top scorer: <strong style={{ color: "var(--text)" }}>{best.name}</strong> - {best.points} pt{best.points === 1 ? "" : "s"}
+          </p>
+        ) : <span />}
+        {/* Says where the lineup went, for the manager who is used to finding it here. */}
+        {onGoTo ? (
+          <button type="button" className="pp-linkbtn" onClick={() => onGoTo("myteam")}>My lineup {ICON.caretRight}</button>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-export function WeekScoreboard({ state, myTeam, onSeeAllActivity }) {
+export function WeekScoreboard({ state, myTeam, onSeeAllActivity, onGoTo }) {
   const period = state.currentPeriod;
   const roundWord = period.type === "playoff" ? "round" : "week";
 
@@ -141,11 +164,13 @@ export function WeekScoreboard({ state, myTeam, onSeeAllActivity }) {
   return (
     <div>
       <PeriodBanner state={state} extra={state.rosterLocked ? "Rosters locked" : null} />
-      {myTeam ? <MyWeekCard state={state} team={myTeam} rows={rows} /> : null}
-      {/* Your card, then what happened, then the table - Scott's arrangement, chosen on
-        * 2026-09-08 out of four (OQ-20). The table going below the fold is the accepted
-        * cost: your own score and rank are already in the card above, so the table is
-        * answering "and everyone else?", which is worth a scroll. */}
+      {myTeam ? <MyWeekCard state={state} team={myTeam} rows={rows} onGoTo={onGoTo} /> : null}
+      {/* Week and score, then the action, then the table - Scott's arrangement, chosen on
+        * 2026-09-08 out of four (OQ-20). Dropping the lineup from the card above is what
+        * makes the order work on a phone: the action now starts around 480px of an 812px
+        * screen rather than 940. The table sits below the fold, which is the accepted
+        * cost - your own score and rank are in the card above, so the table answers "and
+        * everyone else?", and that is worth a scroll. */}
       <WeekActivityCard state={state} myTeam={myTeam} onSeeAll={onSeeAllActivity} />
       <div className="pp-card">
         <h3 className="pp-h3">{periodLabel(period)} Scoreboard</h3>

@@ -764,7 +764,7 @@ export default function App() {
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}
-          {tab === "results" && <ScoreboardTab state={state} myTeam={myTeam} onSeeAllActivity={goToActivity} />}
+          {tab === "results" && <ScoreboardTab state={state} myTeam={myTeam} onSeeAllActivity={goToActivity} onGoTo={goToTab} />}
           {tab === "rules" && <RulesTab state={state} />}
           {tab === "help" && <HelpTab state={state} role={identity.role} team={myTeam} onGoTo={setTab} />}
           {tab === "comm" && isCommissioner && (

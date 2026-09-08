@@ -1573,3 +1573,32 @@ the players, the position - instead of only a sentence? That would buy the punch
 reliable "your row" marking, and a feed that could be filtered. It costs an engine change, a
 parity update, and a migration, because `decompose.js` writes `payload` empty today and a new
 field would not survive a save. Not started; waiting on him.
+
+**REFINED the same day, after measuring the built screen.** The arrangement was chosen from
+mockups in which "Your week" was drawn as a small card - team name, rank, big score, about
+110px. **The real card was 599px**, because it also carried your six starters with their
+stat lines, and that pushed the action card to 940px on an 812px phone. So the
+commissioner, who has no team card at all, saw the action immediately, and a MANAGER - the
+person it was built for - never saw it without scrolling a full screen. Measured, not
+estimated, in the running app.
+
+Scott's call: **the lineup comes off the week card entirely.**
+
+> so i like having your own score displayed, but you dont need to see your roster under
+> that tab. you would see your roster under "my team" and then everyone elses rosters and
+> player pools on the "rosters" tab, right?
+
+Right, and checked before acting: **My Team** carries your starters WITH their points, your
+bench, your swaps and your scheme; **Rosters** carries every team's roster and the
+free-agent pool. The block on the week card was duplication rather than the only copy - both
+it and My Team's points arrived together in issue #29, when My Team showed a lineup with no
+points on it at all. That is long fixed.
+
+So the week card is now the part that answers "how am I doing" in one glance - week, team,
+rank, gap to the leader, top scorer - plus a **"My lineup" link** to where the lineup lives.
+That link was not asked for; it is one line and exists so a manager used to finding his
+starters here is told where they went. Say the word and it goes.
+
+Measured after the change, same phone: the card is **121px**, the action card starts at
+**462px** and all but its last 23px is on the first screen, and the league table follows at
+848. The commissioner's view is unchanged.

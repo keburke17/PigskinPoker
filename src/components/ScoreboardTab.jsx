@@ -18,11 +18,11 @@
 import { WeeklyResultsTab } from "./WeeklyResultsTab.jsx";
 import { WeekScoreboard } from "./scoreboard.jsx";
 
-export function ScoreboardTab({ state, myTeam, onSeeAllActivity }) {
+export function ScoreboardTab({ state, myTeam, onSeeAllActivity, onGoTo }) {
   const finished = state.weeklyResults.length > 0;
   return (
     <div>
-      <WeekScoreboard state={state} myTeam={myTeam} onSeeAllActivity={onSeeAllActivity} />
+      <WeekScoreboard state={state} myTeam={myTeam} onSeeAllActivity={onSeeAllActivity} onGoTo={onGoTo} />
       {finished ? (
         <>
           <div className="pp-eyebrow" style={{ margin: "18px 0 8px" }}>Finished Weeks</div>
