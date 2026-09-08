@@ -26,6 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import * as ops from "../server/operations.js";
+import { fetchLeagueRows, hydrate } from "../server/league.js";
 
 const SEED_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), "..", "supabase", "seed.sql"
@@ -258,6 +259,83 @@ gate()("stat entry: versioning and phase guards", () => {
     const r = await ops.dealPeriod(db, { leagueId, token, refresh: false });
     expect(r.status).toBe(409);
     expect(r.body.reason).toBe("phase");
+  });
+});
+
+gate()("the SERVER read is ordered too (issue #60)", () => {
+  beforeEach(() => resetDemo());
+
+  /* THE BUG THIS EXISTS FOR, and why the client-side fix passing let it sit for a week.
+   *
+   * Issue #29 gave the client's read `order("created_at").order("id")`. `server/league.js`
+   * never got it - and every write returns a freshly hydrated league that the client adopts
+   * wholesale (`handle` in src/hooks/useLeague.js), so the ordered list was replaced by
+   * Postgres heap order on every save, and put back by the ordered re-read a moment later.
+   * On Scott's recording the team cards traded places under a cursor parked on a stat box.
+   *
+   * The half that outlives the flicker: finalize runs on THESE rows, and
+   * rankTeamsWithTiebreak leaves teams it cannot separate in input order - so array order
+   * is what slices a dead tie at the playoff cut, and OQ-A says that goes to whichever
+   * team joined first.
+   *
+   * DELIBERATELY NOT WRITTEN AS "save twice and see if it moves". Whether heap order
+   * actually shifts on a given write depends on the plan and on how the row happened to be
+   * updated; a test that waits for the shuffle passes with the bug present most of the
+   * time, which is exactly how this got missed. So the fixture makes created_at order the
+   * REVERSE of insertion order - the demo seed inserts all six teams in one statement, so
+   * they share a timestamp and nothing distinguishes them - and then asserts the contract
+   * directly: hydrate hands back created_at order, not whatever came off the heap. */
+  const backdate = async (table, legacyIds) => {
+    /* One day apart, newest first, so the correct answer is the reverse of the order the
+     * rows were written in and no read can be accidentally right. */
+    const base = Date.parse("2026-01-01T00:00:00Z");
+    for (let i = 0; i < legacyIds.length; i++) {
+      const at = new Date(base - i * 86400000).toISOString();
+      const { error } = await db
+        .from(table).update({ created_at: at })
+        .eq("league_id", leagueId).eq("legacy_id", legacyIds[i]);
+      if (error) throw new Error(error.message);
+    }
+    return [...legacyIds].reverse();
+  };
+
+  it("hydrates teams in created_at order, not heap order", async () => {
+    const expected = await backdate("teams", [
+      "demo_team_1", "demo_team_2", "demo_team_3", "demo_team_4", "demo_team_5", "demo_team_6",
+    ]);
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view.teams.map((t) => t.id)).toEqual(expected);
+  });
+
+  it("hands the same order back on the view a write returns", async () => {
+    const expected = await backdate("teams", [
+      "demo_team_1", "demo_team_2", "demo_team_3", "demo_team_4", "demo_team_5", "demo_team_6",
+    ]);
+    const token = await asCommissioner();
+    const r = await ops.setStatLine(db, {
+      leagueId, token, teamId: T1, slot: "QB", line: { passYards: "555", passTds: "3" },
+    });
+    expect(r.status).toBe(200);
+    /* The view the client ADOPTS. This is the one that moved the cards. */
+    expect(r.body.view.teams.map((t) => t.id)).toEqual(expected);
+  });
+
+  it("orders the player pool too, so the deal replays from a stable list", async () => {
+    const expected = await backdate("players", ["p1", "p2", "p3", "p4", "p5"]);
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view.playerPool.slice(0, 5).map((p) => p.id)).toEqual(expected);
+  });
+
+  it("matches the order the client's own read asks for", async () => {
+    await backdate("teams", [
+      "demo_team_1", "demo_team_2", "demo_team_3", "demo_team_4", "demo_team_5", "demo_team_6",
+    ]);
+    /* Literally the client's query (src/storage/supabase.js). Both sides hydrate the same
+     * league, so they have to agree - a write's view lands in the same state as a read's. */
+    const { data } = await db
+      .from("teams").select("legacy_id").eq("league_id", leagueId).order("created_at").order("id");
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view.teams.map((t) => t.id)).toEqual(data.map((r) => r.legacy_id));
   });
 });
 

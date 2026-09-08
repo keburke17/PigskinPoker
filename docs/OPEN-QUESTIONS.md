@@ -901,6 +901,18 @@ the defect actually did while it was live:**
   `id`, which is worth keeping on its own account: it makes team order deterministic
   everywhere, not only here. **If a tie of this kind ever fired before 2026-09-06, the winner
   may not have been the team the old text said it was.**
+
+  **Half of that sentence was untrue until 2026-09-08 (issue #60).** The `ORDER BY` went
+  into the CLIENT's read. `server/league.js` read teams unordered - and finalize runs
+  server-side, on those rows, so the read that actually decides an OQ-A tie was still
+  handing the engine Postgres heap order. What is left to decide, now that two teams level
+  on all six share a rank and share standings points, is where equal ranks are sliced by
+  array order: the champion of a dead-tied final (`standings.js:259`) and the last playoff
+  slot (`standings.js:276`). Both were going to an arbitrary team; both now go to the one
+  that joined first, which is what this page has said all along. **Nothing here was
+  decided, and no rule moved** - a sentence that was aspirational became true. Scott is
+  told because it makes a documented rule real, not because it changes one. The visible
+  half was worse: the team cards traded places on every save while he entered stats.
 - **It was visible mid-week, not only at finalize.** The live scoreboard added for issues #29
   and #30 ranks the week in progress through `rankTeamsWithTiebreak`, which was the point of
   routing the projection through the same function finalize uses. So the sixth tiebreaker now

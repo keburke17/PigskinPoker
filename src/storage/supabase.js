@@ -190,9 +190,15 @@ export function createSupabaseStore(config) {
        * five-of-six tiebreaker loop), so an unstable read makes the beneficiary of such a
        * tie unstable too. OQ-A documents that tie as going to "whichever team joined
        * first"; ordering by created_at is what makes that sentence true rather than
-       * aspirational. `id` is the tiebreak of last resort so the order is total. */
+       * aspirational. `id` is the tiebreak of last resort so the order is total.
+       *
+       * `players` joined them on 2026-09-08 (issue #60): it is the pool and free-agent
+       * lists on screen, and dealRosters shuffles it, so a seeded deal is only
+       * replayable from a stable input order. server/league.js orders both the same
+       * way - it has to, because a write hands its own hydrate back and the client
+       * adopts it. */
       sb.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id"),
-      sb.from("players").select("*").eq("league_id", leagueId),
+      sb.from("players").select("*").eq("league_id", leagueId).order("created_at").order("id"),
       sb.from("periods").select("*").in("season_id", seasonIds),
     ]);
     const periodIds = (periods.data ?? []).map((p) => p.id);
