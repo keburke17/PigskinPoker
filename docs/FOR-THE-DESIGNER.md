@@ -303,6 +303,14 @@ wrong when it fires, the standings are wrong and the only fix is another week.
 Thursday deadline and leaves the finalize in your hands, which is probably the setting to
 start with.
 
+**And there is a reason to leave the second one off for now.** Finalizing keeps each
+team's totals and standings points, but **not the individual stat boxes behind them** - so
+once a week is finalized there is no way to see, check or correct what one player scored.
+That is a separate bug rather than anything about the clock (issue #56, and it is already
+item 1 of "things waiting to be fixed" below), but it makes an unattended finalize sharper
+than it sounds: it is not only that the standings are committed, it is that the working
+has been rubbed out too. Worth fixing before you switch that one on.
+
 **What the clock will never do**, whatever you tick:
 
 - deal the **first week of a season** - it waits for you to have your teams in;
@@ -329,7 +337,7 @@ roster lands at 6am Tuesday and schemes lock at 3am Thursday, a manager only fin
 opening the app. Today that works because you deal and then post in the group chat - and
 that is exactly the bit the clock takes away. Email notifications are the obvious next
 piece (they would use the same setup the sign-in links already use), and are worth doing
-before you lean on the second switch.
+before you lean on the second switch. Written up as issue #57.
 
 ### OQ-A - a real bug in the tiebreakers *(most important)*
 
@@ -437,6 +445,12 @@ Rename a team, add a player, mark someone OUT, or edit the scoring, and the app 
 deletes every scheme managers have submitted for the current week - plus every scheme from
 every past week, and every past week's rosters and stat lines. The standings survive; the
 detail behind them does not.
+
+**It is not only those buttons - an ordinary Finalize does it too**, found on 2026-09-07
+while checking what the clock in OQ-14 would be committing. Finalizing a week takes it from
+eighteen stat lines to none, keeping only each team's totals. So this is not a rare
+admin-tool accident; it happens every single week, to every league, on the normal path.
+Tracked as issue #56.
 
 Why: those buttons send the *whole league* back to the server, rebuilt from what your
 browser can see. Your browser deliberately cannot see a pending scheme, and it never holds

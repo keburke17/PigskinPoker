@@ -766,13 +766,35 @@ commissioner can let the Thursday deadline run itself and still finalize by hand
 - **Start the playoffs.** That takes a bracket size and an advancement ladder. No clock
   can choose those, and it stays a human act.
 
+#### The sharp edge of the second switch, found while checking it
+
+**Finalizing a week deletes its per-slot stat lines.** Measured, not inferred - finalizing
+week 2 of the demo league takes it from 18 `stat_lines` rows to 0, leaving only the six
+`period_results` aggregates: rank, raw score, standings points, tds, yards, best player.
+
+So "a finalize cannot be undone" is stronger than it sounds. It is not only that the
+standings are committed - it is that **the detail needed to work out whether they are
+right has been deleted in the same write.** A commissioner who spots a wrong number on
+Tuesday afternoon has nothing left to compare against.
+
+**This is not new and this feature did not cause it.** It is `persistBlob`'s delete pass
+(`server/league.js`), already recorded as item 1 of "things waiting to be fixed" in
+`docs/FOR-THE-DESIGNER.md` - though that write-up blames the commissioner admin tools, and
+it turns out an ordinary finalize does it too. Raised properly as **issue #56**.
+
+What it means for OQ-14 is a recommendation rather than a blocker: **turn on the Thursday
+switch first and leave the Tuesday one off** until #56 is fixed. The scheme deadline is
+the half Scott actually described as the point ("just how waivers would process"), it is
+reversible in the sense that matters - a wrong scheme costs one week, not the season - and
+it does not commit anything.
+
 #### What is NOT built, and is the honest gap
 
 **Nobody is told anything.** If the roster lands at 6am Tuesday and schemes lock at 3am
 Thursday, a manager finds out by remembering to open the app. That is survivable today
 because a human deals and posts in the group chat; it is much less survivable when
 nothing human is involved. **OQ-6 (notifications) is the real prerequisite** and Resend is
-already wired up for magic links. Raised as its own issue.
+already wired up for magic links. Raised as **issue #57**.
 
 What this pass does instead is make the clock visible: every screen that describes the
 week now names the deadline in the league's own timezone, there is a "What happens on its

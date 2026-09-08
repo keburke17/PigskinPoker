@@ -381,7 +381,12 @@ first. See section 2.
   anyway - but still live for one that does not.
 - **Telling anybody a deadline exists.** The week can now run on a clock, and nothing
   emails or notifies a manager that his roster is dealt or that schemes close in twelve
-  hours. Recorded as OQ-6, and it is the real prerequisite for leaning on the clock.
+  hours. Recorded as OQ-6 and issue #57, and it is the real prerequisite for leaning on
+  the clock.
+- **Correcting a finalized week.** Finalizing keeps each team's totals, rank and standings
+  points but not the per-slot stat lines behind them, so a wrong number cannot be found or
+  fixed afterwards. A bug rather than a rule (issue #56), and the reason to check the
+  numbers before a week is finalized.
 - **Season archive.** Past seasons are preserved in the schema but there is no way to browse
   them. Tabled 2026-09-06.
 

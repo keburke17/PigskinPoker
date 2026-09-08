@@ -125,6 +125,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
             <li><strong>The week is scored and the next one dealt at {advanceDeadline}.</strong> Standings update at the same moment, and you wake up to a fresh 12-player roster.</li>
             <li><strong>It waits for the football to actually finish.</strong> If a game is postponed or still running, nothing happens and it tries again an hour later - it will not score a week that is not over.</li>
             <li><strong>The first week of a season is never dealt automatically</strong>, and neither is a playoff round before your commissioner starts the playoffs. Both need decisions a clock cannot make.</li>
+            <li><strong>Check your stat lines before {advanceDeadline}.</strong> Finalizing keeps the totals and the standings points but not the individual boxes behind them, so a wrong number cannot be corrected afterwards.</li>
           </>
         ) : (
           <li><strong>Nothing deals or finalizes on its own.</strong> Your commissioner drives every week from start to finish.</li>
@@ -177,6 +178,10 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>A greyed-out Pull Stats</strong> means either no NFL week is set for this period, or the rosters are not locked yet - it will tell you which.</li>
         <li><strong>Automatic pulls that never seem to happen</strong> need the same two things, plus the rosters locked - the schedule skips a week it is not allowed to write to rather than forcing it.</li>
         <li><strong>An automatic deal or finalize that did not happen</strong> is nearly always the clock refusing on purpose: a game of the week has not finished, this week is not mapped to an NFL week, the league has no teams, or the regular season is over and the playoffs are waiting on the commissioner. Nothing is stuck - it re-checks every hour, and he can always press the button himself.</li>
+        {/* ISSUE #56. Worth saying on the screen rather than only in the docs: the
+            per-slot numbers do not survive a finalize, so "check it before" is the only
+            advice there is. It matters more once a week can finalize unattended. */}
+        <li><strong>A wrong stat in a week that is already finalized cannot be corrected.</strong> Finalizing keeps each team&apos;s totals and standings points, but not the individual boxes behind them - so check the numbers <em>before</em> the week is finalized, and especially before {advanceDeadline} if your league finalizes on a clock.</li>
         <li><strong>A deadline that feels an hour out</strong> means the league&apos;s timezone is wrong. Commissioner {ARROW} Weeks {ARROW} Run the week on a clock.</li>
         <li><strong>A LOCKED pill</strong> on a player means the commissioner froze that slot. Ask them if it looks wrong.</li>
         <li><strong>Sign-in links</strong> arrive by email and are single-use. If one has expired, ask for another from the sign-in screen.</li>

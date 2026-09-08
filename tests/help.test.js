@@ -280,6 +280,21 @@ describe("the Help prose tells the truth about the clock", () => {
     expect(html).toMatch(/Run the week on a clock/);
   });
 
+  /* ISSUE #56: finalizing keeps the totals and deletes the per-slot lines behind them,
+   * so "check before" is the only advice there is - and it matters most in the league
+   * that finalizes unattended. Measured, not assumed: a finalize takes the demo week
+   * from 18 stat_lines rows to 0. */
+  it("warns that a finalized week's stat lines cannot be corrected", () => {
+    const html = render(stateWith({ autoAdvanceWeek: true }), "commissioner", null);
+    expect(html).toMatch(/cannot be corrected/i);
+    expect(html).toMatch(/before Tuesday 6am/i);
+  });
+
+  it("gives a manager the same warning, since it is his points", () => {
+    const html = render(stateWith({ autoAdvanceWeek: true }), "manager", team);
+    expect(html).toMatch(/Check your stat lines before Tuesday 6am/i);
+  });
+
   it("says what to check when something automatic did not happen", () => {
     const html = render(stateWith({ autoAdvanceWeek: true }), "commissioner", null);
     expect(html).toMatch(/did not happen/i);
