@@ -17,6 +17,8 @@ import {
   formatKickoff,
   kickoffsFor,
   lineupLockMode,
+  playoffWeekSpan,
+  savePlayoffSettings,
   advanceDeadlineWords,
   autoAdvanceWeek,
   autoProcessSchemes,
@@ -815,38 +817,130 @@ export function CommStandingsCfgPanel({ state, onSave }) {
   );
 }
 
-export function CommPlayoffsPanel({ state, onStart }) {
-  const [bracketSize, setBracketSize] = useState(state.playoffConfig.bracketSize || 4);
-  const [advText, setAdvText] = useState((state.playoffConfig.advancement || defaultAdvancement(bracketSize)).join(", "));
+/**
+ * Playoff settings - a week, a bracket size, and a ladder.
+ *
+ * THERE IS NO START PLAYOFFS BUTTON ANY MORE (OQ-16, 2026-09-07). It could not survive
+ * the weekly cycle running on a clock: a league whose last regular week is 15 has its
+ * week 16 rosters dealt to every team at 6am on the Tuesday, and by the time anyone is
+ * awake to press a button, teams who missed the cut are holding lineups. So the league
+ * nominates the week instead, and finalize seeds the bracket when it arrives - the same
+ * whether the clock finalized the previous week or the commissioner did.
+ *
+ * Which makes an UNSET week the trap this panel exists to prevent, so it says so plainly
+ * rather than leaving a quiet null to be discovered in December.
+ */
+export function CommPlayoffsPanel({ state, onSave }) {
+  const cfg = state.playoffConfig || {};
+  const [startWeek, setStartWeek] = useState(cfg.startNflWeek == null ? "" : String(cfg.startNflWeek));
+  const [bracketSize, setBracketSize] = useState(cfg.bracketSize || 4);
+  const [advText, setAdvText] = useState((cfg.advancement || defaultAdvancement(cfg.bracketSize || 4)).join(", "));
+  const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  if (cfg.started) {
+    return (
+      <div className="pp-card">
+        <h3 className="pp-h3">Playoff Settings</h3>
+        <p className="pp-sub">
+          The playoffs are under way - {cfg.bracketSize} teams, {(cfg.advancement || []).join(" -> ")}.
+          These settings are locked for the season, so the bracket cannot be re-cut around
+          teams already playing in it. Use Reset League to start over.
+        </p>
+      </div>
+    );
+  }
+
+  const parsedAdv = advText.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0);
+  const span = playoffWeekSpan(Number(startWeek), parsedAdv);
+  const currentWeek = state._meta ? state._meta.nflWeek : null;
+
+  const save = () => {
+    setSaved(false);
+    const result = savePlayoffSettings(state, {
+      startNflWeek: startWeek,
+      bracketSize: Number(bracketSize),
+      advancement: parsedAdv,
+    });
+    if (result && result.error) { setError(result.error); return; }
+    setError(null);
+    setSaved(true);
+    onSave(result.playoffConfig);
+  };
+
   return (
     <div className="pp-card">
-      <h3 className="pp-h3">Playoff Configuration</h3>
-      {state.playoffConfig.started ? (
-        <p className="pp-sub">Playoffs already started ({state.playoffConfig.bracketSize} teams, {state.playoffConfig.advancement.join(" -> ")}). Use Reset to start over if needed.</p>
-      ) : (
-        <>
-          <div className="pp-field">
-            <label className="pp-label">Bracket Size (top N teams by season standings)</label>
-            <input className="pp-input" type="number" value={bracketSize} onChange={(e) => { setBracketSize(e.target.value); setAdvText(defaultAdvancement(Number(e.target.value) || 1).join(", ")); }} />
-          </div>
-          <div className="pp-field">
-            <label className="pp-label">Advancement per round (e.g. 4, 2, 1)</label>
-            <input className="pp-input" value={advText} onChange={(e) => setAdvText(e.target.value)} />
-          </div>
-          <button
-            className="pp-btn pp-btn-gold"
-            disabled={state.teams.length < 2}
-            onClick={() => {
-              const bs = Number(bracketSize) || 2;
-              const adv = advText.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0);
-              onStart(Math.min(bs, state.teams.length), adv.length ? adv : defaultAdvancement(bs));
-            }}
-          >
-            Start Playoffs
-          </button>
-          {state.teams.length < 2 ? <p className="pp-sub">Add at least 2 teams first.</p> : null}
-        </>
-      )}
+      <h3 className="pp-h3">Playoff Settings</h3>
+      <p className="pp-sub">
+        Set these once and the playoffs run themselves. When the season reaches the week
+        below, the bracket is seeded from the standings and only those teams are dealt a
+        roster - there is nothing to press on the day.
+      </p>
+
+      {cfg.startNflWeek == null ? (
+        <p className="pp-warn">
+          No playoff week is set, so this league will keep playing regular weeks and the
+          playoffs will never start. Pick the NFL week they should begin.
+        </p>
+      ) : null}
+
+      <div className="pp-field">
+        <label className="pp-label">Playoffs start in NFL week</label>
+        <input
+          className="pp-input" type="number" min="1" max="23" value={startWeek}
+          onChange={(e) => { setStartWeek(e.target.value); setSaved(false); }}
+        />
+        <p className="pp-sub">
+          The week of the NFL season, not this league's own count.
+          {currentWeek ? " The league is playing NFL week " + currentWeek + " right now." : ""}
+        </p>
+      </div>
+
+      <div className="pp-field">
+        <label className="pp-label">Teams making the playoffs</label>
+        <input
+          className="pp-input" type="number" min="1" value={bracketSize}
+          onChange={(e) => {
+            const n = Number(e.target.value) || 1;
+            setBracketSize(e.target.value);
+            setAdvText(defaultAdvancement(n).join(", "));
+            setSaved(false);
+          }}
+        />
+        <p className="pp-sub">
+          The top N by season standings. This league has {state.teams.length} team{state.teams.length === 1 ? "" : "s"}.
+        </p>
+      </div>
+
+      <div className="pp-field">
+        <label className="pp-label">How teams advance</label>
+        <input
+          className="pp-input" value={advText}
+          onChange={(e) => { setAdvText(e.target.value); setSaved(false); }}
+        />
+        <p className="pp-sub">
+          Teams left after each round, ending at 1 - the champion. Eight teams playing down
+          to a winner is 8, 4, 2, 1.
+        </p>
+      </div>
+
+      {/* The arithmetic Scott did by hand when he set the rule: 8, 4, 2, 1 is three weeks
+          of football, not four, because nobody plays a round to stay champion. Showing the
+          weeks is the only way a commissioner sees a bracket run off the end of the season
+          before it actually does. */}
+      {span ? (
+        <p className={span.lastWeek > 18 ? "pp-warn" : "pp-sub"}>
+          {span.rounds} round{span.rounds === 1 ? "" : "s"} of football:
+          {" NFL week" + (span.firstWeek === span.lastWeek ? " " + span.firstWeek : "s " + span.firstWeek + " to " + span.lastWeek) + "."}
+          {span.lastWeek > 18
+            ? " That runs past week 18, the end of the regular season - the NFL's own playoffs are on by then and most of these players will not be playing."
+            : ""}
+        </p>
+      ) : null}
+
+      {error ? <p className="pp-warn">{error}</p> : null}
+      <button className="pp-btn pp-btn-gold" onClick={save}>Save Playoff Settings</button>
+      {saved && !error ? <p className="pp-sub">Saved.</p> : null}
     </div>
   );
 }
@@ -982,13 +1076,22 @@ export function CommSetupChecklist({ state, onGoToSub }) {
      * src/storage/hydrate.js. Read off currentPeriod it is always undefined, and the
      * step would sit unticked forever. */
     { done: !!(state._meta && state._meta.nflWeek), sub: "weeks", label: "Set the NFL week", note: "Optional - it is what Pull Stats reads from." },
+    /* A REAL STEP, not a nicety. Since OQ-16 there is no Start Playoffs button: a league
+     * that never nominates a week plays regular weeks until the schedule runs out and
+     * never reaches a champion. Unticked here is the only warning before December. */
+    {
+      done: state.playoffConfig && state.playoffConfig.startNflWeek != null,
+      sub: "playoffs",
+      label: "Set when the playoffs start",
+      note: "The playoffs will not start on their own until this league picks a week.",
+    },
     { done: false, sub: "weeks", label: "Deal " + periodLabel(state.currentPeriod), note: "Every team gets a fresh random 12-player roster." },
   ];
   return (
     <div className="pp-card">
       <h3 className="pp-h3">Setting up</h3>
       <p className="pp-sub" style={{ marginBottom: 10 }}>
-        Four steps to a running league. This disappears once the first week is dealt.
+        Five steps to a running league. This disappears once the first week is dealt.
       </p>
       {steps.map((st, i) => (
         <div key={i} className="pp-checkstep">
@@ -1004,6 +1107,41 @@ export function CommSetupChecklist({ state, onGoToSub }) {
   );
 }
 
+/**
+ * The whole of setting up a league, on one screen.
+ *
+ * Scott, 2026-09-07: "id like to see those as part of the set up when creating the league
+ * so that the league commissioner can set up the league in full right away rather than
+ * follow the set up, then have to browse the commissioner tabs to look at the settings
+ * for scoring, playoffs, and standings points configuration."
+ *
+ * So the three settings panels are rendered here rather than only linked to. They are the
+ * SAME components the Scoring, Standings Cfg and Playoffs tabs render - not copies - so a
+ * change to any of them shows up in both places and neither can drift from the other.
+ *
+ * ORDER IS DELIBERATE. Playoffs come first of the three because they are the one with a
+ * consequence for leaving them alone: scoring and standings points both have defaults
+ * that play perfectly well, and the playoff week does not.
+ */
+export function CommSetupScreen(props) {
+  return (
+    <>
+      <CommSetupChecklist state={props.state} onGoToSub={props.onGoToSub} />
+      <div className="pp-card">
+        <h3 className="pp-h3">League settings</h3>
+        <p className="pp-sub">
+          Set the league up in full now and you will not have to come back to these. Every
+          one of them is also under its own tab below, and can be changed later - the
+          playoff settings until the bracket starts, the rest at any time.
+        </p>
+      </div>
+      <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />
+      <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />
+      <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />
+    </>
+  );
+}
+
 export function CommissionerTab(props) {
   const midWeek = props.state.currentPeriod.phase !== "pre-deal";
   const [sub, setSub] = useState(midWeek ? "stats" : "teams");
@@ -1016,7 +1154,15 @@ export function CommissionerTab(props) {
   const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", reset: "Reset" };
   return (
     <div>
-      {setupPhase ? <CommSetupChecklist state={props.state} onGoToSub={setSub} /> : null}
+      {setupPhase ? (
+        <CommSetupScreen
+          state={props.state}
+          onGoToSub={setSub}
+          onSavePlayoffSettings={props.onSavePlayoffSettings}
+          onSaveScoring={props.onSaveScoring}
+          onSaveStandingsCfg={props.onSaveStandingsCfg}
+        />
+      ) : null}
       <div className="pp-subnav">
         {subs.map((s) => <button key={s} className={"pp-subnav-btn" + (sub === s ? " active" : "")} onClick={() => setSub(s)}>{labels[s]}</button>)}
       </div>
@@ -1035,7 +1181,7 @@ export function CommissionerTab(props) {
       {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
       {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
-      {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onStart={props.onStartPlayoffs} />}
+      {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />}
       {sub === "invite" && <CommInvitePanel state={props.state} invites={props.invites} onCreateInvite={props.onCreateInvite} onRevokeInvite={props.onRevokeInvite} />}
       {sub === "reset" && <CommResetPanel onReset={props.onResetLeague} />}
     </div>

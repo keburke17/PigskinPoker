@@ -286,6 +286,11 @@ export function hydrateLeague(db, opts = {}) {
     playoffConfig: {
       bracketSize: season.playoff_bracket_size,
       advancement: season.playoff_advancement,
+      /* Null for every league created before 2026-09-07, and that reads as "the playoffs
+       * will never start on their own" - see the migration. `?? null` rather than a
+       * default, because inventing a playoff week for an existing league would be
+       * choosing their season for them. */
+      startNflWeek: season.playoff_start_nfl_week ?? null,
       started: season.playoff_started,
       completed: season.playoff_completed,
       currentRoundIndex: season.playoff_round_index,

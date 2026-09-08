@@ -421,7 +421,14 @@ export default function App() {
   const onSaveScoring = (cfg) => ops.mutate("scoring", (s) => { s.scoringConfig = cfg; });
   const onSaveStandingsCfg = (arr) =>
     ops.mutate("standingsCfg", (s) => { s.standingsPointsOverride = arr; });
-  const onStartPlayoffs = (bracketSize, advancement) => ops.startPlayoffs(bracketSize, advancement);
+  /* Playoff settings are a league rule now, not an action. OQ-16 replaced the Start
+   * Playoffs button with a nominated NFL week, and finalize seeds the bracket when it
+   * arrives - so this writes the rule and nothing starts. The values were already
+   * validated by the engine's savePlayoffSettings before they got here. */
+  const onSavePlayoffSettings = (cfg) =>
+    ops.mutate("playoffSettings", (s) => {
+      s.playoffConfig = Object.assign({}, s.playoffConfig, cfg);
+    });
   const onResetLeague = () =>
     ops.mutate("reset", (s) => {
       s.teams = [];
@@ -740,7 +747,7 @@ export default function App() {
               onSetLineupLock={onSetLineupLock} onRefreshKickoffs={onRefreshKickoffs}
               kickoffReport={kickoffReport}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
-              onStartPlayoffs={onStartPlayoffs}
+              onSavePlayoffSettings={onSavePlayoffSettings}
               onResetLeague={onResetLeague}
             />
           )}

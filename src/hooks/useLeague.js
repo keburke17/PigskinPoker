@@ -380,12 +380,6 @@ export function useLeague(store) {
     () => immediate("finalize", () => store.finalizePeriod(versions())),
     [store, immediate]
   );
-  const startPlayoffs = useCallback(
-    (bracketSize, advancement) =>
-      immediate("startPlayoffs", () => store.startPlayoffs(bracketSize, advancement, versions())),
-    [store, immediate]
-  );
-
   /* Rebuild the pool from the live depth charts. Returns the server's report of what it
    * changed so the screen can show it - the point of the button is not that the pool got
    * refreshed, it is seeing WHAT moved before dealing. */
@@ -524,8 +518,7 @@ export function useLeague(store) {
       setAutoCycle,
       processSchemes,
       finalizePeriod,
-      startPlayoffs,
-      mutate,
+        mutate,
     },
     store,
   };

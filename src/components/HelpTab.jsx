@@ -107,7 +107,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>League</strong> - season standings, playoff bracket, and the activity log of steals, blocks and redraws.</li>
         <li><strong>Rosters</strong> - everybody's rosters and the free-agent pool.</li>
         <li><strong>Rules</strong> - the game itself: scoring rates, tiebreakers, playoffs. The numbers there are read from your league's own settings.</li>
-        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup; Manage Rosters acts on a manager's behalf; Reset is the escape hatch.</li> : null}
+        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup, and all three settings panels also appear together on the setup screen before your first week is dealt; Manage Rosters acts on a manager's behalf; Reset is the escape hatch.</li> : null}
       </RuleCard>
 
       {/* ISSUE #52. The one card whose entire job is "what moves without anybody
@@ -124,7 +124,8 @@ export function HelpTab({ state, role, team, onGoTo }) {
           <>
             <li><strong>The week is scored and the next one dealt at {advanceDeadline}.</strong> Standings update at the same moment, and you wake up to a fresh 12-player roster.</li>
             <li><strong>It waits for the football to actually finish.</strong> If a game is postponed or still running, nothing happens and it tries again an hour later - it will not score a week that is not over.</li>
-            <li><strong>The first week of a season is never dealt automatically</strong>, and neither is a playoff round before your commissioner starts the playoffs. Both need decisions a clock cannot make.</li>
+            <li><strong>The first week of a season is never dealt automatically.</strong> There is no finished week behind it, so week 1 waits until your commissioner has the teams in.</li>
+            <li><strong>The playoffs are not one of these exceptions.</strong> Your commissioner picks the NFL week they start in, and the bracket seeds itself when the week before it is finalized - so only the teams who made it are dealt a roster.</li>
             <li><strong>Check your stat lines before {advanceDeadline}.</strong> Finalizing keeps the totals and the standings points but not the individual boxes behind them, so a wrong number cannot be corrected afterwards.</li>
           </>
         ) : (
@@ -177,7 +178,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>A greyed-out Deal button</strong> means the league has no teams yet.</li>
         <li><strong>A greyed-out Pull Stats</strong> means either no NFL week is set for this period, or the rosters are not locked yet - it will tell you which.</li>
         <li><strong>Automatic pulls that never seem to happen</strong> need the same two things, plus the rosters locked - the schedule skips a week it is not allowed to write to rather than forcing it.</li>
-        <li><strong>An automatic deal or finalize that did not happen</strong> is nearly always the clock refusing on purpose: a game of the week has not finished, this week is not mapped to an NFL week, the league has no teams, or the regular season is over and the playoffs are waiting on the commissioner. Nothing is stuck - it re-checks every hour, and he can always press the button himself.</li>
+        <li><strong>An automatic deal or finalize that did not happen</strong> is nearly always the clock refusing on purpose: a game of the week has not finished, this week is not mapped to an NFL week, the league has no teams, or the regular season ran out with no playoff week set. Nothing is stuck - it re-checks every hour, and your commissioner can always press the button himself.</li>
         {/* ISSUE #56. Worth saying on the screen rather than only in the docs: the
             per-slot numbers do not survive a finalize, so "check it before" is the only
             advice there is. It matters more once a week can finalize unattended. */}

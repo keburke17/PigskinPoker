@@ -420,7 +420,6 @@ export function createSupabaseStore(config) {
     dealPeriod: (expect) => call("dealPeriod", { expect }),
     processSchemes: (expect) => call("processSchemes", { expect }),
     finalizePeriod: (expect) => call("finalizePeriod", { expect }),
-    startPlayoffs: (bracketSize, advancement) => call("startPlayoffs", { bracketSize, advancement }),
     refreshPlayerPool: (expect) => call("refreshPlayerPool", { expect }),
 
     /* Fill this week's stat lines from the feed. Manual entries are never overwritten -

@@ -63,7 +63,6 @@ const ROUTES = {
   dealPeriod: (db, p) => ops.dealPeriod(db, p),
   processSchemes: (db, p) => ops.processSchemes(db, p),
   finalizePeriod: (db, p) => ops.finalizePeriod(db, p),
-  startPlayoffs: (db, p) => ops.startPlayoffs(db, p),
 
   replaceLeague: (db, p) => ops.replaceLeague(db, p),
   refreshPlayerPool: (db, p) => ops.refreshPlayerPool(db, p),

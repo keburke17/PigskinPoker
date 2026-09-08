@@ -315,8 +315,11 @@ has been rubbed out too. Worth fixing before you switch that one on.
 
 - deal the **first week of a season** - it waits for you to have your teams in;
 - deal **past the last week of the regular season** - it finalizes week 18, writes a note
-  in the activity log and stops;
-- **start the playoffs** - that needs a bracket size, which is your call.
+  in the activity log and stops. You only see this if you never set a playoff week;
+- **decide anything.** It does start the playoffs now, but only because you already told
+  it which NFL week to start them in, under Commish -> Playoffs. Set that once and the
+  bracket seeds itself when the week arrives - which is the point, because a roster dealt
+  at 6am on a Tuesday cannot be un-dealt to the teams who missed the cut.
 
 **Everything you press yourself still works and still wins.** If you deal on Monday
 night, Tuesday morning finds nothing to do. Anything the clock does gets written into the

@@ -77,8 +77,10 @@ like, and he scores 0 (section 6).
 - deal the **first week of a season** - there is no finished week behind it, and week 1
   waits until the teams are in;
 - deal **past week 18** - it finalizes the last week of the regular season, says so in the
-  activity log, and stops;
-- **start the playoffs** - that takes a bracket size, which is a decision.
+  activity log, and stops. A league that reaches this has no playoff week set;
+- **decide anything.** It starts the playoffs only because the league already told it
+  which week to start them (section 8), and it runs that on the same code path the
+  commissioner's own Finalize button takes.
 
 **Every button still belongs to the commissioner.** He can deal, process or finalize
 earlier at any point, and doing so simply means the clock finds nothing to do. Anything
@@ -178,8 +180,12 @@ scores zero, the same as one who plays and does nothing.
 | Rushing yards per point | 10 |
 | Receiving yards per point | 10 |
 
-**Each type converts on its own.** 15 rushing yards and 15 receiving yards is 1 point plus
-1 point - not 3. Leftovers do not pool across categories.
+**Each type converts on its own, and every yard counts.** A yard is worth the fraction of
+a point it earns, and a player's total is rounded to **one decimal place**. So 55 rushing
+yards is 5.5 and 58 is 5.8 - the two no longer read the same.
+
+Yards at different rates still cannot be added before dividing, but nothing is thrown away
+any more: 15 rushing plus 15 receiving is 1.5 + 1.5 = **3**.
 
 **Touchdowns** `[configurable]`: passing 4, rushing 6, receiving 6.
 
@@ -196,6 +202,13 @@ scores zero, the same as one who plays and does nothing.
 > a quarterback worth several times any other slot - a 300-yard, 3-TD passing day scored 45
 > against a good receiver's 17. The same day now scores 24 against 18. This was the first
 > deliberate rules change since the game left the Artifact (OQ-4c).
+
+> **Why decimals.** Until 2026-09-07 each category was rounded DOWN on its own, which threw
+> the same yards away twice: 5 rushing and 5 receiving floored to zero and zero, so a player
+> who gained ten yards scored nothing. Scott: "that way the team gets credit for the yard
+> rather than a player having to reach another 9 yards to make it a full 2 points." Ties are
+> rarer as a result - the six tiebreakers are needed less often, but none of them changed.
+> **Weeks finalized before the change keep the whole numbers everyone saw** (OQ-15).
 
 Implemented in `src/engine/scoring.js`.
 
@@ -244,16 +257,40 @@ Implemented in `src/engine/standings.js`.
 
 ## 8. Playoffs
 
-The commissioner sets a **bracket size** - the top N teams by season standings - and an
-**advancement list** saying how many survive each round.
+The commissioner sets three things, once, before the season reaches them:
 
+| | |
+|---|---|
+| **Playoffs start in NFL week** | The week of the *NFL* season the bracket takes over. A league that joined in NFL week 3 calls that its week 3, so this is the football calendar, not the league's own count. |
+| **Teams making the playoffs** | The top N by season standings. |
+| **How teams advance** | Teams left after each round, ending at 1. Eight playing down to a winner is 8, 4, 2, 1. |
+
+**The playoffs start themselves.** When the last regular week is finalized and the next NFL
+week is the nominated one, the bracket is seeded from the standings and the season moves to
+Round 1. There is no Start Playoffs button, and nothing to press on the day.
+
+- **Only the teams in the bracket are dealt a roster.** Teams that missed the cut are simply
+  not in it.
+- **A ladder of 8, 4, 2, 1 is three weeks of football**, not four - nobody plays a round to
+  stay champion. The Playoffs panel shows which weeks a bracket would occupy and warns if it
+  runs past week 18.
+- **If no week is set, the playoffs never start.** The league keeps playing regular weeks
+  until the schedule runs out. The setup checklist carries this as a step for that reason.
+- **The settings lock once the bracket is live**, so it cannot be re-cut around teams already
+  playing in it.
 - **Once the playoffs start, regular-season standings freeze.**
 - Playoff rounds run the identical cycle: deal, schemes, stats, finalize. You are dealt a
   fresh 12 in the playoffs exactly as in the regular season.
 - The same six tiebreakers apply, but **scoped to that round only**.
 - Playoff periods are called **Round N**; the regular season uses **Week N**.
 
-Implemented in `src/engine/playoffs.js`.
+> **Why it is a week and not a button.** The button could not survive the weekly cycle
+> running on a clock. A league whose last regular week is 15 has its week 16 rosters dealt
+> to *every* team at 6am on the Tuesday; by the time a commissioner is awake to press
+> anything, teams with no business in the playoffs are holding lineups. Scott found this the
+> day after the clock shipped (OQ-16).
+
+Implemented in `src/engine/playoffs.js` and `src/engine/standings.js`.
 
 ---
 

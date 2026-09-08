@@ -4,9 +4,9 @@
  */
 
 import { defaultRng } from "./rng.js";
-import { deepClone, emptyCumulative, nowStamp, periodLabel, uid } from "./helpers.js";
+import { deepClone, defaultAdvancement, emptyCumulative, nowStamp, periodLabel, uid } from "./helpers.js";
 import { getPlayer } from "./state.js";
-import { computeStarterPoints, currentStandingsPointsArray, statLineTotals } from "./scoring.js";
+import { computeStarterPoints, currentStandingsPointsArray, roundPoints, statLineTotals } from "./scoring.js";
 import { ICON, STARTER_SLOTS } from "./constants.js";
 
 /**
@@ -76,7 +76,9 @@ export function teamPeriodScore(state, team) {
     const player = getPlayer(state, team.roster.starters[slot]);
     total += computeStarterPoints(state, stats[slot], player ? player.position : slot);
   });
-  return total;
+  /* Rounded again at the team boundary: twelve values that are each exact to one decimal
+   * still sum to 40.99999999999999 often enough to matter on a scoreboard. */
+  return roundPoints(total);
 }
 
 /**
@@ -126,7 +128,10 @@ export function periodScoreRows(state) {
     return {
       teamId: team.id,
       teamName: team.name,
-      rawScore,
+      /* Rounded at the team boundary for the same reason each player was: the column has
+       * to add up by hand. Ranking compares these with !==, so they must be the settled
+       * numbers rather than twelve accumulated fractions. */
+      rawScore: roundPoints(rawScore),
       tds,
       yards,
       coachResult,
@@ -169,6 +174,113 @@ export function projectCurrentPeriod(state) {
       })
     ),
   };
+}
+
+/**
+ * Which NFL week the period AFTER the current one will play.
+ *
+ * The engine does not own `nfl_week` - it is a server-owned column, handed to the browser
+ * in `_meta` the same way kickoff times are, because the artifact's state shape has no
+ * field for it and parity depends on that shape. So this reads the current week and adds
+ * one, which is exactly what server/schedule.js's `nextNflWeek` does when a season
+ * already has weeks mapped: the current period is the highest mapped, and the next one
+ * follows it.
+ *
+ * Null when the league has no mapping yet. A league that cannot say which week of
+ * football it is playing cannot be asked whether the playoffs are due, and the honest
+ * answer to that is to keep playing regular weeks.
+ */
+export function nextPeriodNflWeek(state) {
+  const cur = Number(state && state._meta ? state._meta.nflWeek : NaN);
+  return Number.isFinite(cur) && cur > 0 ? cur + 1 : null;
+}
+
+/**
+ * Have the playoffs come round?
+ *
+ * OQ-16, ANSWERED 2026-09-07 by Scott. The bracket used to wait on a Start Playoffs
+ * button, and that button could not survive the weekly cycle running on a clock: a
+ * league playing its last regular week 15 has its week 16 rosters dealt to EVERY team at
+ * 6am on the Tuesday, hours before a commissioner is likely to be awake, and by then
+ * teams with no business in the playoffs are holding lineups. Scott: "if the commish hit
+ * start playoffs the rosters are already dealt, and multiple teams that are not in
+ * playoff contention would have rosters. which shouldnt happen."
+ *
+ * SO THE DECISION MOVED TO FINALIZE rather than to the scheduler. It is asked at the
+ * moment the previous week ends, whichever hand ended it - the clock at 6am Tuesday or
+ * the commissioner on Monday night - so a league with automation switched off behaves
+ * exactly the same way. Putting it in the scheduler instead would have left every manual
+ * league with no way to reach the playoffs at all once the button was gone.
+ *
+ * THE WEEK IS AN NFL WEEK, NOT THE LEAGUE'S OWN COUNTER. Scott: "if the league selects to
+ * have playoff start in week 16, that would be week 16 of the nfl season." A league that
+ * joined in NFL week 3 calls that week 3, so the two counters differ and the football
+ * calendar is the one that matters.
+ *
+ * @param {object} state  the league, after the previous period has been finalized
+ * @param {number|null} nflWeek  the week the NEXT period would play
+ */
+export function playoffsDueToStart(state, nflWeek) {
+  const cfg = state && state.playoffConfig;
+  if (!cfg || cfg.started || cfg.completed) return false;
+  const start = Number(cfg.startNflWeek);
+  /* Unset is "never". See the note on startNflWeek in state.js - it is a real trap, and
+   * it is guarded on screen rather than by guessing a week here. */
+  if (!Number.isFinite(start) || start < 1) return false;
+  if (nflWeek == null) return false;
+  return nflWeek >= start;
+}
+
+/**
+ * Seed the bracket into an ALREADY-CLONED state, in place.
+ *
+ * Lives in standings.js rather than in playoffs.js because both callers are here or
+ * below it: `finalizeCurrentPeriod` starts the playoffs when the week comes round, and
+ * `startPlayoffs` in playoffs.js is the thin clone-and-call wrapper the tests and the
+ * parity harness still use. playoffs.js already imports this file; the reverse would be
+ * a cycle.
+ */
+export function seedPlayoffBracket(next, bracketSize, advancement, rng = defaultRng) {
+  const ranked = rankTeamsWithTiebreak(
+    seasonStandingsRows(next).map((r) => ({ teamId: r.teamId, rawScore: r.rawScore, tb: r.tb }))
+  );
+  const orderedIds = ranked
+    .slice()
+    .sort((a, b) => a.rank - b.rank)
+    .map((r) => r.teamId);
+  const bracketTeams = orderedIds.slice(0, bracketSize);
+  next.teams.forEach((t) => {
+    t.playoffCumulative = emptyCumulative();
+  });
+  next.playoffConfig = Object.assign({}, next.playoffConfig, {
+    bracketSize,
+    advancement,
+    started: true,
+    completed: false,
+    currentRoundIndex: 0,
+    activeTeamIds: bracketTeams,
+    champion: null,
+  });
+  next.currentPeriod = { type: "playoff", number: 1, phase: "pre-deal" };
+  next.schemes = {};
+  next.statsEntry = {};
+  next.lockedPlayerIds = {};
+  next.rosterLocked = false;
+  const names = bracketTeams.map((id) => (next.teams.find((t) => t.id === id) || {}).name).join(", ");
+  next.activityLog.push({
+    id: uid("act", rng),
+    period: next.currentPeriod,
+    periodLabel: periodLabel(next.currentPeriod),
+    ts: nowStamp(),
+    type: "playoffs-start",
+    text:
+      "Playoffs started! Regular-season standings are now frozen. Bracket (" +
+      bracketTeams.length +
+      "): " +
+      names +
+      ".",
+  });
+  return next;
 }
 
 export function finalizeCurrentPeriod(state, rng = defaultRng) {
@@ -294,6 +406,18 @@ export function finalizeCurrentPeriod(state, rng = defaultRng) {
         text: "Advancing to " + periodLabel(next.currentPeriod) + ": " + advTeamNames + ".",
       });
     }
+  } else if (playoffsDueToStart(next, nextPeriodNflWeek(next))) {
+    /* The last regular week has just been scored, and the next NFL week is the one the
+     * league nominated for its playoffs. Seed the bracket INSTEAD of opening week N+1,
+     * so no roster is ever dealt to a team that is out of it. Everything the bracket is
+     * seeded from - standings points, week wins, the tiebreakers - was written a few
+     * lines above, so the seeding reads the season complete. */
+    const cfg = next.playoffConfig;
+    const size = Math.max(1, Math.min(Number(cfg.bracketSize) || 1, next.teams.length));
+    const adv = Array.isArray(cfg.advancement) && cfg.advancement.length
+      ? cfg.advancement
+      : defaultAdvancement(size);
+    seedPlayoffBracket(next, size, adv, rng);
   } else {
     next.currentPeriod = { type: "week", number: period.number + 1, phase: "pre-deal" };
   }

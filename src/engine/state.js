@@ -30,6 +30,15 @@ export function createDefaultState() {
     playoffConfig: {
       bracketSize: 4,
       advancement: [4, 2, 1],
+      /* The NFL week the playoffs take over from the regular season, or null for a
+       * league that has not set one. Added 2026-09-07 (OQ-16): the bracket now starts
+       * itself when that week comes round, so the season does not depend on somebody
+       * pressing a button between the last week ending and the next one being dealt.
+       *
+       * NULL MEANS "NEVER", NOT "SOON". There is no manual start any more, so a league
+       * that leaves this unset plays regular weeks until the schedule runs out - which
+       * is why the setup screen asks for it and the Playoffs panel says so plainly. */
+      startNflWeek: null,
       started: false,
       completed: false,
       currentRoundIndex: 0,

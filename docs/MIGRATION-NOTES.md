@@ -1695,3 +1695,71 @@ The 18 new database-backed tests in `tests/server.test.js` DID run. `tests/autoC
 (52) and the #45 additions to `tests/schedule.test.js` run anywhere. `tests/parity.test.js`
 is untouched and green - **no engine behaviour changed**; the clock presses existing
 buttons.
+
+
+---
+
+## 2026-09-07 - decimals in scoring, and the playoffs on a calendar
+
+Two rules changes in one pass, both Scott's, both recorded in `docs/OPEN-QUESTIONS.md` as
+OQ-15 and OQ-16. They are the third and fourth deliberate changes to the game since it left
+the Artifact, after the scoring split (OQ-4c) and the sixth tiebreaker (OQ-A).
+
+### Scoring carries decimals (OQ-15)
+
+`computeStarterPoints` no longer floors on the split path. Each category still converts at
+its own rate, the fractions are summed, and the player's total is rounded to one decimal -
+then the team's total is rounded again, because twelve exact tenths still add up to
+40.99999999999999 in binary floating point.
+
+**The bug this closes was worse than the one reported.** Scott noticed that 55 and 58 yards
+both scored 5. What he had not spotted is that the 2026-08-28 split made each category floor
+*separately*, so the same yards were discarded twice over: at 1 point per 10, a player with
+5 rushing and 5 receiving scored **zero**. Under decimals he scores 1, which is what Scott
+expected all along.
+
+**Finished weeks do not move, and that is structural rather than careful.** Decimals were
+added to the SPLIT path only. The legacy branch - every line recorded before 2026-08-28,
+and the one `tests/parity.test.js` replays - still floors exactly as the artifact does. A
+full simulated season through the playoffs still comes out identical to the artifact's,
+number for number, and that assertion is now doing double duty as the proof that no
+finalized week changed.
+
+The visible consequence in a live league is a seam: whole-number weeks followed by decimal
+ones. That was the choice, not an accident.
+
+### The playoffs start themselves (OQ-16)
+
+The Start Playoffs button is gone, along with its server route and the whole storage path
+behind it. A league instead sets `seasons.playoff_start_nfl_week`, and
+`finalizeCurrentPeriod` seeds the bracket when the next NFL week reaches it.
+
+**Why it had to happen at finalize and not in the scheduler.** The bug Scott found is
+specific to the automatic weekly cycle that shipped the day before (OQ-14): week 15 ends,
+6am Tuesday deals week 16 rosters to every team, and by the time anyone presses Start
+Playoffs the teams who missed the cut are already holding lineups. The obvious fix - teach
+`server/autoCycle.js` to start the bracket - would have solved it only for leagues with the
+clock switched on, and left every manual league unable to reach the playoffs at all once the
+button was gone. Finalize is the one place both hands pass through.
+
+**Three things moved to make it fit.**
+
+- `seedPlayoffBracket` was lifted out of `src/engine/playoffs.js` into
+  `src/engine/standings.js`. It had to: finalize lives in standings.js, playoffs.js already
+  imports standings.js, and importing it back would have made a cycle out of two files with
+  a perfectly clear order. `startPlayoffs` survives in playoffs.js as a thin clone-and-call
+  wrapper, and is now purely a test seam - `tests/parity.test.js` replays the artifact's own
+  `startPlayoffs` through it, which is the safety net the whole port rests on.
+- `playoffConfig` gained `startNflWeek`, so the state shape diverges from the artifact's
+  again. `tests/parity.test.js` records it the same way it records the six split-scoring
+  keys: stripped before comparison, with everything else still required to match exactly.
+- The engine reads the NFL week from `state._meta.nflWeek`, the same server-owned channel
+  the lineup lock reads kickoff times through. It is not in the artifact's state shape and
+  `decompose.js` does not carry it.
+
+**The trap this introduces, written down because it is real.** There is no manual start any
+more, so a league that never sets a week plays regular weeks until the schedule runs out and
+never crowns a champion. Every league that existed before this migration has a null week.
+It is guarded in three places rather than left to memory: the setup checklist carries it as
+a step that will not tick, the Playoffs panel says so in as many words, and the scheduler's
+end-of-season log line now names it instead of pointing at a button that no longer exists.
