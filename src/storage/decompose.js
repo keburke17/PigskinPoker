@@ -2,10 +2,14 @@
  *
  * ONE mapping, TWO consumers:
  *   1. scripts/generate-seed.mjs - turns the demo league into supabase/seed.sql
- *   2. backup restore            - turns an exported Backup JSON into rows
+ *   2. replaceLeague             - the whole-blob write behind every ops.mutate() call
  *
- * Writing it once is the point: the restore path is exercised on every
- * `supabase db reset`, long before anyone relies on it with a real league.
+ * Writing it once is the point: the write path is exercised on every
+ * `supabase db reset`, long before anyone leans on it with a real league.
+ *
+ * A THIRD consumer used to sit here - the commissioner Backup tab, restoring an
+ * exported JSON file. That was removed 2026-09-07 (OQ-7); nothing below changed with
+ * it, because a restored blob and a mutated blob were always the same shape.
  *
  * WHAT THE BLOB CANNOT TELL US, and how that is handled:
  *   - Only the CURRENT period has rosters, stats and schemes; the artifact wiped

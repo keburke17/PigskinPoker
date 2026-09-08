@@ -66,7 +66,7 @@ So the mapping is:
 
 | Blob field (line) | Becomes |
 |---|---|
-| `schemaVersion` (404) | `seasons.schema_version` + an app-state migration chain for backups |
+| `schemaVersion` (404) | `seasons.schema_version`. The app-state migration chain planned alongside it existed only to upgrade old backup files, and went with them on 2026-09-07 (OQ-7) |
 | `leagueName` (405) | `leagues.name` |
 | `commissionerCode` (406) | **nothing.** Codes were retired 2026-08-20; the blob still carries the field for parity, and `decompose` drops it |
 | `teams[]` (407) | `teams` + `team_totals`. `joinCode` goes nowhere, same as above |
@@ -713,8 +713,8 @@ archiveSeasonAndStartNew(seasonId)          // was onResetLeague
 // time. What shipped, and what remains after codes were retired on 2026-08-20:
 signInWithEmail(email) / getAccount() / whoami() / logout()
 
-// Backup
-exportBackup(seasonId) / importBackup(json)
+// Backup - never built as operations. The Backup tab did it in the browser, and was
+// removed 2026-09-07 (OQ-7); `npm run db:backup` covers it now.
 ```
 
 Every operation resolves to a discriminated result rather than throwing:
@@ -766,9 +766,13 @@ Two separate concerns that both got called "schemaVersion":
    `teams` and `playerPool` are arrays; the replacement validates the full expected shape,
    reports what is wrong in human terms, and refuses rather than half-loading.
 
-Backup restore is the first consumer of both. It is a convenience feature rather than a
-migration path - the Artifact league was a worked example, not real history, so there is
-nothing outstanding to carry across.
+**Only (1) still exists.** Backup restore was the sole consumer of (2), and both went on
+2026-09-07 (OQ-7). The reasoning was already here: it was a convenience feature rather than
+a migration path - the Artifact league was a worked example, not real history, so there was
+never anything outstanding to carry across. `schemaVersion: 1` stays in the blob and in
+`seasons.schema_version`, because parity depends on the field, but nothing reads it to
+decide how to interpret a document any more. If a document-shape migration is ever needed,
+it is a new chain against the database, not a resurrected one against files.
 
 ---
 

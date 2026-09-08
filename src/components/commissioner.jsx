@@ -6,7 +6,7 @@
  * Stats" sub-tab, which is the stat-entry screen that used to live under Rosters.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DEFAULT_SCORING,
   LINEUP_LOCK,
@@ -861,25 +861,6 @@ export function CommResetPanel({ onReset }) {
   );
 }
 
-export function CommBackupPanel({ state, onDownload, onRestore, restoreError }) {
-  const fileRef = useRef(null);
-  return (
-    <div className="pp-card">
-      <h3 className="pp-h3">Backup & Restore</h3>
-      <p className="pp-sub">
-        Given this app's history of unreliable automatic cloud saves, treat manual backups as your <strong>primary</strong>{" "}
-        safety net, not a nice-to-have. Download a backup after anything important - a week dealt, a week finalized,
-        teams added.
-      </p>
-      <button className="pp-btn pp-btn-gold" style={{ marginBottom: 12 }} onClick={onDownload}>Download Backup (JSON)</button>
-      <div className="pp-divider" />
-      <h3 className="pp-h3">Restore from Backup</h3>
-      {restoreError ? <ErrorBanner message={restoreError} /> : null}
-      <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }} onChange={(e) => { const f = e.target.files[0]; if (f) onRestore(f); e.target.value = ""; }} />
-      <ConfirmButton label="Choose File & Restore" confirmLabel="This replaces current league data - continue?" danger onConfirm={() => fileRef.current && fileRef.current.click()} />
-    </div>
-  );
-}
 
 export function CommInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
   const [teamId, setTeamId] = useState("");
@@ -1031,8 +1012,8 @@ export function CommissionerTab(props) {
   const setupPhase = !midWeek
     && props.state.currentPeriod.type === "week"
     && props.state.currentPeriod.number === 1;
-  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "backup", "reset"];
-  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", backup: "Backup", reset: "Reset" };
+  const subs = ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "standings-cfg", "playoffs", "invite", "reset"];
+  const labels = { stats: "Enter Stats", teams: "Teams", weeks: "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", "standings-cfg": "Standings Cfg", playoffs: "Playoffs", invite: "Invite", reset: "Reset" };
   return (
     <div>
       {setupPhase ? <CommSetupChecklist state={props.state} onGoToSub={setSub} /> : null}
@@ -1056,7 +1037,6 @@ export function CommissionerTab(props) {
       {sub === "standings-cfg" && <CommStandingsCfgPanel state={props.state} onSave={props.onSaveStandingsCfg} />}
       {sub === "playoffs" && <CommPlayoffsPanel state={props.state} onStart={props.onStartPlayoffs} />}
       {sub === "invite" && <CommInvitePanel state={props.state} invites={props.invites} onCreateInvite={props.onCreateInvite} onRevokeInvite={props.onRevokeInvite} />}
-      {sub === "backup" && <CommBackupPanel state={props.state} onDownload={props.onDownloadBackup} onRestore={props.onRestoreBackup} restoreError={props.restoreError} />}
       {sub === "reset" && <CommResetPanel onReset={props.onResetLeague} />}
     </div>
   );

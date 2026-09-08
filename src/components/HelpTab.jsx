@@ -107,7 +107,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>League</strong> - season standings, playoff bracket, and the activity log of steals, blocks and redraws.</li>
         <li><strong>Rosters</strong> - everybody's rosters and the free-agent pool.</li>
         <li><strong>Rules</strong> - the game itself: scoring rates, tiebreakers, playoffs. The numbers there are read from your league's own settings.</li>
-        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup; Manage Rosters acts on a manager's behalf; Backup and Reset are the escape hatches.</li> : null}
+        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup; Manage Rosters acts on a manager's behalf; Reset is the escape hatch.</li> : null}
       </RuleCard>
 
       {/* ISSUE #52. The one card whose entire job is "what moves without anybody
