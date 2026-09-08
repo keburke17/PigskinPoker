@@ -10,20 +10,30 @@
  * Hand-written and deliberately framework-free. Imported once in src/main.jsx.
  */
 :root{
- --bg: #0d2a20;
- --bg-2: #0a2118;
- --felt-line: rgba(217,182,76,0.08);
- --surface: #16332a;
- --surface-2: #1d3f33;
- --surface-3: #24493b;
- --border: #2c5445;
- --border-soft: rgba(217,182,76,0.22);
- --text: #f3ecd9;
- --text-dim: #b9c9bc;
- --text-faint: #7f9488;
- --gold: #d9b64c;
- --gold-bright: #f0cf6b;
- --gold-dim: #a9873a;
+ /* MIDNIGHT FELT, chosen by Scott on 2026-09-08.
+  *
+  * The felt was a bright kelly green with a gold diagonal hatch raked across it, and the
+  * position cards are ivory - and those three things TOGETHER are Windows Klondike, which
+  * is what he meant when he said parts of the app looked "too solitaire like". So the green
+  * drops several stops, the hatch comes off entirely (--felt-line went with it), and the
+  * gold brightens to hold its own against the darker ground.
+  *
+  * It is the same green and the same cards. NOTHING ABOUT THE GAME MOVED - this is the
+  * palette, plus the three things that were hard-coded rather than variable: the felt on
+  * .pp-root, the ivory face on .pp-pos-card, and the six --pip-ink values. */
+ --bg: #061a11;
+ --bg-2: #030d08;
+ --surface: #0c2318;
+ --surface-2: #113022;
+ --surface-3: #17402c;
+ --border: #1d4531;
+ --border-soft: rgba(240,207,107,0.26);
+ --text: #f8f3e4;
+ --text-dim: #a9bdaf;
+ --text-faint: #6b8074;
+ --gold: #e8c25a;
+ --gold-bright: #ffdc84;
+ --gold-dim: #b08f3c;
  --red: #d1594f;
  --red-dim: #7a2e29;
  --blue: #5893d4;
@@ -31,10 +41,10 @@
  --purple: #9b7fd4;
  --danger: #e2564b;
  --danger-dim: #4a201c;
- --ok: #5cb37f;
+ --ok: #62c78c;
  --radius: 10px;
  --radius-sm: 6px;
- --shadow-card: 0 2px 0 rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.35);
+ --shadow-card: 0 2px 0 rgba(0,0,0,0.55), 0 10px 30px rgba(0,0,0,0.5);
  --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -43,8 +53,7 @@
 .pp-root{
   min-height:100vh;
   background:
-    radial-gradient(ellipse at 50% -10%, #143c2e 0%, transparent 60%),
-    repeating-linear-gradient(45deg, var(--felt-line) 0px, var(--felt-line) 1px, transparent 1px, transparent 26px),
+    radial-gradient(ellipse at 50% -20%, #0f3324 0%, transparent 62%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
   color: var(--text);
   font-family: var(--font-body);
@@ -73,7 +82,7 @@
 /* A setting that is wrong, or missing in a way that will cost the league something later
    - an unset playoff week, a bracket running past the end of the season. Louder than
    .pp-sub, quieter than an error banner: nothing has failed yet. */
-.pp-warn{ color:#f0cf6b; font-size:13px; line-height:1.5; background: rgba(217,182,76,0.10);
+.pp-warn{ color:#ffdc84; font-size:13px; line-height:1.5; background: rgba(232,194,90,0.11);
   border-left:3px solid var(--gold-dim); border-radius: var(--radius-sm);
   padding:8px 10px; margin:8px 0; }
 
@@ -89,7 +98,7 @@
 
 .pp-header{
   position: sticky; top:0; z-index: 40;
-  background: linear-gradient(180deg, #0a2118 0%, #0d2a20 90%, rgba(13,42,32,0) 100%);
+  background: linear-gradient(180deg, #030d08 0%, #061a11 90%, rgba(6,26,17,0) 100%);
   padding: 10px 0 6px 0;
   border-bottom: 1px solid var(--border-soft);
 }
@@ -124,11 +133,11 @@
   cursor:pointer; transition: transform 0.05s ease, background 0.15s ease;
   user-select:none;
 }
-.pp-btn:hover{ background:#2c5644; }
+.pp-btn:hover{ background:#1d4d36; }
 .pp-btn:active{ transform: translateY(1px); }
 .pp-btn:disabled{ opacity:0.45; cursor:not-allowed; }
-.pp-btn-gold{ background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color:#22200f; border-color: var(--gold-dim); }
-.pp-btn-gold:hover{ background: linear-gradient(180deg, #f7dc86, #e0bd56); }
+.pp-btn-gold{ background: linear-gradient(180deg, var(--gold-bright), var(--gold)); color:#1c1a08; border-color: var(--gold-dim); }
+.pp-btn-gold:hover{ background: linear-gradient(180deg, #ffe79a, #efcb63); }
 .pp-btn-danger{ background: var(--danger-dim); color:#ffd9d4; border-color:#7a2e29; }
 .pp-btn-danger:hover{ background:#5c2621; }
 .pp-btn-ghost{ background:transparent; border-color:var(--border-soft); }
@@ -137,7 +146,7 @@
 
 .pp-input, .pp-select, .pp-textarea{
   width:100%; font-family: var(--font-body); font-size:14px;
-  background: #0f241c; color: var(--text);
+  background: #071c12; color: var(--text);
   border:1px solid var(--border); border-radius: var(--radius-sm);
   padding: 9px 10px; outline:none;
 }
@@ -145,12 +154,12 @@
 .pp-select{ color-scheme: dark; }
 /* Forced dark styling on option elements themselves (color-scheme hint alone is not enough) */
 .pp-select option{
-  background-color: #14251c !important;
-  color: #f3ecd9 !important;
+  background-color: #0b1e14 !important;
+  color: #f8f3e4 !important;
 }
 .pp-select optgroup{
-  background-color: #14251c !important;
-  color: #d9b64c !important;
+  background-color: #0b1e14 !important;
+  color: #e8c25a !important;
 }
 .pp-label{ font-size:12px; font-weight:700; color:var(--text-dim); margin-bottom:5px; display:block; }
 .pp-field{ margin-bottom:12px; }
@@ -162,7 +171,7 @@
   padding: 8px 12px; border-radius: 999px; border:1px solid var(--border-soft);
   background: rgba(0,0,0,0.18); color: var(--text-dim); cursor:pointer; white-space:nowrap;
 }
-.pp-nav-btn.active{ background: var(--gold); color:#22200f; border-color:var(--gold-dim); }
+.pp-nav-btn.active{ background: var(--gold); color:#1c1a08; border-color:var(--gold-dim); }
 
 .pp-subnav{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
 .pp-subnav-btn{
@@ -195,7 +204,7 @@
   font-size:11px; color:var(--text-faint); line-height:1.7;
   display:flex; flex-wrap:wrap; gap: 4px 14px;
 }
-.pp-standings-first td{ background: rgba(217,182,76,0.08); }
+.pp-standings-first td{ background: rgba(232,194,90,0.09); }
 .pp-crown{ margin-right:4px; }
 
 /* THE ROSTER ROW, DEALT AS A HAND (issue #33, 2026-09-07).
@@ -221,7 +230,7 @@
 /* OUT, IR, BYE. Never Active - a healthy player says nothing. */
 .pp-status-pill{
   font-size:9px; font-weight:800; letter-spacing:0.4px; flex:none;
-  color:#f0cf6b; border:1px solid var(--gold-dim); border-radius:4px; padding:1px 5px;
+  color:#ffdc84; border:1px solid var(--gold-dim); border-radius:4px; padding:1px 5px;
   text-transform:uppercase;
 }
 
@@ -237,20 +246,20 @@
   display:flex; flex-direction:column; justify-content:space-between;
   padding:3px 4px; line-height:1;
   border-radius:5px; border:1px solid rgba(0,0,0,0.4);
-  background: linear-gradient(158deg, #f6f2e6 0%, #e3dbc6 100%);
+  background: linear-gradient(158deg, #eae2cd 0%, #cfc5a9 100%);
   box-shadow: 0 1px 2px rgba(0,0,0,0.4);
-  color: var(--pip-ink, #171717);
+  color: var(--pip-ink, #1a1a1a);
 }
 /* 10.5px is not a fussy number: COACH is the longest rank and at 11px it hangs over
    the edge of the card. */
 .pp-pos-card-rank{ font-size:10.5px; font-weight:800; text-transform:uppercase; text-align:left; }
 .pp-pos-card-pip{ font-size:20px; text-align:right; }
-.pp-pos-Coach{ --pip-ink:#171717; }
-.pp-pos-QB{ --pip-ink:#a3261d; }
-.pp-pos-WR{ --pip-ink:#1c3a63; }
-.pp-pos-RB{ --pip-ink:#17513c; }
-.pp-pos-TE{ --pip-ink:#4a327a; }
-.pp-pos-FLEX{ --pip-ink:#7a5410; }
+.pp-pos-Coach{ --pip-ink:#1a1a1a; }
+.pp-pos-QB{ --pip-ink:#9c2018; }
+.pp-pos-WR{ --pip-ink:#16345c; }
+.pp-pos-RB{ --pip-ink:#124834; }
+.pp-pos-TE{ --pip-ink:#432b70; }
+.pp-pos-FLEX{ --pip-ink:#6f4a0c; }
 /* A slot with nobody in it is the shape of a card and nothing else. */
 .pp-pos-empty{
   background:transparent; box-shadow:none; color:var(--text-faint);
@@ -285,7 +294,7 @@
   border:1px solid var(--border-soft); border-radius:var(--radius-sm);
   padding:7px 10px; margin:6px 0 2px 0;
 }
-.pp-account-bar-good{ border-color:rgba(92,179,127,0.45); color:var(--ok); }
+.pp-account-bar-good{ border-color:rgba(98,199,140,0.45); color:var(--ok); }
 .pp-account-bar-bad{ border-color:#7a2e29; color:#ffb4a8; }
 
 .pp-savebar{
@@ -302,12 +311,12 @@
 @media (max-width: 480px){ .pp-grid-2{ grid-template-columns: 1fr; } }
 
 .pp-scheme-summary{
-  border:1px solid var(--gold-dim); background: rgba(217,182,76,0.09);
+  border:1px solid var(--gold-dim); background: rgba(232,194,90,0.10);
   border-radius: var(--radius-sm); padding:10px 12px; margin-bottom:12px; font-size:13px;
 }
 
 .pp-pending-pill{ font-size:10px; font-weight:800; padding:2px 6px; border-radius:5px; }
-.pp-pending-yes{ background: rgba(92,179,127,0.18); color: var(--ok); }
+.pp-pending-yes{ background: rgba(98,199,140,0.18); color: var(--ok); }
 .pp-pending-no{ background: rgba(226,86,75,0.18); color:#ff9a90; }
 
 .pp-login-wrap{ display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding: 24px 14px; }
@@ -326,12 +335,12 @@
 /* Your team, wherever it appears in a league-wide list. A gold left edge rather than a
    background, so it reads as "this one is yours" without competing with the rank-1 row
    highlight that the standings table already uses. */
-.pp-my-row td{ background: rgba(217,182,76,0.07); }
+.pp-my-row td{ background: rgba(232,194,90,0.09); }
 .pp-my-row td:first-child{ box-shadow: inset 3px 0 0 var(--gold); }
 .pp-my-card{ border-color: var(--gold-dim); }
 .pp-you-tag{
   font-size:9px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase;
-  color:#22200f; background: var(--gold); border-radius:3px;
+  color:#1c1a08; background: var(--gold); border-radius:3px;
   padding:1px 5px; margin-left:7px; vertical-align:1px;
 }
 
@@ -364,7 +373,7 @@
   display:flex; align-items:center; justify-content:space-between;
   padding:8px 10px; margin-top:2px;
   border:1px solid var(--gold-dim); border-radius: var(--radius-sm);
-  background: rgba(217,182,76,0.08);
+  background: rgba(232,194,90,0.09);
   font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px;
   color: var(--text-dim);
 }
@@ -383,7 +392,7 @@
 .pp-nav-wrap::after{
   content:""; position:absolute; right:0; top:0; bottom:0; width:26px;
   pointer-events:none;
-  background: linear-gradient(90deg, rgba(13,42,32,0) 0%, var(--bg) 85%);
+  background: linear-gradient(90deg, rgba(6,26,17,0) 0%, var(--bg) 85%);
 }
 @media (max-width: 560px){
   .pp-nav{ flex-wrap:wrap; overflow-x:visible; }
@@ -418,7 +427,7 @@
 }
 .pp-overlay-x:hover{ color: var(--gold-bright); }
 .pp-overlay-step{
-  border:1px solid var(--gold-dim); background: rgba(217,182,76,0.09);
+  border:1px solid var(--gold-dim); background: rgba(232,194,90,0.10);
   border-radius: var(--radius-sm); padding:10px 12px; margin-bottom:12px;
 }
 .pp-overlay-step-head{ font-weight:700; color: var(--gold-bright); margin-bottom:4px; font-size:14px; }

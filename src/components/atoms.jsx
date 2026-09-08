@@ -110,7 +110,7 @@ export function TypedConfirm({ phrase, onConfirm, label }) {
 }
 
 export function SaveStatusBar({ status, lastSavedAt, onSaveNow, error }) {
-  const color = status === "saving" ? "#d9b64c" : status === "error" ? "#e2564b" : "#5cb37f";
+  const color = status === "saving" ? "var(--gold)" : status === "error" ? "var(--danger)" : "var(--ok)";
   const text = status === "saving" ? "Saving..." : status === "error" ? "Save failed" : (lastSavedAt ? "Saved at " + formatClock(lastSavedAt) : "Saved");
   return (
     <div className="pp-savebar">
