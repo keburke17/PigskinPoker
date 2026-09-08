@@ -418,7 +418,7 @@ export default function App() {
       });
     });
 
-  /* ---- commissioner: scoring / standings / playoffs / reset ---- */
+  /* ---- commissioner: scoring / standings / playoffs / delete ---- */
   const onSaveScoring = (cfg) => ops.mutate("scoring", (s) => { s.scoringConfig = cfg; });
   const onSaveStandingsCfg = (arr) =>
     ops.mutate("standingsCfg", (s) => { s.standingsPointsOverride = arr; });
@@ -430,23 +430,6 @@ export default function App() {
     ops.mutate("playoffSettings", (s) => {
       s.playoffConfig = Object.assign({}, s.playoffConfig, cfg);
     });
-  const onResetLeague = () =>
-    ops.mutate("reset", (s) => {
-      s.teams = [];
-      s.schemes = {};
-      s.statsEntry = {};
-      s.weeklyResults = [];
-      s.activityLog = [];
-      s.lockedPlayerIds = {};
-      s.rosterLocked = false;
-      s.currentPeriod = { type: "week", number: 1, phase: "pre-deal" };
-      s.playoffConfig = {
-        bracketSize: 4, advancement: [4, 2, 1], started: false, completed: false,
-        currentRoundIndex: 0, activeTeamIds: [], champion: null,
-      };
-      s.standingsPointsOverride = null;
-    });
-
 
   /* Deleting the league, OQ-18. NOT an ops.mutate() like its neighbours above, and it
    * cannot be: mutate saves a new version of the league, and a moment later there is no
@@ -795,7 +778,6 @@ export default function App() {
               kickoffReport={kickoffReport}
               onSaveScoring={onSaveScoring} onSaveStandingsCfg={onSaveStandingsCfg}
               onSavePlayoffSettings={onSavePlayoffSettings}
-              onResetLeague={onResetLeague}
               onDeleteLeague={onDeleteLeague}
             />
           )}

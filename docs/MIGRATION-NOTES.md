@@ -1802,10 +1802,11 @@ Three things about its shape:
   has gone wrong, so this resolves the role straight from `league_members` - a league too
   broken to load is still removable.
 - **The commissioner types the league's name, and the server checks it.** Deliberately
-  twice, and deliberately not a stock phrase like Reset League's. Everywhere else a write
-  aimed at the wrong league is corrected by writing again; this one cannot be, so the id
-  is never the only thing pointing at what dies. Case and stray spaces are forgiven -
-  those are transcription, not intent.
+  twice, and deliberately not a stock phrase - the comparison at the time was Reset
+  League's `RESET LEAGUE`, which was removed the following day (below). Everywhere else a
+  write aimed at the wrong league is corrected by writing again; this one cannot be, so
+  the id is never the only thing pointing at what dies. Case and stray spaces are forgiven
+  - those are transcription, not intent.
 - **It is not an `ops.mutate()`.** Mutate saves a new version of the league, and a moment
   later there is no league to save into. `onDeleteLeague` calls the server directly and
   leaves for the front door on success.
@@ -1931,3 +1932,70 @@ predicates the gate turns on and the store's league id, and the gate was checked
 against the real stack, both roles, before and after. An error boundary would turn any
 future version of this into a message rather than a blank page; it is a seatbelt, not this
 fix, and it is not here.
+
+---
+
+### Reset League was removed (2026-09-08)
+
+One day after Delete League shipped beside it. The Commish tab's **Reset / Delete** is now
+just **Delete League**, and `CommResetPanel` and `onResetLeague` are gone. Closes issues #47
+(what is Reset for?) and #49 (it fails once a manager has joined).
+
+**Reset was the artifact's, and the artifact's constraints are gone.** There, it was the
+only way to start a new year, because there was one league, one blob, and no way to make a
+second of anything. Sorted by who serves each of its jobs today, it had none left:
+
+| The job | Who does it now |
+|---|---|
+| Clear out a test league | **Delete League** - which is why Scott asked for it |
+| "I set this league up wrong" | Delete and recreate |
+| Start next season | **Nothing yet.** OQ-2's archive, unbuilt - and Reset was never right for it, because an archive exists to keep last year and Reset threw it away |
+
+**It had also been broken since accounts shipped, and nobody reported it.** `onResetLeague`
+set `teams = []` and went through `ops.mutate` -> `replaceLeague` -> `persistBlob`, whose
+delete pass removed the team rows. `league_members.team_id` is
+`references teams(id) on delete set null`, and the same table carries
+`check (role = 'commissioner' or team_id is not null)`
+(`20260818040000_profiles_and_league_members.sql`), so the cascade violated the check:
+
+```
+ERROR:  new row for relation "league_members" violates check constraint "league_members_check"
+CONTEXT:  SQL statement "UPDATE ONLY "public"."league_members" SET "team_id" = NULL WHERE $1 = "team_id""
+```
+
+`persistBlob` threw, the function returned the raw Postgres message as a 500, and the write
+queue retried five times with backoff. So the commissioner typed RESET LEAGUE, watched
+nothing happen for about fifteen seconds, and got a constraint violation in the save bar. It
+worked only in a league nobody had joined - that is, only before it was worth pressing. No
+lasting damage, and only by luck: `teams` is third in `persistBlob`'s table order, so it
+failed before reaching `roster_slots` and `stat_lines`.
+
+**The other half of #49 had already dissolved.** `replaceLeague` was also how Restore from
+backup wrote, and a cross-league restore left a league with *twice* the teams - the upsert
+pass lands before the delete pass fails, and nothing wraps the two. The Backup tab was
+removed on 2026-09-07 (OQ-7), taking that path with it.
+
+**What this does NOT change.** `replaceLeague` is untouched and just as load-bearing:
+`mutateLeague` (`src/storage/supabase.js`) is the write behind *every* `ops.mutate` call
+(`src/hooks/useLeague.js`), which is every commissioner edit in the app. Removing Reset
+retires no code path and does nothing for #56 or #58 - `persistBlob`'s delete pass is
+exactly where it was.
+
+**What a commissioner lost.** Reset kept the league's id, its scoring and standings
+settings, its playoff config, its lineup-lock and auto-cycle switches, and its corrected
+player pool. Delete and recreate keeps none of those - a new league takes a fresh
+`copy_player_pool_into` from a template that goes stale from the day it is taken - and drops
+every membership, so all his managers need re-inviting. That gap belongs to OQ-2's archive,
+which now carries a date: the 2026 season began in September, so the first league to finish
+one lands around January 2027.
+
+**One sentence went with it.** Playoff Settings, once a bracket has started, ended "Use
+Reset League to start over." Dropped rather than repointed at Delete: those settings are
+locked for the season precisely so a bracket cannot be re-cut around teams already playing
+in it, and Reset was never a good escape from that.
+
+**Provenance, because the reversal is quick.** OQ-18's decision 2, recorded 2026-09-08, was
+Scott confirming Reset stayed. His agreement to remove it came the same day, relayed by
+Kyle, and softly - "he seems fine with it." Recorded that way in OQ-18's follow-up rather
+than as a second direct answer, so the file does not gain false precision about a decision
+that flipped inside a day.

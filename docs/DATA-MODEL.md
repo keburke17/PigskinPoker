@@ -92,6 +92,11 @@ retrofit later, because once a second year has been played on top of a season-le
 the first year's data is already gone. "Reset league" becomes "archive this season and
 open a new one." This is **[OQ-2]** - the schema assumes yes.
 
+> **Since 2026-09-08:** the `seasons` table shipped, and `CommResetPanel` was removed
+> without the archive being built - so today there is NO way to start a new year in the
+> app. The rename this paragraph imagines is off the table; the archive is a new operation.
+> See OQ-2 and OQ-18's follow-up in `docs/OPEN-QUESTIONS.md`.
+
 ### Rosters become historical
 
 `finalizeCurrentPeriod` (line 792) does `next.teams.forEach((t) => { t.roster = null; })`.
@@ -707,7 +712,7 @@ addTeam(name) / removeTeam(teamId, expect)
 addPlayer(p) / setPlayerStatus(playerId, status, expect) / deletePlayer(playerId, expect)
 saveScoring(seasonId, cfg, expect)
 saveStandingsConfig(seasonId, arr, expect)
-archiveSeasonAndStartNew(seasonId)          // was onResetLeague
+archiveSeasonAndStartNew(seasonId)          // still unbuilt; onResetLeague was removed 2026-09-08
 
 // Identity. As sketched, this was a localStorage code check - per the prompt at the
 // time. What shipped, and what remains after codes were retired on 2026-08-20:
@@ -828,7 +833,7 @@ All four blocking questions are answered. Recorded here because `MIGRATION-NOTES
 | # | Decision | Consequence |
 |---|---|---|
 | OQ-1 | Decompose into real tables; follow standard web conventions | Sections 1-3. This is what actually fixes P1 and P3. |
-| OQ-2 | `seasons` is a first-class entity now | Reset becomes archive-and-start-new; past seasons survive. |
+| OQ-2 | `seasons` is a first-class entity now | Archive-and-start-new; past seasons survive. (Reset was removed 2026-09-08 rather than renamed.) |
 | OQ-4 | Manual stat entry is a stopgap, not the destination | `stat_lines` carries provenance from day one (below). |
 | OQ-9 | Resolved schemes are public; `submitted_at` is not | Column grant above; unlocks the OQ-3 history features. |
 | OQ-A | Tiebreak defect deferred to the original designer | Engine and tests preserve **current** behaviour (below). |

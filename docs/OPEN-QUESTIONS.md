@@ -86,6 +86,21 @@ season and start a new one." Last year's champion stays on the wall, and season-
 records become possible. Nearly free today; effectively unrecoverable once a second year has
 been played on a season-less schema, because the first year is already gone by then.
 
+**Half delivered, and the other half is no longer a rename (2026-09-08).** The `seasons`
+table shipped. The archive did not, and **Reset League was removed on 2026-09-08** - see
+OQ-18's follow-up - so there is nothing left to rename. That is deliberate rather than a
+loss: Reset was the wrong shape for this job, because the whole point of an archive is that
+last year survives and Reset threw it away. `archiveSeasonAndStartNew` is now a new
+operation to be designed on its own terms, not an existing button wearing a better label.
+
+**It also now has a date.** Until it exists, a commissioner whose season ends has no way to
+start the next one except Delete and recreate - losing every player-pool correction (a new
+league takes a fresh `copy_player_pool_into` from a template that is stale by design),
+scoring, standings point values, playoff config, the lineup-lock and auto-cycle switches,
+and every membership, so all his managers need re-inviting. Nobody is exposed to that yet:
+the 2026 season began in September, so the first league to finish one lands around January
+2027. That is the deadline.
+
 ### OQ-3. Should history be queryable rather than prose? **[assumed: yes]**
 
 `activityLog` is strings and `weeklyResults` is a flat array. Also, `finalizeCurrentPeriod`
@@ -1459,3 +1474,46 @@ at the very top it says PIGSKIN POKER, which is fine, but maybe it says the leag
 then pigskin poker is displayed somewhere else." Built as an eyebrow: PIGSKIN POKER in 11px
 gold caps, the league's name in the h1 below it with the suits, the role badge under that.
 **Confirmed by him on 2026-09-08 - "header looks good."** Nothing further is open here.
+
+#### Follow-up, the same day: Reset League was removed after all
+
+**Decision 2 above lasted a day.** It said Reset stayed - "different answers to different
+questions" - and that is now reversed. Recording the provenance honestly, because the two
+entries are hours apart: **Scott's agreement was relayed by Kyle rather than given here
+directly, and it was soft** - "he seems fine with it." If Scott reads this and disagrees,
+the decision is his and this is the entry to reopen; putting Reset back is a small change.
+
+**What prompted it.** Kyle's reading, which the code bears out, is that the remaining case
+for Reset was a scenario nobody actually has: resetting a *real* league. Sorted by who
+serves each job once Delete exists:
+
+- **A test league** - Delete serves it better, and it is the reason Scott asked for Delete
+  (*"i have run a few test leagues on the live site and would like to delete a few of
+  them"*). Locally it is `npm run db:reset`.
+- **"I set this league up wrong"** - Delete and recreate. The cost is re-inviting managers,
+  which only bites once managers have joined - and that is precisely the case where Reset
+  failed anyway (see below). It covered this job only in the situation where nobody needed
+  it.
+- **"Start next season"** - Reset was structurally wrong for it, and always had been. See
+  OQ-2.
+
+Redundant on two, wrong on the third.
+
+**It was also broken, and had been since accounts shipped.** Reset set `teams = []` and went
+through `replaceLeague` -> `persistBlob`, whose delete pass removed the team rows;
+`league_members.team_id` is `on delete set null` and the same table carries
+`check (role = 'commissioner' or team_id is not null)`, so the cascade violated the check.
+The commissioner typed RESET LEAGUE, watched five retries over ~15 seconds, and got a raw
+Postgres message in the save bar. It worked only in a league nobody had joined. Issues #47
+and #49 carry the detail; both close with this change. Nobody had reported hitting it,
+which is its own evidence about how wanted the button was.
+
+**One thing it did that Delete does not, and it is worth knowing.** Reset kept the league's
+id, its settings and its corrected player pool. That gap is real, it is the archive's job,
+and OQ-2 now carries it along with the January 2027 date by which it matters.
+
+**A related sentence went with it.** The Playoff Settings card, once a bracket has started,
+used to end "Use Reset League to start over." Scott's instruction was to drop it entirely
+rather than repoint it at Delete, and that is the honest answer: those settings are locked
+for the season precisely so a bracket cannot be re-cut around teams already playing in it,
+and Reset was never a good escape from that.
