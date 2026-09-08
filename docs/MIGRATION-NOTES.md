@@ -1816,3 +1816,59 @@ Every screen inside a league used to open with the same three words, which said 
 about which league you were in; that only started mattering when one person could be in
 several. The name is user-typed, so `.pp-league-title` clamps and wraps it rather than
 letting a long one push the nav further down a phone (OQ-8).
+
+### The stat screen stopped moving under the commissioner (2026-09-08, issue #60)
+
+Two bugs on the same screen, from a recording Scott made of entering a week: the team
+cards traded places at the instant each save landed, and a box could show `e345` while
+the row beside it read `0 pts`.
+
+**The cards.** `server/league.js` read `teams` with no `ORDER BY`. The client's read has
+ordered by `created_at, id` since issue #29 - but every write returns a whole freshly
+hydrated league (`return good({ view: hydrate(...) })`) and the client adopts it wholesale
+in `handle`, so the ordered list was replaced by Postgres heap order on every save, and put
+back 500ms later when the Realtime event triggered the client's own ordered re-read. Save,
+shuffle, re-read, unshuffle - once per box, under a cursor parked on the next one. Nothing
+was ever lost; what moved was the row, which is worse, because it reads as loss and invites
+retyping into whatever team is now underneath. **The fix for issue #29 went into the client
+read and never reached the server read**, and the server read is the one the engine runs
+on. Both now carry the same two `.order()` calls, `players` included.
+
+**That fixes a rule as well as a flicker.** Finalize runs server-side, on these rows, and
+`rankTeamsWithTiebreak` leaves teams it cannot separate in *input* order - so array order is
+what picks the champion out of a dead-tied final (`standings.js:259`) and what slices the
+last playoff slot between two teams level on all six tiebreakers (`standings.js:276`). That
+was Postgres heap order. OQ-A says it goes to whichever team joined first; now it does.
+Rare, like every tie at that depth, but it was being decided by nothing. The engine is
+untouched and `tests/parity.test.js` is unaffected - it feeds the engine directly.
+
+**`players` was ordered on the same beat**, on both sides. It is the pool and free-agent
+lists on screen, and `dealRosters` shuffles it, so a seeded deal is only replayable from a
+stable input order.
+
+**The test is written against the contract, not the symptom.** Whether heap order actually
+shifts on a given write depends on the plan; a test that saves twice and looks for a
+shuffle passes with the bug present most of the time, which is how this sat for a week
+behind a green client-side fix. So the fixture backdates `created_at` to the *reverse* of
+insertion order and asserts the server's hydrate hands back created_at order - which no
+unordered read can be accidentally right about. Four assertions in `tests/server.test.js`,
+all four red without the change.
+
+**The boxes.** `<input type="number">` accepts `e`, `E`, `+` and `-` in Chrome and then
+reports `e.target.value` as `""` when the text is not a number. So `e345` stayed on screen,
+nothing reached state, and `0 pts` sat beside it with nothing to say which was real. On the
+last box of the night that is a starter scoring zero into a finalized week. They are now
+text boxes filtered to digits (`digitsOnly` in `src/components/stats.jsx`), so what is on
+screen is always what is stored. Two smaller holes close with it: the scroll wheel can no
+longer increment a focused box - autosave fires 400ms later, on a screen six teams deep -
+and negatives are out, which no `min` was stopping.
+
+`inputMode` is `numeric` rather than the `decimal` the issue suggested: yards and
+touchdowns are whole numbers and both columns are `int`. The decimals OQ-15 introduced
+belong to the *points* these convert into, which nobody types, and a mobile keypad offering
+a point the box will not take is a worse box.
+
+**Not fixed here, and still Scott's call:** the boxes are too narrow for their own labels
+(`Pass Y`, `Rec Yc`, `Rush >`) - the OQ-4c split to six categories kept widths sized for the
+artifact's two. Losing the number spinner buys a few pixels back but does not solve it.
+

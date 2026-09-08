@@ -28,9 +28,27 @@ export async function fetchLeagueRows(db, leagueId) {
   rows.seasons = seasons.data;
   const seasonIds = seasons.data.map((s) => s.id);
 
+  /* ORDERED, exactly as the client's read is (src/storage/supabase.js), and for the same
+   * two reasons - which is the point: every write returns a freshly hydrated league that
+   * the client adopts wholesale, so an unordered read here shuffles the cards under a
+   * commissioner mid-entry and the ordered re-read a moment later shuffles them back.
+   * That was issue #60. Rows move in the heap as they are rewritten, so "whatever
+   * PostgREST hands back" changes on every save.
+   *
+   * The half that outlives the flicker is that `state.teams` order is load-bearing in
+   * the engine: rankTeamsWithTiebreak leaves teams it cannot separate in INPUT order, so
+   * a dead tie at the playoff cut or on the champion is sliced by array order. Finalize
+   * runs HERE, on these rows - so this is the read that decides it, and ordering by
+   * created_at is what makes OQ-A's "whichever team joined first" true rather than
+   * aspirational. The client fix for issue #29 never reached this side.
+   *
+   * `players` is ordered for the same reason twice over: it is the pool and free-agent
+   * lists on screen, and dealRosters shuffles it, so a seeded deal is only replayable
+   * from a stable input order. `id` is the tiebreak of last resort so the order is
+   * total. */
   const [teams, players] = await Promise.all([
-    db.from("teams").select("*").eq("league_id", leagueId),
-    db.from("players").select("*").eq("league_id", leagueId),
+    db.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id"),
+    db.from("players").select("*").eq("league_id", leagueId).order("created_at").order("id"),
   ]);
   rows.teams = teams.data ?? [];
   rows.players = players.data ?? [];
