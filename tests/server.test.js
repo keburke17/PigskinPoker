@@ -665,6 +665,103 @@ gate()("creating a league", () => {
   });
 });
 
+
+/* Deleting a league, OQ-18.
+ *
+ * The property that matters is not that the row goes - it is that NOTHING is left
+ * behind. Every league-scoped table cascades from `leagues`, which is a schema promise
+ * rather than code, and a table added later without `on delete cascade` would break it
+ * silently: the league would vanish from the app while its rows sat in the database
+ * forever. So this counts the rows rather than trusting the statement.
+ *
+ * Each test works on a league of its own. Deleting the DEMO league behaves identically,
+ * and would leave every later block in this file pointed at an id that no longer exists.
+ */
+gate()("deleting a league", () => {
+  beforeEach(() => resetDemo());
+
+  /* The creator's ACCOUNT token is also its commissioner session - a role is a
+   * league_members row, and createLeague writes one. */
+  const aLeague = async (email, name) => {
+    const { token } = await accountFor(email);
+    const r = await ops.createLeague(db, { accountToken: token, name, year: 2035 });
+    expect(r.status).toBe(200);
+    return { token, id: r.body.leagueId, name };
+  };
+
+  const countIn = async (table, id) => {
+    const { count } = await db.from(table).select("*", { count: "exact", head: true }).eq("league_id", id);
+    return count;
+  };
+
+  it("removes the league and everything that hung off it", async () => {
+    const lg = await aLeague("deleter@example.test", "Doomed League");
+    /* A commissioner invite - a fresh league has no teams yet, and a manager invite
+     * needs one to point at. */
+    await ops.createInvite(db, { leagueId: lg.id, token: lg.token, role: "commissioner" });
+
+    expect(await countIn("players", lg.id)).toBeGreaterThan(100);
+    expect(await countIn("league_members", lg.id)).toBe(1);
+    expect(await countIn("invites", lg.id)).toBe(1);
+
+    const r = await ops.deleteLeague(db, { leagueId: lg.id, token: lg.token, confirmName: "Doomed League" });
+    expect(r.status).toBe(200);
+
+    const { data: gone } = await db.from("leagues").select("id").eq("id", lg.id).maybeSingle();
+    expect(gone).toBeNull();
+    for (const table of ["players", "league_members", "invites", "seasons", "teams"]) {
+      expect(await countIn(table, lg.id)).toBe(0);
+    }
+    // And it is off the creator's own list, not merely unreachable.
+    const mine = await ops.myLeagues(db, { accountToken: lg.token });
+    expect(mine.body.leagues.map((l) => l.name)).not.toContain("Doomed League");
+  });
+
+  /* These two run against the DEMO league rather than a fresh one, and must: a manager
+   * membership needs a team to point at (league_members' own check constraint), and a
+   * league this test just created has none. They are refusals, so the demo league is
+   * still standing at the end - which is itself the assertion. */
+  it("refuses a manager - deleting is the commissioner's", async () => {
+    const token = await asManager(T1);
+    const r = await ops.deleteLeague(db, {
+      leagueId, token, confirmName: "Pigskin Poker (Demo League)",
+    });
+    expect(r.status).toBe(403);
+    expect(r.body.error).toMatch(/commissioner/i);
+    const { data } = await db.from("leagues").select("id").eq("id", leagueId).maybeSingle();
+    expect(data).toBeTruthy();
+  });
+
+  it("refuses a stranger, and anyone with no credential at all", async () => {
+    const outsider = await accountFor("outsider@example.test"); // signed in, member of nothing
+    const name = "Pigskin Poker (Demo League)";
+
+    expect((await ops.deleteLeague(db, { leagueId, token: null, confirmName: name })).status).toBe(401);
+    expect((await ops.deleteLeague(db, { leagueId, token: outsider.token, confirmName: name })).status).toBe(401);
+    expect((await ops.deleteLeague(db, { leagueId, token: "f".repeat(64), confirmName: name })).status).toBe(401);
+
+    const { data } = await db.from("leagues").select("id").eq("id", leagueId).maybeSingle();
+    expect(data).toBeTruthy();
+  });
+
+  it("refuses when the name typed is not this league's, so a wrong id cannot delete a real season", async () => {
+    /* The whole point of asking for the name. Every other write here is corrected by
+     * writing again; this one is not, so the id is never the only thing aimed at it. */
+    const lg = await aLeague("careful@example.test", "The Sunday Boys");
+
+    for (const typed of ["", "   ", "the sunday boy", "Some Other League"]) {
+      const r = await ops.deleteLeague(db, { leagueId: lg.id, token: lg.token, confirmName: typed });
+      expect(r.status).toBe(400);
+    }
+    const { data } = await db.from("leagues").select("id").eq("id", lg.id).maybeSingle();
+    expect(data).toBeTruthy();
+
+    // Case and stray spaces are transcription, not intent - those are accepted.
+    const ok = await ops.deleteLeague(db, { leagueId: lg.id, token: lg.token, confirmName: "  the sunday BOYS " });
+    expect(ok.status).toBe(200);
+  });
+});
+
 gate()("invites and redemption", () => {
   beforeEach(() => resetDemo());
 

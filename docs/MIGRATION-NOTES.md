@@ -1781,3 +1781,38 @@ error when the column is put back to `integer`.
 The partial-write behaviour that turned a type error into three broken weeks is recorded
 separately as **OQ-17**; it is a pre-existing gap that this was simply the first thing to
 expose.
+
+### Deleting a league, and the league's name in the header (2026-09-08)
+
+Two of Scott's asks, both in `OQ-18`.
+
+**`deleteLeague`** is a new operation in `server/operations.js`, routed like every other
+write and authorized like every other commissioner one. It is a single
+`delete from leagues where id = ...`; everything else goes with it because every
+league-scoped table has hung off `leagues` with `on delete cascade` since the initial
+schema. **No migration was needed, and that is the point worth remembering** - the
+cascade is a schema promise, and a table added later without it would leave rows behind
+in a league the app says is gone. `tests/server.test.js` counts the rows in five tables
+after a delete rather than trusting the statement, so that promise now has a test.
+
+Three things about its shape:
+
+- **It does not use `context()`.** Every other league operation does, and that hydrates
+  the whole league to reach a role. The league most likely to be deleted is the one that
+  has gone wrong, so this resolves the role straight from `league_members` - a league too
+  broken to load is still removable.
+- **The commissioner types the league's name, and the server checks it.** Deliberately
+  twice, and deliberately not a stock phrase like Reset League's. Everywhere else a write
+  aimed at the wrong league is corrected by writing again; this one cannot be, so the id
+  is never the only thing pointing at what dies. Case and stray spaces are forgiven -
+  those are transcription, not intent.
+- **It is not an `ops.mutate()`.** Mutate saves a new version of the league, and a moment
+  later there is no league to save into. `onDeleteLeague` calls the server directly and
+  leaves for the front door on success.
+
+**The header now leads with the league's name**, with "Pigskin Poker" as the eyebrow above
+it - one line of 11px caps, so the sticky header grows by about 14px rather than a row.
+Every screen inside a league used to open with the same three words, which said nothing
+about which league you were in; that only started mattering when one person could be in
+several. The name is user-typed, so `.pp-league-title` clamps and wraps it rather than
+letting a long one push the nav further down a phone (OQ-8).

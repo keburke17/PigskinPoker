@@ -1392,3 +1392,48 @@ actively misleading in that case: it retries a write whose earlier half already 
 
 Not urgent for a league that is not yet live on this branch, and squarely in the way of one
 that is.
+
+---
+
+### OQ-18. A league you are finished with. **[ANSWERED 2026-09-08: the commissioner deletes it]**
+
+**Asked and answered by Scott on 2026-09-08**, in one breath:
+
+> i would like a league delete button. i have run a few test leagues on the live site and
+> would like to delete a few of them when i start a real one for a season. I need the
+> ability to delete leagues once they are over or for whatever reason. commissioner should
+> have that ability.
+
+Nothing in the product could remove a league. The only way was a database console, which is
+Kyle's - so a season that ended, or a league made while learning the app, stayed on the
+front door forever. **Built the same day.**
+
+**What it does.** Commissioner -> **Reset / Delete** -> Delete League. It removes the league
+row, and every league-scoped table cascades from it: teams, players, rosters, schemes, stat
+lines, weekly results, standings, invitations, memberships and the activity log. The screen
+says how many teams and finished weeks are about to go, and the commissioner types the
+league's **own name** - not a stock phrase - to confirm. The server checks the name again
+before it deletes anything. Afterwards the app returns to the front door, because there is
+no longer a league to be looking at.
+
+**Three calls made in the building of it, each reversible if Scott wants them another way:**
+
+1. **The commissioner's, not the site admin's.** It sits beside Reset League, which is
+   already his, and it is authorized the same way - a `league_members` row saying
+   commissioner. The alternative was to put it on `/admin` beside the head coaches, which
+   would have made deleting somebody else's league a thing two people can do.
+2. **Reset stayed.** They are different answers to different questions: Reset empties a
+   league and leaves it standing for another season; Delete takes it away. The panel says
+   so, and points at Reset for anyone who only wanted to start over.
+3. **One league at a time, from inside it.** There is no "delete" beside each league on the
+   front door. That list is where somebody taps quickly, and it is the one place where
+   deleting the wrong one is easiest - so removing a league means opening it first. Three
+   test leagues is three deliberate trips, which for a thing with no undo seemed the right
+   trade. **Say if you would rather have it on the list.**
+
+**What a commissioner loses, and it is worth knowing before pressing it.** There is no bin
+and no undo. `npm run db:backup` is the only copy of a league that exists, it is Kyle's to
+run, and it is not on a schedule - so a league deleted between backups is gone for good, and
+so is it for every manager who was in it. They are not told; they simply find the league
+missing. Notifying them is OQ-6's problem, unbuilt.
+

@@ -83,7 +83,11 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, className, dange
   );
 }
 
-export function TypedConfirm({ phrase, onConfirm, label }) {
+/* The confirm button says what it is about to do. It defaulted to wiping a league
+   because that was the only thing it guarded; deleting one needs its own words, and a
+   button that lies about which of the two you pressed is the last thing this control
+   should do. */
+export function TypedConfirm({ phrase, onConfirm, label, confirmLabel = "Confirm & Wipe League" }) {
   const [value, setValue] = useState("");
   const [active, setActive] = useState(false);
   if (!active) {
@@ -101,7 +105,7 @@ export function TypedConfirm({ phrase, onConfirm, label }) {
           disabled={value !== phrase}
           onClick={() => { onConfirm(); setActive(false); setValue(""); }}
         >
-          Confirm & Wipe League
+          {confirmLabel}
         </button>
         <button className="pp-btn pp-btn-ghost" onClick={() => { setActive(false); setValue(""); }}>Cancel</button>
       </div>
