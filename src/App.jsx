@@ -70,7 +70,6 @@ export default function App() {
     loadErrorDetail,
     retryLoad,
     saveState,
-    saveNow,
     conflict,
     dismissConflict,
     opError,
@@ -734,16 +733,10 @@ export default function App() {
             />
           ) : null}
           {opError ? <ErrorBanner message={opError} onDismiss={dismissOpError} /> : null}
-          {/* The manual retry lives HERE and only here (issue #69). A failed write goes back on
-            * the queue behind a backoff of up to 15 seconds, and this skips the wait. It is the
-            * only state in which forcing a flush does anything, so it is the only state that
-            * shows a button for it. */}
-          {saveStatus === "error" && saveErrorDetail ? (
-            <ErrorBanner
-              message={{ headline: "Save failed - retrying automatically.", detail: saveErrorDetail }}
-              action={{ label: "Retry now", onClick: saveNow }}
-            />
-          ) : null}
+          {/* No button here, deliberately (issue #69). The retry is automatic and the banner
+            * says so; the only thing a manual flush could add is skipping a backoff of at most
+            * 15 seconds, which is not worth a control. */}
+          {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically.", detail: saveErrorDetail }} /> : null}
           <div className="pp-nav-wrap">
             <nav className="pp-nav">
               {NAV.map((n) => (

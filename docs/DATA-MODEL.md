@@ -647,8 +647,10 @@ button. Coalescing, the debounce, the retries, the backoff and the never-lose-a-
 promise are all exactly as described below; what went was a control that duplicated them.
 Against the blob it rewrote the whole league and was a genuine escape hatch. Against this
 queue it called `flush()`, which returns immediately when nothing is pending - so in the
-"Saved" state it did nothing while saying it saved. The one case where it bit, skipping
-the retry backoff, is now a **Retry now** button inside the save-failure banner.
+"Saved" state it did nothing while saying it saved. The one case where it bit - skipping
+the retry backoff after a failed write - was deliberately NOT re-homed as a button
+somewhere else: the retry is automatic, the save-failure banner says so, and the wait it
+skipped is at most 15 seconds.
 
 - Stat inputs stay controlled and responsive (local state, per keystroke, unchanged feel),
   but the *write* is debounced ~400 ms and coalesced per `(period, team, slot)`.

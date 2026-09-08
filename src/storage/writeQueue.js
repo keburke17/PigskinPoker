@@ -10,8 +10,8 @@
  * What is kept, deliberately:
  *   - nothing is ever lost;
  *   - failed writes retry with backoff;
- *   - the save-status bar still works, and a failed write can still be retried by hand -
- *     from the save-failure banner since issue #69, from a header button before it.
+ *   - the save-status bar still works. (The manual Save Now button beside it went in issue
+ *     #69: against this queue it flushed an empty pending set and did nothing.)
  *
  * What changed:
  *   - writes COALESCE by key, so ten keystrokes in one box become one write;

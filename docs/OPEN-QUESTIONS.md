@@ -1242,9 +1242,9 @@ answered:
   Tuesday hour (6am was chosen, not asked for), and whether to actually switch either
   one on in your league. Nothing is on until you say so.
 - **OQ-19**, the Save Now button - removed 2026-09-08 from issue #69, because against the
-  write queue it did nothing in the state the bar is in almost all of the time. The one
-  thing it could still do is now a Retry now button inside the save-failure banner. Putting
-  it back is two lines if you want it back.
+  write queue it did nothing in the state the bar is in almost all of the time. Nothing
+  replaced it: a failed write retries itself, and the banner says so. Putting it back is
+  two lines if you want it back.
 - **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
   button and leave the engine field, or take the rule off the board. Recommendation: hide.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
@@ -1542,12 +1542,18 @@ because somebody presses it and believes something happened.
 The other theory - that it flushes a debounced write early - does not survive the numbers:
 the debounce is 400ms and fires on its own regardless. No finger gets there first.
 
-**What it could still do, and where that went.** One case was real. After a failed write the
-entry goes back on the queue behind a backoff of `3s x attempts`, up to 15 seconds, and a
-flush skips that wait. So the capability is kept and moved: a **Retry now** button now sits
-inside the save-failure banner, which already appears directly under the bar and already
-says the retry is automatic. It is shown only when there is something to retry, which is the
-only time it was ever true.
+**What it could still do, and why nothing replaced it.** One case was real. After a failed
+write the entry goes back on the queue behind a backoff of `3s x attempts`, up to 15
+seconds, and a flush skips that wait. Issue #69 recommended re-homing that as a **Retry
+now** button inside the save-failure banner, and it was built that way first.
+
+**Kyle sent it back on 2026-09-08 - "drop it" - and he was right.** The banner already
+appears under the bar and already says the retry is automatic, so the button would have been
+a new control invented on the way out of removing one, for a wait of at most 15 seconds, in
+a state almost nobody ever sees. Nothing was lost by not building it: the write still
+retries, five times, on its own. **So the manual flush has no button anywhere in the app
+now.** `queue.flush` is still called by `visibilitychange` and `beforeunload`; nothing
+presses it by hand.
 
 **Why it is worth the change at all.** OQ-8 measured the sticky header at 217px of an 812px
 phone and every control under the 44px touch target - the header buttons at 28px, this one
@@ -1555,7 +1561,8 @@ among them. Removing it does not fix the header, but it is the easiest row to gi
 because nothing is lost with it.
 
 **Nothing about the save guarantee moved.** Coalescing, the debounce, the retries, the
-backoff and the promise that nothing is lost are all exactly as they were.
+backoff and the promise that nothing is lost are all exactly as they were. What went is a
+button, not a behaviour.
 `docs/DATA-MODEL.md` says so in the "save guarantee" section, which used to list the button
 among what was kept.
 

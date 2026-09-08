@@ -40,11 +40,7 @@ export function Tag({ children }) {
   return <span className="pp-tag">{children}</span>;
 }
 
-/* `action` is an optional { label, onClick } shown beside Dismiss. It exists so a banner
- * that reports something the reader can DO about it can offer that thing where the report
- * is, rather than parking a permanent control somewhere else on the page - see the
- * save-failure banner in App.jsx, and issue #69. */
-export function ErrorBanner({ message, onDismiss, action }) {
+export function ErrorBanner({ message, onDismiss }) {
   if (!message) return null;
   const isObj = typeof message === "object";
   const headline = isObj ? message.headline : message;
@@ -55,12 +51,7 @@ export function ErrorBanner({ message, onDismiss, action }) {
         <div>{headline}</div>
         {detail ? <code>{detail}</code> : null}
       </div>
-      {action || onDismiss ? (
-        <div className="pp-error-banner-actions">
-          {action ? <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={action.onClick}>{action.label}</button> : null}
-          {onDismiss ? <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onDismiss}>Dismiss</button> : null}
-        </div>
-      ) : null}
+      {onDismiss ? <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onDismiss}>Dismiss</button> : null}
     </div>
   );
 }
@@ -128,8 +119,9 @@ export function TypedConfirm({ phrase, onConfirm, label, confirmLabel = "Confirm
  * `queue.flush()`, which returns immediately when nothing is pending - so in the "Saved"
  * state, which is what this bar reads almost all of the time, it did nothing at all while
  * claiming to save. The one thing it could still do - skip the retry backoff after a failed
- * write - now lives as "Retry now" INSIDE the save-failure banner, where it is shown only
- * when there is something to retry. Do not put it back on the bar. */
+ * write, a wait of at most 15 seconds - was judged not to earn a permanently visible
+ * control, and NO replacement button was built: the failed write retries on its own, and
+ * the banner underneath this bar says so. Do not put it back. */
 export function SaveStatusBar({ status, lastSavedAt }) {
   const color = status === "saving" ? "var(--gold)" : status === "error" ? "var(--danger)" : "var(--ok)";
   const text = status === "saving" ? "Saving..." : status === "error" ? "Save failed" : (lastSavedAt ? "Saved at " + formatClock(lastSavedAt) : "Saved");

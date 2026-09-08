@@ -173,7 +173,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
       </RuleCard>
 
       <RuleCard title="When something looks wrong">
-        <li><strong>"Saved at ..." in the header</strong> is the app's save state. "Save failed - retrying" means it is still trying; your change is not lost, and the banner underneath has a Retry now button if you do not want to wait.</li>
+        <li><strong>"Saved at ..." in the header</strong> is the app's save state. "Save failed - retrying" means it is still trying; your change is not lost, and it keeps trying on its own until it lands.</li>
         <li><strong>A conflict banner</strong> means somebody else changed the same thing first. Your change was not applied and nothing of theirs was overwritten - make it again if you still want it.</li>
         <li><strong>A greyed-out Deal button</strong> means the league has no teams yet.</li>
         <li><strong>A greyed-out Pull Stats</strong> means either no NFL week is set for this period, or the rosters are not locked yet - it will tell you which.</li>
