@@ -133,6 +133,7 @@ export function decomposeLeague(state, opts) {
         standings_points_override: state.standingsPointsOverride,
         playoff_bracket_size: state.playoffConfig.bracketSize,
         playoff_advancement: state.playoffConfig.advancement,
+        playoff_start_nfl_week: state.playoffConfig.startNflWeek ?? null,
         playoff_started: state.playoffConfig.started,
         playoff_completed: state.playoffConfig.completed,
         playoff_round_index: state.playoffConfig.currentRoundIndex,

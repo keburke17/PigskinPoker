@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **625 passed, 28 files**. If the output says
+2. `npm test` before committing: **652 passed, 28 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -156,6 +156,23 @@ in a league that is actually being played is worse than a bug everyone has adapt
   is a real rules change and `tests/parity.test.js` records it as a deliberate difference
   from the artifact. It is listed here because the old behaviour is still in
   `LegacyProject/`: do not "restore" it, and do not read the parity difference as a bug.
+- **Scoring carries decimals, and the LEGACY branch still floors** (`src/engine/scoring.js`).
+  **OQ-15 was answered by Scott on 2026-09-07**: a yard is worth the fraction of a point it
+  earns, rounded to one decimal, so 58 rushing yards is 5.8 rather than 5. The split path
+  used to floor each category separately, which threw the same yards away twice - 5 rushing
+  and 5 receiving at 1pt/10 scored NOTHING. **Do not "tidy" the legacy branch to match.** It
+  is frozen on purpose: it scores every line recorded before the 2026-08-28 split, it is
+  what keeps finalized weeks where they are, and `tests/parity.test.js` replays the artifact
+  through it.
+- **The playoffs start themselves, and there is no Start Playoffs button**
+  (`playoffsDueToStart` / `seedPlayoffBracket` in `src/engine/standings.js`). **OQ-16,
+  answered by Scott on 2026-09-07.** A league nominates the NFL week its bracket takes over
+  and `finalizeCurrentPeriod` seeds it when that week arrives - deliberately at finalize
+  rather than in the scheduler, so a league with automation off behaves identically. The
+  button and its server route are gone; `startPlayoffs` in `src/engine/playoffs.js` survives
+  only as the seam parity replays the artifact through, so **do not delete it and do not
+  wire it back up.** `playoffConfig.startNflWeek` being null means the playoffs NEVER start,
+  which is a real trap and is guarded on three screens rather than by a default.
 - **`CP()` / `String.fromCodePoint` for every glyph** (`src/engine/constants.js`). The
   source is deliberately 100% ASCII. The original author hit real bugs with escapes in
   JSX text rendering literally. Do not "simplify" this to raw unicode or `\u` escapes.
@@ -346,7 +363,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-625 tests. Three groups worth knowing about:
+652 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -355,7 +372,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 178 of the 625
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 180 of the 652
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

@@ -13,8 +13,15 @@
  *
  * THE SCHEDULER IS NOT A NEW PERMISSION. It runs the same operations the commissioner's
  * buttons run, under the same phase guards, and it is off until he turns it on. What it
- * changes is who presses them and when. It cannot start the playoffs, cannot deal past
- * the end of the regular season, and cannot touch a league that has not opted in.
+ * changes is who presses them and when. It cannot deal past the end of the regular
+ * season and cannot touch a league that has not opted in.
+ *
+ * IT DOES NOW REACH THE PLAYOFFS, and that is worth being precise about, because the
+ * sentence above used to say it could not. The scheduler still starts nothing: what it
+ * calls is `finalizePeriod`, and finalize seeds the bracket itself when the league's
+ * nominated week arrives (OQ-16, src/engine/standings.js). The decision is the
+ * commissioner's, made in advance in the Playoffs panel; the clock only carries it out,
+ * on exactly the same code path his own Finalize button takes.
  *
  * EVERY GUARD IS A REASON TO DO NOTHING RATHER THAN TO FAIL - the same discipline
  * autoPull.js sets out. Not opted in, wrong phase, deadline not reached, games still
@@ -258,8 +265,13 @@ export function dealWindowOpen(league, previousFinalizedAt, now) {
  * just increments the week number, and nothing in the engine knows how long a regular
  * season is - left alone the clock would cheerfully deal week 19, 20 and 21 into
  * January. So the stop condition is the NFL week mapping: deal week 18, then stop and
- * say so. Starting the playoffs takes decisions - a bracket size, an advancement ladder
- * - that no clock can make, and it stays a human act.
+ * say so.
+ *
+ * REACHING THAT STOP NOW MEANS SOMETHING WENT UNSET. Since OQ-16 the playoffs start
+ * themselves at a week the league nominated, and finalize seeds the bracket rather than
+ * opening another regular week - so a league with its playoffs configured never gets
+ * here at all. A league that does get here left `playoff_start_nfl_week` null, and the
+ * honest thing is to stop and say exactly that rather than to guess a bracket.
  *
  * THE FIRST WEEK OF A SEASON IS NEVER DEALT BY THE CLOCK. There is no finished week
  * behind it, so `dealWindowOpen` says no - which is the behaviour you want anyway: week
@@ -283,7 +295,7 @@ export function dealEligibility({ league, next, teamCount, playoffsComplete, pre
       return {
         eligible: false,
         endOfSeason: true,
-        why: "the regular season is over - starting the playoffs is the commissioner's call",
+        why: "the regular season is over and this league has no playoff week set",
       };
     }
   }

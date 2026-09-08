@@ -47,7 +47,6 @@ import {
   processSchemes as engineProcessSchemes,
   seedFromString,
   seededRng,
-  startPlayoffs as engineStartPlayoffs,
 } from "../src/engine/index.js";
 import { vkey } from "../src/storage/hydrate.js";
 import { fetchLeagueRows, hydrate, persistBlob } from "./league.js";
@@ -1231,23 +1230,20 @@ function applyFinalize({ feed, by = "commissioner" } = {}) {
   };
 }
 
-export async function startPlayoffs(db, { leagueId, token, bracketSize, advancement, feed }) {
-  return commissionerLifecycle(db, leagueId, token, "startPlayoffs", null, async (ctx) => {
-    const blob = engineStartPlayoffs(ctx.view, bracketSize, advancement);
-    return {
-      blob,
-      /* Playoff round 1 is a new period too, and it is the one case the default cannot
-       * work out on its own if the season was never mapped - "round 1" says nothing
-       * about which Sunday it is. It counts on from the last mapped week instead. */
-      afterPersist: async (client) => {
-        await mapNewPeriod(client, ctx.rows.seasons[0].id, blob.currentPeriod, {
-          season: ctx.rows.seasons[0].year,
-          feed,
-        });
-      },
-    };
-  });
-}
+/* startPlayoffs was here until 2026-09-07 (OQ-16).
+ *
+ * It was the route behind the Start Playoffs button, and both are gone. A league now
+ * nominates the NFL week its playoffs begin, and `finalizePeriod` seeds the bracket when
+ * that week arrives - which is what makes the automatic weekly cycle safe. Leaving the
+ * route in place would have left a way to start a bracket out of band, in a season whose
+ * rosters the clock is already dealing.
+ *
+ * The bracket is still seeded by exactly the same engine code; `finalizeCurrentPeriod`
+ * calls `seedPlayoffBracket` directly, and `mapNewPeriod` below still maps playoff round
+ * 1 onto an NFL week the same way it always did - see the note in `finalizePeriod`.
+ *
+ * The settings themselves are written as an ordinary league blob update, like the scoring
+ * config: they are a rule the commissioner sets, not a lifecycle step. */
 
 /**
  * Correct which NFL week this period plays.

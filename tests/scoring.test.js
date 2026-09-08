@@ -5,6 +5,10 @@
  * combined shape and score under the old rates - tests/parity.test.js proves those still
  * match the artifact exactly; this file covers everything new.
  *
+ * DECIMALS, 2026-09-07 (OQ-15). The split path no longer floors - a yard counts for the
+ * fraction of a point it is worth, and the player's total is rounded to one decimal. The
+ * legacy path still floors, which is what keeps finished weeks where they are.
+ *
  * See docs/PHASE-4-PLAN.md section 3.
  */
 
@@ -41,7 +45,8 @@ describe("split scoring - the designer's defaults", () => {
   });
 
   it("scores rushing at 1 per 10 and 6 per TD", () => {
-    expect(computeStarterPoints(s, { rushYards: "94", rushTds: "2" }, "RB")).toBe(9 + 12);
+    // 94 yards is 9.4 points now, not 9 - the four yards are no longer thrown away.
+    expect(computeStarterPoints(s, { rushYards: "94", rushTds: "2" }, "RB")).toBe(9.4 + 12);
   });
 
   it("adds a quarterback's rushing on top of his passing", () => {
@@ -64,10 +69,42 @@ describe("split scoring - the designer's defaults", () => {
 describe("split scoring - the rules around the edges", () => {
   const s = state();
 
-  it("floors each category on its own, because the rates differ", () => {
-    /* 15 rushing plus 15 receiving is 1 + 1, not 3. Yards at different rates cannot be
-     * added before dividing, and rushing and receiving only share a rate by default. */
-    expect(computeStarterPoints(s, { rushYards: "15", recYards: "15" }, "RB")).toBe(2);
+  it("converts each category at its own rate, then adds the fractions", () => {
+    /* 15 rushing plus 15 receiving is 1.5 + 1.5 = 3. Yards at different rates still
+     * cannot be added before dividing - but the halves are no longer floored away, which
+     * is what used to make this 1 + 1 = 2. */
+    expect(computeStarterPoints(s, { rushYards: "15", recYards: "15" }, "RB")).toBe(3);
+  });
+
+  /* OQ-15, in Scott's own words: "if a league is set to score 1 point per 10 rushing and
+   * receiving yards. a player gets 5 rushing and 5 receiving, that should be 1 point. if
+   * the player got 5 rushing and 6 receiving, it should read 1.1". Under the floors those
+   * were 0 and 0 - each half floored to zero on its own, and the yards vanished twice. */
+  it("scores the designer's own example, which used to score nothing at all", () => {
+    expect(computeStarterPoints(s, { rushYards: "5", recYards: "5" }, "RB")).toBe(1);
+    expect(computeStarterPoints(s, { rushYards: "5", recYards: "6" }, "RB")).toBe(1.1);
+  });
+
+  it("separates two totals that used to read the same", () => {
+    /* The complaint that started it: 55 yards and 58 yards both scored 5. */
+    expect(computeStarterPoints(s, { rushYards: "55" }, "RB")).toBe(5.5);
+    expect(computeStarterPoints(s, { rushYards: "58" }, "RB")).toBe(5.8);
+  });
+
+  it("rounds to one decimal rather than trailing floating-point dust", () => {
+    /* 0.5 + 0.6 is 1.1000000000000001 in binary floating point. A scoreboard cannot
+     * print that, and a commissioner cannot add a column of them up by hand. */
+    const pts = computeStarterPoints(s, { rushYards: "5", recYards: "6" }, "RB");
+    expect(String(pts)).toBe("1.1");
+  });
+
+  it("rounds a passing rate that does not divide evenly", () => {
+    /* 58 passing yards at 1 per 25 is 2.32 exactly; one decimal makes it 2.3. */
+    expect(computeStarterPoints(s, { passYards: "58" }, "QB")).toBe(2.3);
+  });
+
+  it("leaves whole numbers whole", () => {
+    expect(computeStarterPoints(s, { rushYards: "120", rushTds: "1" }, "RB")).toBe(18);
   });
 
   it("scores a starter who did not play as zero", () => {

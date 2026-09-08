@@ -425,14 +425,20 @@ describe("dealEligibility", () => {
   });
 
   /* THE STOP CONDITION. Nothing in the engine knows how long a regular season is, so
-   * left alone an automated Tuesday would deal week 19, 20 and 21 into January. */
-  it("stops at the end of the regular season and hands it back", () => {
+   * left alone an automated Tuesday would deal week 19, 20 and 21 into January.
+   *
+   * REACHING IT NOW MEANS SOMETHING WENT UNSET. Since OQ-16 the playoffs start
+   * themselves at a week the league nominated, and finalize seeds the bracket rather
+   * than opening another regular week - so a league with its playoffs configured never
+   * gets here at all. A league that does left its playoff week null, and the message
+   * says exactly that rather than pointing at a button that no longer exists. */
+  it("stops at the end of the regular season and says why", () => {
     const { eligible, endOfSeason, why } = dealEligibility(
       args({ next: next({ number: 19, nfl_week: LAST_REGULAR_WEEK + 1 }) })
     );
     expect(eligible).toBe(false);
     expect(endOfSeason).toBe(true);
-    expect(why).toContain("commissioner");
+    expect(why).toContain("no playoff week set");
   });
 
   it("still deals week 18 itself", () => {

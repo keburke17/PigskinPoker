@@ -261,6 +261,84 @@ gate()("stat entry: versioning and phase guards", () => {
   });
 });
 
+gate()("a decimal score survives the round trip (OQ-15 regression)", () => {
+  beforeEach(() => resetDemo());
+
+  /* THE BUG THIS EXISTS FOR. OQ-15 gave scoring one decimal place on 2026-09-07, and
+   * `period_results.raw_score` was left as an integer. Every engine test passed - they
+   * never touch a database - and the server suite finalized weeks quite happily, because
+   * its stat lines happened to land on whole numbers. Scott found it within a day by
+   * playing test weeks locally:
+   *
+   *   upsert period_results: invalid input syntax for type integer: "26.2"
+   *
+   * Worse than an error message: `persistBlob` writes table by table with no transaction,
+   * so `periods` had already committed when `period_results` threw. The week advanced
+   * with no results behind it, and the scoreboard showed nothing for three weeks.
+   *
+   * So this test does the one thing the others did not: it forces a score that CANNOT be
+   * a whole number, finalizes, and reads it back out of the database. */
+  it("finalizes a week whose scores are not whole numbers", async () => {
+    const token = await asCommissioner();
+
+    /* 5 rushing at 1pt/10 is 0.5, and 6 receiving is 0.6 - Scott's own example, and a
+     * total of 1.1 that no integer column will take. */
+    const line = await ops.setStatLine(db, {
+      leagueId, token, teamId: T1, slot: "RB", line: { rushYards: "5", recYards: "6" },
+    });
+    expect(line.status).toBe(200);
+
+    const fin = await ops.finalizePeriod(db, { leagueId, token });
+    expect(fin.status).toBe(200);
+
+    const row = fin.body.view.weeklyResults.find((r) => r.teamId === T1 && r.period.number === 2);
+    /* The exact total depends on the demo seed, which is not the point - what matters is
+     * that it is NOT a whole number, so an integer column could not have held it. */
+    expect(Number(row.rawScore) % 1).not.toBe(0);
+
+    /* Read it back from the table rather than trusting the response the write built:
+     * the whole failure was that the response looked right and the row never landed. */
+    /* Matched on the VALUE, not on the team: the view speaks the engine`s legacy team
+     * ids and the table stores uuids, and translating them here would test the mapping
+     * rather than the column. */
+    const { data: results } = await db
+      .from("period_results").select("raw_score, team_id, period_id");
+    expect(results.length).toBeGreaterThan(0);
+    const stored = results.map((r) => Number(r.raw_score));
+    expect(stored).toContain(Number(row.rawScore));
+    expect(stored.some((v) => v % 1 !== 0)).toBe(true);
+  });
+
+  /* The partial-write symptom, asserted directly. A week that finalized must have a
+   * result row for every team that played it - "the period advanced" and "the results
+   * exist" are two different facts, and for three weeks of Scott's testing they
+   * disagreed. */
+  it("leaves no finalized week without its results", async () => {
+    const token = await asCommissioner();
+    await ops.setStatLine(db, {
+      leagueId, token, teamId: T1, slot: "RB", line: { rushYards: "27", recYards: "13" },
+    });
+    await ops.setStatLine(db, {
+      leagueId, token, teamId: T2, slot: "RB", line: { rushYards: "44", recYards: "8" },
+    });
+    const fin = await ops.finalizePeriod(db, { leagueId, token });
+    expect(fin.status).toBe(200);
+
+    const { data: periods } = await db.from("periods").select("id, number, phase");
+    const finalized = periods.filter((p) => p.phase === "finalized");
+    expect(finalized.length).toBeGreaterThan(0);
+
+    const { data: results } = await db.from("period_results").select("period_id, raw_score");
+    for (const p of finalized) {
+      const forPeriod = results.filter((r) => r.period_id === p.id);
+      expect(forPeriod.length).toBeGreaterThan(0);
+    }
+    /* And at least one of them is genuinely fractional, so the assertion above is not
+     * passing on whole numbers again. */
+    expect(results.some((r) => Number(r.raw_score) % 1 !== 0)).toBe(true);
+  });
+});
+
 gate()("the weekly cycle, server-side", () => {
   beforeEach(() => resetDemo());
 

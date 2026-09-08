@@ -106,7 +106,8 @@ export function RulesTab({ state }) {
 
       <RuleCard title={SUIT_CH.diamond + " Scoring"}>
         <li>Yards count by type, each at its own rate: 1 point per {cfg.passYardsPerPoint} passing yards, 1 per {cfg.rushYardsPerPoint} rushing, 1 per {cfg.recYardsPerPoint} receiving.</li>
-        <li>Each type converts on its own, so 15 rushing and 15 receiving yards is 1 point plus 1 point - not 3.</li>
+        <li>Every yard counts for the fraction of a point it earns, and your total is rounded to one decimal. Nothing is rounded down and thrown away.</li>
+        <li>Each type still converts at its own rate, so 15 rushing and 15 receiving yards is 1.5 plus 1.5 - which is 3.</li>
         <li>Touchdowns: {cfg.pointsPerPassTD} for passing, {cfg.pointsPerRushTD} for rushing, {cfg.pointsPerRecTD} for receiving.</li>
         <li>Only passing, rushing and receiving count. Return yards, two-point conversions and fumble-recovery TDs are worth nothing.</li>
         <li>A starter who doesn't play scores 0 - same as anyone else who puts up nothing.</li>
@@ -125,14 +126,19 @@ export function RulesTab({ state }) {
       </RuleCard>
 
       <RuleCard title={SUIT_CH.star + " Playoffs"}>
-        <li>Commissioner sets a bracket size (top N teams by season standings) and an advancement list per round.</li>
-        <li>Once playoffs start, regular-season standings freeze.</li>
+        <li>The commissioner sets the NFL week the playoffs start in, how many teams make it, and how they advance - and the bracket starts itself when that week arrives. There is no button to press on the day.</li>
+        <li>Only the teams in the bracket are dealt a roster. Miss the cut and your season is over.</li>
+        <li>Once playoffs start, regular-season standings freeze, and the bracket settings lock for the season.</li>
         <li>Playoff rounds use the same cycle: {["deal", "schemes", "stats", "finalize"].join(" " + ARROW + " ")}.</li>
         <li>Same tiebreaker order applies, but scoped to that round only.</li>
         <li>Playoff periods are called "Round N" - regular season stays "Week N."</li>
         {state.playoffConfig.started ? (
           <li>Current bracket: {state.playoffConfig.bracketSize} teams, advancement {state.playoffConfig.advancement.join(" " + ARROW + " ")}.</li>
-        ) : null}
+        ) : state.playoffConfig.startNflWeek != null ? (
+          <li>This league: the top {state.playoffConfig.bracketSize} teams, starting in NFL week {state.playoffConfig.startNflWeek}, advancing {state.playoffConfig.advancement.join(" " + ARROW + " ")}.</li>
+        ) : (
+          <li>This league has not set a playoff week yet, so the playoffs will not start. The commissioner sets it under Commish {ARROW} Playoffs.</li>
+        )}
       </RuleCard>
 
       <RuleCard title="Coaches">

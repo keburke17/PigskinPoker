@@ -118,12 +118,31 @@ describe("parity with the original artifact", () => {
     "pointsPerRecTD",
   ];
 
-  /** A state with only the six added config keys removed. Everything else - every score,
-   * every ranking, every cumulative total, the champion - must still match the artifact
-   * exactly, and does. */
+  /* INTENDED DIFFERENCE - the playoff start week (OQ-16, 2026-09-07).
+   *
+   * The playoffs no longer wait on a Start Playoffs button; a league nominates the NFL
+   * week they take over, and finalize seeds the bracket when it arrives. That adds one
+   * key to playoffConfig, so - like the scoring split before it - the state shape is no
+   * longer byte-identical to the artifact's.
+   *
+   * It does not change a single number in the simulation below: the harness calls
+   * startPlayoffs directly, exactly as the artifact does, and `startNflWeek` stays null
+   * throughout, which `playoffsDueToStart` reads as "never". So this is a shape
+   * difference and nothing more, and the season still has to match number for number. */
+  const ADDED_PLAYOFF_KEYS = ["startNflWeek"];
+
+  /** A state with only the added config keys removed - the six from the 2026-08-28
+   * scoring split, and the playoff start week from 2026-09-07. Everything else - every
+   * score, every ranking, every cumulative total, the champion - must still match the
+   * artifact exactly, and does. */
   const withoutSplitKeys = (state) => {
-    const out = { ...state, scoringConfig: { ...state.scoringConfig } };
+    const out = {
+      ...state,
+      scoringConfig: { ...state.scoringConfig },
+      playoffConfig: { ...state.playoffConfig },
+    };
     for (const key of SPLIT_SCORING_KEYS) delete out.scoringConfig[key];
+    for (const key of ADDED_PLAYOFF_KEYS) delete out.playoffConfig[key];
     return out;
   };
 
@@ -419,9 +438,14 @@ describe("parity with the original artifact", () => {
       /* The simulation enters the artifact's combined `yards` / `tds` lines throughout,
        * so every stat line here takes the frozen legacy branch. A full season and a
        * playoff run to a champion therefore still come out identical, number for number
-       * - the six added scoringConfig keys are the ONLY difference in the end state.
-       * This is the assertion that proves the 2026-08-28 split did not disturb the game
-       * for anything recorded before it. */
+       * - the added config keys are the ONLY difference in the end state.
+       *
+       * THIS IS ALSO WHAT PROVES THE 2026-09-07 DECIMAL CHANGE (OQ-15) LEFT HISTORY
+       * ALONE. Decimals were added to the SPLIT path only; the legacy branch still
+       * floors, exactly as the artifact does. Scott's answer was to leave finished weeks
+       * alone, and a whole season replaying to the same champion, with the same weekly
+       * results, is that answer holding. The new per-category math is covered in
+       * tests/scoring.test.js instead. */
       expect(withoutSplitKeys(newEnd)).toEqual(legacyEnd);
       expect(newEnd.playoffConfig.champion).toBe(legacyEnd.playoffConfig.champion);
       expect(newEnd.weeklyResults).toEqual(legacyEnd.weeklyResults);

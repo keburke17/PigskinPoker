@@ -49,6 +49,16 @@ Each has a recommendation so you have something to say yes or no to.
 > feature: the two things it changes about playing in the league - a real scheme deadline
 > and an unattended finalize - are written out in full below, along with two defaults
 > chosen rather than asked for. **The honest gap is that nobody is notified** (OQ-6).
+>
+> **Answered 2026-09-07 by Scott - two rules changes, both his own.** **OQ-15: scoring
+> carries decimals.** A yard now counts for the fraction of a point it is worth, so 58
+> rushing yards is 5.8 rather than 5, and the split categories stop throwing away every
+> partial ten twice over. **OQ-16: the playoffs start themselves** at an NFL week the
+> league nominates, and the Start Playoffs button is gone - it could not survive the
+> weekly cycle running on a clock, which would deal week 16 rosters to teams that had
+> already missed the cut. Both are recorded in full below. Finished weeks do not move:
+> decimals apply to the split scoring path only, and every line recorded before the
+> 2026-08-28 split still scores exactly as it did.
 
 ---
 
@@ -1230,3 +1240,155 @@ schedule, and a league playing the `weekly` lineup lock freezes every lineup on 
 - but writing stats still waits on the commissioner pressing Lock Rosters, which is a
 separate, manual lock. Whether the clock should be allowed to open the stats window is
 his call, and nothing was built either way.
+
+
+---
+
+### OQ-15. Should a yard be worth a fraction of a point? **[ANSWERED 2026-09-07: yes, to one decimal]**
+
+**The complaint.** Scott: "right now as it reads (if i am reading this correctly), a
+player with 55 yards total is 5 points and a player with 58 yards total is 5 points. it
+should be 5.5 and 5.8 since technically the 58 yards is more than 55 and it would help to
+clear up point totals overall at the end of the week so they are very easily read."
+
+He read it right, and the split categories made it worse than he thought. Since the
+2026-08-28 split each category floored on its own, so the yards were thrown away twice:
+
+- **1 point per 10 rushing and receiving yards, a player with 5 rushing and 5 receiving.**
+  Rushing floored to 0. Receiving floored to 0. **He scored nothing at all.**
+- Scott's own expectation: 0.5 + 0.5 = **1 point**. And 5 rushing with 6 receiving = **1.1**.
+
+**ANSWERED 2026-09-07. Scott: "the scoring should include decimal points. this makes the
+game easier to follow ... that way the team gets credit for the yard rather than a player
+having to reach another 9 yards to make it a full 2 points."**
+
+Asked how precise, he chose **one decimal place**.
+
+**What it does to the league.** Every score from here on is finer-grained, and two things
+follow that are worth saying out loud:
+
+1. **Ties get rarer.** Two teams landing on the same total was common with whole numbers;
+   at one decimal it is unusual. The six tiebreakers still work, they will just be needed
+   less. Nothing about them changed.
+2. **The season has a seam in it.** Weeks already finalized keep the whole numbers everyone
+   saw - see below - so a season that switches mid-way reads as whole-number weeks
+   followed by decimal ones. That was the deliberate choice, not an oversight.
+
+**Finished weeks do not move.** Asked what should happen to weeks already played, Scott
+chose to leave them alone. In code that is exact rather than approximate: decimals were
+added to the SPLIT scoring path only, and the legacy path - every stat line recorded
+before 2026-08-28, which is what `tests/parity.test.js` replays - still floors exactly as
+the artifact did. A full simulated season still comes out identical to the artifact's,
+number for number, which is the proof that no finished week moved.
+
+Where it lives: `computeStarterPoints` and `roundPoints` in `src/engine/scoring.js`;
+rounded once on the player's total, and again on the team's, because twelve exact tenths
+still sum to 40.99999999999999 in binary floating point. Covered by `tests/scoring.test.js`,
+including both of Scott's own examples.
+
+---
+
+### OQ-16. Should the playoffs wait for a button? **[ANSWERED 2026-09-07: no - they start on a set week]**
+
+**The bug Scott found, in his words.** "if the league was to start playoffs in week 16 ...
+the comish would not be able to click that button in time to start playoffs after week 15
+ends. week 15 would end, new rosters would automatically be dealt out at 6 am tuesday
+morning for week 16 to all teams in the league. then if the commish hit 'start playoffs'
+the rosters are already dealt, and multiple teams that are not in playoff contention would
+have rosters. which shouldnt happen."
+
+He is right, and it is worse than one week. `server/autoCycle.js` stopped dealing at
+**week 18** and left the playoffs to the commissioner, so a league starting its playoffs at
+week 16 would have had **16, 17 and 18** dealt to every team before anyone could intervene.
+The Start Playoffs button and the automatic weekly cycle (OQ-14, shipped the day before)
+could not both exist.
+
+**ANSWERED 2026-09-07. Scott: "the playoff settings tab should have a week set for playoffs
+to start in and it should have an additional setting to select the number of teams who make
+the playoffs, as well as the format for how teams advance ... it should save and be set that
+way for the season rather than having to click a button to 'start playoffs'. that button to
+start playoffs should just be erased from the game entirely as it would serve no purpose."**
+
+**The week is an NFL week**, not the league's own counter. Scott: "if the league selects to
+have playoff start in week 16, that would be week 16 of the nfl season." A league that
+joined in NFL week 3 calls that its week 3, so the two differ and the football calendar
+decides.
+
+**What it does to the league.**
+
+1. **The decision moved to finalize, not to the scheduler.** The bracket is seeded the
+   moment the previous week is scored, whichever hand scored it - the clock at 6am Tuesday
+   or the commissioner on Monday night. Putting it in the scheduler instead would have left
+   every league with automation switched off unable to reach the playoffs at all once the
+   button was gone.
+2. **Teams that miss the cut are never dealt a roster.** That is the whole point, and
+   `tests/playoffs.test.js` asserts it directly.
+3. **An unset week means the playoffs never start.** There is no button to fall back on.
+   This is a real trap, so it is guarded in two places rather than left to memory: the
+   league setup checklist carries it as a step that will not tick, and the Playoffs panel
+   says so in as many words. Every league created before this change has a null week and
+   will need one set.
+4. **The settings lock once the bracket is live**, so a size or a ladder cannot be re-cut
+   around teams already playing in it.
+
+**A bracket has to fit.** Scott raised it himself: "if there are 8 teams making playoffs
+and the format is 8, 4, 2, 1 you would need at least 3 weeks of playoffs to be played, that
+could mean playoffs start in week 14 or 15 or 16." A ladder of 8, 4, 2, 1 is three weeks of
+football, not four - nobody plays a round to stay champion. The panel does that arithmetic
+on screen and warns when a bracket would run past week 18.
+
+Where it lives: `playoffsDueToStart` and `seedPlayoffBracket` in `src/engine/standings.js`,
+`savePlayoffSettings` and `playoffWeekSpan` in `src/engine/playoffs.js`,
+`seasons.playoff_start_nfl_week` from `supabase/migrations/20260908000000_playoff_start_week.sql`.
+The `startPlayoffs` server route and its storage plumbing are gone; the engine function of
+that name survives only as the seam `tests/parity.test.js` replays the artifact through.
+
+
+---
+
+### OQ-17. A failed write leaves the league half-changed. **[FOUND 2026-09-08 - one for Kyle]**
+
+**How it surfaced.** Scott played test weeks locally the day after OQ-15 shipped and hit:
+
+> couldn't save that change. upsert period_results: invalid input syntax for type integer: "26.2"
+
+The immediate cause was a column that had been missed - `period_results.raw_score` was still
+an `integer` after scoring gained decimals, fixed by
+`supabase/migrations/20260908010000_raw_score_decimal.sql`. That part is closed.
+
+**The part that is still open is what the failure DID.** `persistBlob` in `server/league.js`
+walks the tables in order and upserts each one on its own:
+
+```js
+for (const table of WRITABLE) {
+  ...
+  const { error } = await db.from(table).upsert(rows, { onConflict: "id" });
+  if (error) throw new Error("upsert " + table + ": " + error.message);
+}
+```
+
+There is no transaction around the loop. `periods` is written before `period_results`, so
+when the second one threw, the first had already committed. Scott's league advanced three
+weeks with **no results rows behind them** - the Scoreboard showed nothing for weeks 3, 4
+and 5 while the app cheerfully offered to deal week 6. Two facts that must always agree -
+"this week is finalized" and "this week has results" - had silently come apart, and the only
+sign was an error banner about a different thing.
+
+**Why it has not bitten before.** Every previous failure in that loop was an authorization
+or version conflict, and those are refused by `guard()` before any table is touched. A
+mid-loop failure needs a write that is legal, passes every check, and is then rejected by
+the database itself - which, until a column type went stale, essentially could not happen.
+
+**Recommendation, and it is Kyle's call because it is his layer.** Wrap the whole decompose
+write in one Postgres function and call it over RPC, so the loop either lands completely or
+not at all. supabase-js cannot open a transaction across separate `.upsert()` calls, so this
+is a schema change rather than a client one. The alternative - ordering the tables so the
+most fragile writes go first - only narrows the window and would have to be re-reasoned
+every time a table is added.
+
+**Until then**, a write that dies mid-loop needs the league restored from the previous state
+rather than retried, and the retry banner ("Save failed - retrying automatically") is
+actively misleading in that case: it retries a write whose earlier half already succeeded.
+
+Not urgent for a league that is not yet live on this branch, and squarely in the way of one
+that is.
