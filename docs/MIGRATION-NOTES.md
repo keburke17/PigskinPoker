@@ -2056,7 +2056,11 @@ refuses it. `persistBlob` has no transaction, so the team row is already gone wh
 is raised - the same partial-write shape as the decimal `raw_score` failure recorded above.
 Verified against `origin/main` to be older than this change rather than caused by it, and
 left alone: what *should* happen to a removed team's finished weeks is a designer question,
-not a technical one. Recorded as item 5 in `docs/FOR-THE-DESIGNER.md`.
+not a technical one. Raised as issue #70 and recorded as item 5 in
+`docs/FOR-THE-DESIGNER.md`. The measured shape: six teams and six Week 1 results before,
+five and five after, with the team row already gone when the foreign key raised - and a
+retry then succeeds cleanly, so it reads on screen as a spurious error rather than as a
+week's record being destroyed.
 
 **What this does not undo.** Weeks finalized before the fix have already lost their stat
 lines, rosters and schemes; only `period_results` remains for them. `decompose.js`'s header

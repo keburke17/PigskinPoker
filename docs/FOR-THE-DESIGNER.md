@@ -505,7 +505,7 @@ that back, say so and it gets built properly - reading the database, not the bro
 ### 5. Remove Team fails once that team has played a week
 
 Found on 2026-09-08 while writing the tests for (1), and confirmed to be older than that
-fix rather than caused by it. Removing a team that has already finished a week errors part
+fix rather than caused by it. Tracked as issue #70. Removing a team that has already finished a week errors part
 of the way through, and it does not tidy up after itself: the team row is gone by the time
 the error happens, so you are left half-removed rather than back where you started.
 
