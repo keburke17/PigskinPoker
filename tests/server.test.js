@@ -511,6 +511,162 @@ gate()("the weekly cycle, server-side", () => {
   });
 });
 
+gate()("issue #56: a blob write only deletes what the blob can speak for", () => {
+  beforeEach(() => resetDemo());
+
+  /* THE BUG THESE EXIST FOR.
+   *
+   * `persistBlob` deleted every row of a writable table that was absent from the
+   * decomposed blob, and `decomposeLeague` can only ever describe the CURRENT period -
+   * the app-state shape the engine hands back has nowhere to put a finished week's
+   * per-slot detail. So finalizing a week took it from eighteen stat lines to none,
+   * keeping only the aggregates in period_results: nothing left to check a wrong number
+   * against, on the ordinary path, every week, in every league. Schemes went the same
+   * way despite OQ-9 deliberately retaining them.
+   *
+   * It was found on 2026-09-07 while working out what the clock in OQ-14 would be
+   * committing unattended, and written up as issue #56. `replaceLeague` had no test at
+   * all, which is why the admin-tool half of it went unnoticed for so long; there is one
+   * below now. */
+
+  const weekPeriod = async (number) => {
+    const { data } = await db
+      .from("periods").select("id").eq("type", "week").eq("number", number).maybeSingle();
+    return data?.id ?? null;
+  };
+  const countIn = async (table, periodId) => {
+    const { data } = await db.from(table).select("id").eq("period_id", periodId);
+    return (data ?? []).length;
+  };
+
+  it("keeps a finished week's stat lines and rosters through an ordinary finalize", async () => {
+    const token = await asCommissioner();
+    const week2 = await weekPeriod(2);
+
+    const statsBefore = await countIn("stat_lines", week2);
+    const slotsBefore = await countIn("roster_slots", week2);
+    expect(statsBefore).toBeGreaterThan(0);
+    expect(slotsBefore).toBeGreaterThan(0);
+
+    const fin = await ops.finalizePeriod(db, { leagueId, token });
+    expect(fin.status).toBe(200);
+
+    // The week really did finish - otherwise the assertions below prove nothing.
+    const { data: p } = await db.from("periods").select("phase").eq("id", week2).maybeSingle();
+    expect(p.phase).toBe("finalized");
+    expect(await countIn("period_results", week2)).toBeGreaterThan(0);
+
+    // ...and the detail behind those aggregates is still there. Was 0 and 0.
+    expect(await countIn("stat_lines", week2)).toBe(statsBefore);
+    expect(await countIn("roster_slots", week2)).toBe(slotsBefore);
+  });
+
+  it("keeps a resolved scheme through the finalize that follows it (OQ-9)", async () => {
+    const token = await asCommissioner();
+
+    await ops.finalizePeriod(db, { leagueId, token });                  // week 2 -> week 3
+    const dealt = await ops.dealPeriod(db, { leagueId, token, refresh: false });
+    expect(dealt.status).toBe(200);
+
+    const mgr = await asManager(T1);
+    const qb = dealt.body.view.teams.find((t) => t.id === T1).roster.starters.QB;
+    const sub = await ops.submitScheme(db, {
+      leagueId, token: mgr, teamId: T1, scheme: { type: "block", position: "QB", playerId: qb },
+    });
+    expect(sub.status).toBe(200);
+
+    expect((await ops.processSchemes(db, { leagueId, token })).status).toBe(200);
+    const { data: resolved } = await db.from("schemes").select("id, resolved_at, outcome");
+    expect(resolved.length).toBe(1);
+    expect(resolved[0].resolved_at).toBeTruthy();
+
+    /* The point of OQ-9: the row is retained rather than deleted, so the history is
+     * queryable once the gate opens. The very next blob write used to remove it - and
+     * finalize is a blob write. */
+    expect((await ops.finalizePeriod(db, { leagueId, token })).status).toBe(200);
+    const { data: after } = await db.from("schemes").select("id, resolved_at");
+    expect(after.length).toBe(1);
+    expect(after[0].resolved_at).toBeTruthy();
+  });
+
+  /* `replaceLeague` is the whole-blob write behind every ops.mutate() call - renaming a
+   * team, adding a player, editing the scoring. It had NO test, and it is the half of
+   * this that docs/FOR-THE-DESIGNER.md reports as "commissioner admin tools throw away
+   * schemes and past weeks". */
+  it("replaceLeague: renaming a team keeps past weeks and pending schemes", async () => {
+    const token = await asCommissioner();
+    const week2 = await weekPeriod(2);
+
+    const statsBefore = await countIn("stat_lines", week2);
+    const slotsBefore = await countIn("roster_slots", week2);
+
+    await ops.finalizePeriod(db, { leagueId, token });                  // week 2 -> week 3
+    const dealt = await ops.dealPeriod(db, { leagueId, token, refresh: false });
+    const mgr = await asManager(T1);
+    const qb = dealt.body.view.teams.find((t) => t.id === T1).roster.starters.QB;
+    expect((await ops.submitScheme(db, {
+      leagueId, token: mgr, teamId: T1, scheme: { type: "block", position: "QB", playerId: qb },
+    })).status).toBe(200);
+
+    const blob = JSON.parse(JSON.stringify(dealt.body.view));
+    delete blob._meta;
+    /* THE BLINDNESS IS THE POINT, so reproduce it rather than sending the server's
+     * fuller picture. A browser cannot read an unresolved scheme - the RLS gate opens
+     * only once resolved_at is set (OQ-9, tests/rls.test.js) - so the blob it sends back
+     * genuinely carries none, and it never held a past week's rosters at all. */
+    blob.schemes = {};
+    blob.teams.find((t) => t.id === T1).name = "Renamed Mid-Week";
+
+    const r = await ops.replaceLeague(db, { leagueId, token, blob });
+    expect(r.status).toBe(200);
+
+    // The edit landed...
+    const { data: team } = await db
+      .from("teams").select("name").eq("league_id", leagueId).eq("legacy_id", T1).maybeSingle();
+    expect(team.name).toBe("Renamed Mid-Week");
+
+    // ...and took nothing with it. All three were emptied before the fix.
+    expect((await db.from("schemes").select("id")).data.length).toBe(1);
+    expect(await countIn("stat_lines", week2)).toBe(statsBefore);
+    expect(await countIn("roster_slots", week2)).toBe(slotsBefore);
+  });
+
+  /* The other side of the same fix: scoping the delete pass must not quietly turn it
+   * into a no-op that leaves orphans behind. A player the blob genuinely dropped still
+   * goes - `players` is a table the blob really is authoritative for, and the pool is
+   * carried whole. */
+  it("still deletes a player the blob dropped", async () => {
+    const token = await asCommissioner();
+    const week2 = await weekPeriod(2);
+    const statsBefore = await countIn("stat_lines", week2);
+
+    const blob = hydrate(await fetchLeagueRows(db, leagueId));
+    delete blob._meta;
+    blob.schemes = {};
+
+    /* A free agent, so the delete cannot be confused with a cascade off a roster slot
+     * or a scheme - and so it exercises the unscoped branch of the pass on its own. */
+    const rostered = new Set();
+    blob.teams.forEach((t) => {
+      if (!t.roster) return;
+      Object.values(t.roster.starters).forEach((id) => id && rostered.add(id));
+      t.roster.bench.forEach((id) => id && rostered.add(id));
+    });
+    const free = blob.playerPool.find((p) => !rostered.has(p.id));
+    expect(free).toBeTruthy();
+    blob.playerPool = blob.playerPool.filter((p) => p.id !== free.id);
+
+    const r = await ops.replaceLeague(db, { leagueId, token, blob });
+    expect(r.status).toBe(200);
+
+    const { data: still } = await db
+      .from("players").select("id").eq("league_id", leagueId).eq("legacy_id", free.id);
+    expect(still.length).toBe(0);
+    // ...and the week's detail is still not collateral.
+    expect(await countIn("stat_lines", week2)).toBe(statsBefore);
+  });
+});
+
 
 
 

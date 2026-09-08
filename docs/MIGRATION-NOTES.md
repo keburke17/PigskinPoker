@@ -1999,3 +1999,77 @@ Scott confirming Reset stayed. His agreement to remove it came the same day, rel
 Kyle, and softly - "he seems fine with it." Recorded that way in OQ-18's follow-up rather
 than as a second direct answer, so the file does not gain false precision about a decision
 that flipped inside a day.
+
+### The delete pass stopped speaking for rows it cannot see (2026-09-08, issue #56)
+
+Finalizing a week deleted every `stat_lines` row for it. Measured against the local demo
+league, finalizing Week 2 went from eighteen stat lines to none, keeping only the six
+aggregate rows in `period_results` - rank, raw score, standings points, tds, yards, best
+player. The per-slot detail behind those numbers was gone, so there was no way to see,
+check or correct what an individual player had scored in a finished week. `roster_slots`
+and `schemes` went the same way in the same write.
+
+**The seam, and which side of it is ours.** The blob-shaped write is the artifact's:
+`window.storage.set(LEAGUE_KEY, JSON.stringify(s), true)`, legacy line 2187. One key, the
+whole state, on every change - and no delete pass, because there is nothing to delete.
+Overwriting the key *is* the state, so anything absent from the object stops existing by
+construction. The port kept that call shape and put it on top of tables whose rows have
+independent lifetimes. `persistBlob`'s delete pass is ours, added with the Supabase adapter
+in `538234b`. Under `window.storage`, "absent from the blob" meant *was never there*. Under
+Postgres we made it mean *delete this row*, and the blob is structurally incapable of
+speaking for a finished week - `decomposeLeague` emits `roster_slots` and `stat_lines` for
+the CURRENT period only, because the artifact's state shape has nowhere else to put them,
+and `finalizeCurrentPeriod` clears `statsEntry`, clears `schemes` and nulls every roster as
+it rolls to the next week. We told the delete pass to read incompleteness as intent.
+
+**Schemes were not merely incomplete, they were invisible.** Their RLS policy opens only
+once `resolved_at` is set (OQ-9), so a blob built in a browser - which is every
+`replaceLeague` call, and so every `ops.mutate` - can never carry an unresolved scheme, and
+`hydrate` drops the resolved ones deliberately. No blob from any caller can describe a
+scheme row. So schemes are not deletable through `persistBlob` at all now, rather than
+scoped like the other two. Nothing needs them to be: a manager changing a scheme upserts on
+`(period_id, team_id)`, and removing a team or a player reaches them through the foreign
+key's `on delete cascade`, not through this pass.
+
+**Two paths, one bug, and only one of them was suspected.**
+`docs/FOR-THE-DESIGNER.md` had carried this since 2026-08-27 as "commissioner admin tools
+throw away schemes and past weeks" - correct about the cause, too narrow about the reach. It
+happens on the ordinary, correct path too: every finalize, by every commissioner, doing
+nothing unusual. That half was found on 2026-09-07 while working out what the clock in OQ-14
+would be committing unattended, which is what makes it sharper than it reads - a finalize
+cannot be undone, and until now it deleted the evidence needed to work out whether its own
+result was right, in the same write.
+
+**Tests.** Four, in `tests/server.test.js`. Three of them fail on the previous code with
+exactly the numbers the issue reported (`expected 0 to be 18`): a finished week keeps its
+stat lines and rosters through an ordinary finalize; a resolved scheme survives the finalize
+after it, which is OQ-9's retention actually holding; and a `replaceLeague` rename keeps past
+weeks and pending schemes. The fourth guards the other direction - a player the blob really
+did drop is still deleted - so the fix cannot be a delete pass quietly turned off.
+`replaceLeague` had no test of any kind before this, which is why the admin-tool half went
+unnoticed for six weeks.
+
+**The bug found on the way, and it is older.** Removing a team that has already finished a
+week fails: the `teams` delete lands first, then `period_results` is upserted from
+`weeklyResults`, which still lists that team for the weeks it played, and the foreign key
+refuses it. `persistBlob` has no transaction, so the team row is already gone when the error
+is raised - the same partial-write shape as the decimal `raw_score` failure recorded above.
+Verified against `origin/main` to be older than this change rather than caused by it, and
+left alone: what *should* happen to a removed team's finished weeks is a designer question,
+not a technical one. Raised as issue #70 and recorded as item 5 in
+`docs/FOR-THE-DESIGNER.md`. The measured shape: six teams and six Week 1 results before,
+five and five after, with the team row already gone when the foreign key raised - and a
+retry then succeeds cleanly, so it reads on screen as a spurious error rather than as a
+week's record being destroyed.
+
+**What this does not undo.** Weeks finalized before the fix have already lost their stat
+lines, rosters and schemes; only `period_results` remains for them. `decompose.js`'s header
+said the gap stopped "from the first period played on this schema" - it did not, and now it
+does.
+
+**What it does not answer.** Whether read-whole-league / modify / write-whole-league is the
+right persistence design at all is issue #58, and this fix is deliberately compatible with
+every option there. What it does not do is remove the class: the next table added to
+`decompose` inherits the same trap unless authority is declared rather than assumed, which
+is #58's option 2. Two tables in `persistBlob` now carry a hand-maintained scope, and
+nothing enforces that a third one added later gets the same thought.
