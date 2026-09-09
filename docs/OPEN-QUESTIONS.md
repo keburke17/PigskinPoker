@@ -1311,11 +1311,10 @@ answered:
   two lines if you want it back.
 - **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
   button and leave the engine field, or take the rule off the board. Recommendation: hide.
-- **OQ-25**, whether a player on a bye should be dealt at all. **Raised by Scott himself on
-  2026-09-08** while looking at the OQ-24 mockups, and the most consequential thing on this
-  list: BYE already keeps a player out of the deal, but nothing ever SETS it, so in a real bye
-  week forty-odd guaranteed-zero cards go into the deal. Answering yes shrinks the dealable
-  pool by about a sixth in those weeks. Nothing was changed either way.
+- **OQ-25 is answered and built** - raised by Scott on 2026-09-08 while looking at the OQ-24
+  mockups, and answered by him the same day: a player whose NFL team has no game is not
+  dealt, stolen or redrawn, and comes back by himself the week his team plays. The dealable
+  pool is about a sixth smaller in peak bye weeks. **Nothing is left open on it.**
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
   kind of like that? but maybe we table that one for now until we hash out all the other
   small issues we need to clean up first." Raise it again when the Phase 4 stage list is
@@ -1856,7 +1855,7 @@ repository is one rename away from the screens and the schedule reader disagreei
 
 ---
 
-### OQ-25. Should a player on a bye be dealt at all? **[FOUND 2026-09-08 - one for Scott]**
+### OQ-25. Should a player on a bye be dealt at all? **[ANSWERED 2026-09-08: no - not dealt, not stolen, not redrawn]**
 
 Raised by Scott the moment he saw the mockups: **"kittle should not be rostered with no game
 being played. he should be in the 'bye' pool of players right?"**
@@ -1899,12 +1898,56 @@ information is now sitting in `periods.kickoffs` at the moment a week is dealt.
 - **It is a genuine rules change**, so it needs the parity test updated to record the
   difference, and `LegacyProject/` will disagree with it forever.
 
-**Not built. Nothing was changed either way** - this is recorded exactly as found, per the
-rule about game logic in CLAUDE.md.
+**ANSWERED THE SAME DAY IT WAS RAISED.** Scott: **"yes the deal should skip a player who has
+no game scheduled. they cannot be redrawn, stolen, or dealt to teams at all. once they have
+a game scheduled they will resume being placed in the deal."**
 
-**The question for Scott:** should dealing skip a player whose NFL team has no game that
-week - automatically, from the schedule? And if yes: should the same apply to steals and
-redraws mid-week, or only to the Tuesday deal?
+So it is all three doors, not just the Tuesday deal - which is the wider of the two answers
+the question offered, and the right one: shutting only the deal would have left a redraw
+free to hand somebody a guaranteed zero, and that is where the sting was worst. A redraw is
+a manager's one action for the week, spent on purpose.
+
+**Built 2026-09-08, and the consequence was stated before it was built:** in the thick of
+the bye season the dealable pool is about a sixth smaller, thinnest at Coach and QB where
+each NFL team contributes exactly one - 32 becomes 26. Every team still gets a full hand of
+12; there is simply less variety in those weeks. Scott heard that and said go.
+
+**Derived, never stored, which is what makes the second half of his sentence free.** The
+alternative was to write BYE onto forty players' status rows every Tuesday and clear them
+again the week after. Instead the schedule is asked each time the question comes up
+(`src/engine/availability.js`), so a player is back in the deal the moment his team has a
+game, with nothing to remember to undo and no way to get stuck. It also leaves the BYE
+status as exactly what it always was - a commissioner's manual override - rather than
+turning it into something a robot writes.
+
+**The two ways of knowing nothing both deal the player, deliberately:**
+
+- **The week's schedule has not been read.** Every player then looks exactly like a player
+  on a bye, so filtering would deal nobody at all. The deal behaves as it did before this
+  rule existed. Same principle as the lineup lock: never act on a guess.
+- **The player is on a team the schedule cannot speak about.** A commissioner can type any
+  team he likes when he adds a rookie by hand, and a typo would otherwise remove that
+  player from every deal forever with nothing on screen saying why.
+
+**The subtle half was not the rule, it was the ORDER.** A week's kickoff times used to be
+read AFTER the deal, in `afterPersist` - harmless while they only fed the lineup lock, which
+does not start mattering until Thursday. Left there, the deal would have filtered against
+last week's schedule and this rule would have silently never fired on the first deal of a
+new week, which is every deal. `tests/server.test.js` has a test for that ordering against
+the real database, because nothing in the engine could have caught it.
+
+**What it changed on screen.** The Free Agents BYE tab fills itself now - it used to list
+only players a commissioner had flagged by hand, which meant it sat empty all season while
+forty players a week sat out. Bye players no longer appear under QB / WR / RB / TE / Coach,
+because no scheme can reach them and listing them would be the screen offering something the
+rules refuse.
+
+**Parity.** Every dealt roster still matches the artifact on every seed, because the parity
+fixture has no schedule and the rule does not fire without one. What DID diverge is the
+wording of five refusal messages ("Active" became "available", and the count now names the
+byes), and `tests/parity.test.js` records that plus an explicit test of the divergence
+itself - six teams on a bye, dealt against both engines, ours excluding them on every seed
+and the artifact happily handing them out.
 
 *Numbered OQ-24 and OQ-25 rather than OQ-23: written on 2026-09-08 against a main that ended
 at the repeat-block ruling, while OQ-23 (all of league setup on one page) was open on
