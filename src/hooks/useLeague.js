@@ -21,6 +21,7 @@ import { loadIdentity, saveIdentity } from "../storage/index.js";
 import { isAmbiguousRead } from "../storage/types.js";
 import { createWriteQueue } from "../storage/writeQueue.js";
 import { vkey } from "../storage/hydrate.js";
+import { failureBanner } from "./opError.js";
 
 const MAX_LOAD_ATTEMPTS = 3;
 
@@ -220,13 +221,16 @@ export function useLeague(store) {
         key: result.key,
         message: "Someone else just updated the league - reloaded.",
       });
-    } else if (result.reason === "phase") {
-      setOpError({ headline: result.message, detail: null });
-    } else if (result.reason === "locked" || result.reason === "invalid") {
-      setOpError({ headline: result.message, detail: null });
-    } else if (result.reason === "network") {
-      setOpError({ headline: "Couldn't save that change.", detail: result.message });
+      return;
     }
+    /* EVERY OTHER REFUSAL BECOMES A BANNER, which used not to be true.
+     *
+     * This was a chain of else-ifs ending at `network` with nothing after it, so
+     * `forbidden`, `unauthorized`, `throttled` and the server's `unlocked` fell off the
+     * end in silence - the change did not happen, the server's view replaced it, and
+     * the screen said nothing. See src/hooks/opError.js, which now owns the wording and
+     * is where the reasoning lives. */
+    setOpError(failureBanner(result));
   }, []);
 
   const versions = () => viewRef.current?._meta?.versions ?? {};
@@ -371,6 +375,15 @@ export function useLeague(store) {
       return r;
     },
     [store, immediate, refreshSchemeStatus]
+  );
+
+  /* Naming a team. A manager's own, or any of them if the commissioner is asking - the
+   * server settles which (renameTeam in server/operations.js). It is a fine-grained
+   * write like the two above rather than an ops.mutate(), because mutate() is the
+   * commissioner-only whole-blob write and a manager's rename could never get past it. */
+  const renameTeam = useCallback(
+    (teamId, name) => immediate("renameTeam:" + teamId, () => store.renameTeam(teamId, name)),
+    [store, immediate]
   );
 
   const toggleRosterLock = useCallback(
@@ -519,6 +532,7 @@ export function useLeague(store) {
       toggleSlotLock,
       swapLineupSlot,
       submitScheme,
+      renameTeam,
       toggleRosterLock,
       dealPeriod,
       refreshPlayerPool,

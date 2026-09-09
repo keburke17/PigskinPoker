@@ -921,6 +921,50 @@ export async function submitScheme(db, { leagueId, token, teamId, scheme, expect
 }
 
 /**
+ * Rename a team.
+ *
+ * A manager's OWN team, or any team in the league when the commissioner asks - the same
+ * `canActForTeam` question the lineup and the scheme ask, so one route serves both the
+ * button on My Team and the field on Manage Teams.
+ *
+ * IT NEEDED A ROUTE AT ALL because both of those buttons used to go through
+ * `ops.mutate`, which sends the whole league blob to `replaceLeague`. That is
+ * commissioner-only on purpose - the blob can rewrite the pool, the scoring and every
+ * team - so a MANAGER renaming his own team was refused every single time, and the
+ * refusal was then dropped by the client rather than shown: the editor closed, the old
+ * name came back, and nothing said why. Found on 2026-09-09. The other half of that bug
+ * is in src/hooks/opError.js.
+ *
+ * NO PHASE RULE, deliberately. There is no week in which naming your own team is
+ * illegal, and a name cannot move a point - it is not roster state, so a rename
+ * mid-week takes nothing with it.
+ *
+ * NO VERSION KEY either, for the same reason a coach's name has none (see setCoach):
+ * last writer wins on a label, and two people renaming one team in the same second is
+ * not a race worth a column.
+ */
+export async function renameTeam(db, { leagueId, token, teamId, name }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  const team = teamRow(ctx.rows, teamId);
+  if (!team) return fail(404, "Unknown team.");
+  if (!canActForTeam(ctx.session, team.id)) {
+    return fail(AUTH_ERRORS.notYourTeam.status, AUTH_ERRORS.notYourTeam.error);
+  }
+
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return fail(400, "Give your team a name.");
+  if (trimmed.length > 80) return fail(400, "That team name is too long.");
+
+  const { error } = await db
+    .from("teams")
+    .update({ name: trimmed, version: team.version + 1 })
+    .eq("id", team.id);
+  if (error) return fail(500, error.message);
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
  * WHICH teams have a scheme in for the current week - and nothing else about it.
  *
  * The commissioner's Weeks panel has always offered to show "N of M teams have
