@@ -1952,3 +1952,47 @@ and the artifact happily handing them out.
 *Numbered OQ-24 and OQ-25 rather than OQ-23: written on 2026-09-08 against a main that ended
 at the repeat-block ruling, while OQ-23 (all of league setup on one page) was open on
 `scott/one-screen-league-setup` the same evening. Keep both when they merge.*
+
+---
+
+### OQ-26. Who is allowed to name a team? **[FOUND 2026-09-09 - FIXED: the manager names his own]**
+
+**Found by Kyle, playing as a manager.** The **Rename** button on **My Team** took a new
+name and then quietly put the old one back. It had never worked for a manager - only for the
+commissioner, whose identical button on Manage Teams went through the same code and passed
+the permission check it failed.
+
+**The decision, and it is the only part of this that is yours to reverse.** A manager may now
+rename his own team, whenever he likes, without asking the commissioner. The commissioner can
+still rename any team in the league, and his rename wins simply by being the later one.
+Nobody can rename anybody else's team.
+
+**Why that was the obvious reading rather than a new rule.** The button was already there, on
+the manager's own screen, saying Rename. Nothing in the rules or the app ever said a team name
+was the commissioner's to hand out - the capability was advertised and then refused by
+accident. If you would rather team names were the commissioner's alone, say so and the button
+comes off the manager's screen; that is a smaller change than the one just made.
+
+**Worth knowing about the timing.** A rename takes effect immediately, mid-week included, and
+the new name appears in the standings and on the scoreboard for the week in progress and for
+every week already played - the league stores one name per team, not one per week. So a team
+that won Week 2 under one name shows Week 2 under the new one. That is how the commissioner's
+rename has always behaved; it is only now reachable by more people.
+
+**The activity feed is the one exception, and it is the right way round.** An entry already
+written keeps the old name - "Gridiron Gamblers wins the Pigskin Poker championship" was a
+sentence composed the day it happened (`src/engine/standings.js`), not a lookup. So the feed
+reads as a record of what was said at the time while everything else shows the team as it is
+now. Nothing was done to make that true; it is worth knowing before somebody reads it as an
+inconsistency and "fixes" it.
+
+**A name cannot touch a score.** Nothing in `src/engine/` reads a team name - the same
+argument that lets the head-coach list write across leagues (OQ-4e). It is a label.
+
+*The technical half - why it was broken, and the second bug found underneath it, where the
+app was throwing away refusals without showing them - is in `docs/MIGRATION-NOTES.md` under
+"A manager could not rename his own team".*
+
+*Numbered OQ-26 rather than OQ-23: this was written on 2026-09-09 as OQ-23, which the note
+above shows was already spoken for by the league-setup question on
+`scott/one-screen-league-setup`. Renumbered on the rebase rather than left to collide.*

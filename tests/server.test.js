@@ -164,6 +164,20 @@ const asManager = async (teamLegacyId) => {
   return member("manager-" + teamLegacyId + "@example.test", "manager", team.id);
 };
 
+/* One finished week, and how much detail is hanging off it. Used by anything asserting
+ * that a write did NOT take a past week's rosters or stat lines with it - issue #56 for
+ * `replaceLeague`, and the rename above, which must never be able to. Module scope so
+ * both blocks can reach them. */
+const weekPeriod = async (number) => {
+  const { data } = await db
+    .from("periods").select("id").eq("type", "week").eq("number", number).maybeSingle();
+  return data?.id ?? null;
+};
+const countIn = async (table, periodId) => {
+  const { data } = await db.from(table).select("id").eq("period_id", periodId);
+  return (data ?? []).length;
+};
+
 
 
 gate()("authorization (fixes P2)", () => {
@@ -201,6 +215,81 @@ gate()("authorization (fixes P2)", () => {
     const r = await ops.swapLineupSlot(db, { leagueId, token, teamId: T2, slot: "QB", benchIndex: 1 });
     expect(r.status).toBe(403);
     expect(r.body.error).toMatch(/your own team/i);
+  });
+});
+
+/* Naming a team, which is the one write a MANAGER makes that is not about his roster.
+ *
+ * It had no route of its own until 2026-09-09: both rename buttons went through
+ * `replaceLeague`, the commissioner-only whole-blob write, so a manager pressing Rename
+ * on My Team was refused every time. He saw nothing - the client dropped a `forbidden`
+ * on the floor (src/hooks/opError.js) - and the old name simply came back.
+ *
+ * What is asserted here is the boundary the new route has to hold: your own team yes,
+ * anybody else's no, and the commissioner over all of them.
+ */
+gate()("renameTeam", () => {
+  beforeEach(() => resetDemo());
+
+  it("lets a manager rename his OWN team", async () => {
+    const token = await asManager(T1);
+    const r = await ops.renameTeam(db, { leagueId, token, teamId: T1, name: "Gridiron Gamblers II" });
+    expect(r.status).toBe(200);
+    expect(r.body.view.teams.find((t) => t.id === T1).name).toBe("Gridiron Gamblers II");
+
+    const { data: row } = await db
+      .from("teams").select("name").eq("league_id", leagueId).eq("legacy_id", T1).maybeSingle();
+    expect(row.name).toBe("Gridiron Gamblers II");
+  });
+
+  it("refuses a manager renaming SOMEBODY ELSE'S team", async () => {
+    const token = await asManager(T1);
+    const before = await db
+      .from("teams").select("name").eq("league_id", leagueId).eq("legacy_id", T2).maybeSingle();
+
+    const r = await ops.renameTeam(db, { leagueId, token, teamId: T2, name: "Renamed By A Rival" });
+    expect(r.status).toBe(403);
+    expect(r.body.error).toMatch(/your own team/i);
+
+    const after = await db
+      .from("teams").select("name").eq("league_id", leagueId).eq("legacy_id", T2).maybeSingle();
+    expect(after.data.name).toBe(before.data.name);
+  });
+
+  it("refuses a rename with no session at all", async () => {
+    const r = await ops.renameTeam(db, { leagueId, token: null, teamId: T1, name: "Nobody" });
+    expect(r.status).toBe(401);
+  });
+
+  it("lets the commissioner rename ANY team", async () => {
+    const token = await asCommissioner();
+    const r = await ops.renameTeam(db, { leagueId, token, teamId: T2, name: "Commissioner's Choice" });
+    expect(r.status).toBe(200);
+    expect(r.body.view.teams.find((t) => t.id === T2).name).toBe("Commissioner's Choice");
+  });
+
+  it("trims the name, and refuses a blank one", async () => {
+    const token = await asManager(T1);
+    expect((await ops.renameTeam(db, { leagueId, token, teamId: T1, name: "   " })).status).toBe(400);
+    expect((await ops.renameTeam(db, { leagueId, token, teamId: T1, name: "  Spaced Out  " })).status).toBe(200);
+    const { data: row } = await db
+      .from("teams").select("name").eq("league_id", leagueId).eq("legacy_id", T1).maybeSingle();
+    expect(row.name).toBe("Spaced Out");
+  });
+
+  it("takes nothing with it - a rename is not roster state", async () => {
+    /* The whole reason this is not a blob write. `replaceLeague` has to be careful
+     * about past weeks and unresolved schemes (see its own test below); one column on
+     * one row cannot touch either, and this pins that it does not start to. */
+    const token = await asManager(T1);
+    const week2 = await weekPeriod(2);
+    const statsBefore = await countIn("stat_lines", week2);
+    const slotsBefore = await countIn("roster_slots", week2);
+
+    expect((await ops.renameTeam(db, { leagueId, token, teamId: T1, name: "Still Here" })).status).toBe(200);
+
+    expect(await countIn("stat_lines", week2)).toBe(statsBefore);
+    expect(await countIn("roster_slots", week2)).toBe(slotsBefore);
   });
 });
 
@@ -528,16 +617,6 @@ gate()("issue #56: a blob write only deletes what the blob can speak for", () =>
    * committing unattended, and written up as issue #56. `replaceLeague` had no test at
    * all, which is why the admin-tool half of it went unnoticed for so long; there is one
    * below now. */
-
-  const weekPeriod = async (number) => {
-    const { data } = await db
-      .from("periods").select("id").eq("type", "week").eq("number", number).maybeSingle();
-    return data?.id ?? null;
-  };
-  const countIn = async (table, periodId) => {
-    const { data } = await db.from(table).select("id").eq("period_id", periodId);
-    return (data ?? []).length;
-  };
 
   it("keeps a finished week's stat lines and rosters through an ordinary finalize", async () => {
     const token = await asCommissioner();

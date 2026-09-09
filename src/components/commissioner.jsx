@@ -71,7 +71,7 @@ export function CommTeamRow({ team, onRenameTeam, onRemoveTeam }) {
         <label className="pp-label">Team Name</label>
         <div style={{ display: "flex", gap: 6 }}>
           <input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="pp-btn pp-btn-sm" onClick={() => onRenameTeam(team.id, name)}>Save</button>
+          <button className="pp-btn pp-btn-sm" disabled={!name.trim()} onClick={() => onRenameTeam(team.id, name)}>Save</button>
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

@@ -435,6 +435,12 @@ export function createSupabaseStore(config) {
     swapLineupSlot: (teamId, slot, benchIndex, expect) =>
       call("swapLineupSlot", { teamId, slot, benchIndex, expect }),
     submitScheme: (teamId, scheme, expect) => call("submitScheme", { teamId, scheme, expect }),
+
+    /* A team's name. A manager may rename his OWN team and the commissioner may rename
+     * any of them - the server decides that, and it is a route of its own rather than a
+     * whole-blob write because a manager cannot make one of those. See renameTeam in
+     * server/operations.js. No `expect`: last writer wins on a label. */
+    renameTeam: (teamId, name) => call("renameTeam", { teamId, name }),
     toggleSlotLock: (teamId, playerId) => call("toggleSlotLock", { teamId, playerId }),
     toggleRosterLock: (expect) => call("toggleRosterLock", { expect }),
     dealPeriod: (expect) => call("dealPeriod", { expect }),

@@ -54,7 +54,10 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoT
           {renaming ? (
             <div style={{ display: "flex", gap: 6, flex: 1 }}>
               <input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} />
-              <button className="pp-btn pp-btn-sm pp-btn-gold" onClick={() => { onRename(name); setRenaming(false); }}>Save</button>
+              {/* Disabled on an empty box rather than accepting the press and doing
+                * nothing with it - the server refuses a blank name and the click would
+                * otherwise close the editor as though it had worked. */}
+              <button className="pp-btn pp-btn-sm pp-btn-gold" disabled={!name.trim()} onClick={() => { onRename(name); setRenaming(false); }}>Save</button>
               <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => { setRenaming(false); setName(team.name); }}>Cancel</button>
             </div>
           ) : (

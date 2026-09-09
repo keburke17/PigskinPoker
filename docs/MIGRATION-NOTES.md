@@ -2226,3 +2226,77 @@ front of a pool screen showing 32 active quarterbacks reads as a bug.
 and bye players no longer appear under the position tabs - listing them would be the screen
 offering something the rules refuse. The Rules tab and `docs/RULES.md` section 4 say the rule
 in the league's own words.
+
+---
+
+## A manager could not rename his own team (2026-09-09)
+
+**What happened.** Kyle pressed **Rename** on **My Team** signed in as a manager, typed a
+new name, pressed Save - and the old name came back. Nothing on screen said anything.
+
+**Reproduced against the local stack** before a line was changed, driving the exact path
+the button takes:
+
+```
+team before: Gridiron Gamblers
+replaceLeague -> 403 {"ok":false,"error":"Only the commissioner can do that."}
+team after:   Gridiron Gamblers
+client reason: forbidden
+useLeague handle() shows a banner for it: false
+```
+
+**Two independent defects, and either one alone would have left the other.**
+
+**1. The button had no operation behind it.** Both rename controls - the manager's on My
+Team and the commissioner's on Manage Teams - called `ops.mutate()`, which reads the whole
+league, applies a function to it and posts the result to `replaceLeague`. That route is
+commissioner-only on purpose: the blob it accepts can rewrite the player pool, the scoring
+and every team in the league, so it is exactly the wrong shape for "a manager edits one
+field on his own row". There was no narrower route to use - `renameTeam` did not exist.
+The commissioner passed the check, so his identical button worked, which is why this
+survived from the port until now.
+
+**2. `handle()` in `src/hooks/useLeague.js` discarded the refusal.** It shaped its banner
+in a chain of else-ifs - `stale`, `phase`, `locked`, `invalid`, `network` - with no final
+`else`. `forbidden` was not on it, so the 403 fell off the end: no banner, no log, and the
+server's own view replaced what was on screen at the next read. The write had failed
+completely and silently.
+
+**Three other reasons were in the same gap**, none of them reachable through the rename:
+`unauthorized` (an expired session - the person is told to sign in by nothing at all),
+`throttled` (a 429), and the server's `unlocked` from `setStatLine`, which is the
+commissioner typing a stat with the rosters still open and being told "no" by a form that
+looks like it worked.
+
+**The fix.**
+
+- `renameTeam` in `server/operations.js`, authorized with `canActForTeam` - the same
+  question `swapLineupSlot` and `submitScheme` ask. A manager may rename his own team; the
+  commissioner may rename any of them; nobody else may rename anything. Both buttons now
+  call it, so the commissioner's rename stopped being a whole-league write as well.
+- No phase rule and no version key, both deliberate: there is no week in which naming your
+  own team is illegal, and a name cannot move a point, so last writer wins on it as it does
+  on a coach's name (see `setCoach`).
+- `src/hooks/opError.js` - a pure `failureBanner(result)` that turns any refusal into a
+  headline and an optional detail, with the server's own sentence preferred wherever there
+  is one. `handle()` is now: conflict, or banner. There is no third path.
+- The Save button on both rename controls is disabled on an empty box. It used to accept
+  the press, do nothing, and close the editor as though it had worked - the same silence in
+  miniature.
+
+**Tests.** Six in `tests/server.test.js` for the route (own team, another manager's team,
+no session, the commissioner over any team, trimming and blank names, and that a rename
+takes no past week's stat lines or rosters with it), and eleven in a new
+`tests/opError.test.js`. The property the second file pins is coverage rather than wording:
+every reason the app can produce comes back with a headline, INCLUDING one nobody has
+invented yet. That is the actual regression - not that `forbidden` was missing, but that a
+chain of else-ifs could be missing anything at all. Two of its cases read `useLeague.js` as
+text, because there is no DOM in this project's tests and adding one is not worth the
+dependency.
+
+**What this does not do.** The editor still closes on Save whether or not the write lands;
+the banner is what tells you it did not, and the name you typed is still in the box when
+you press Rename again. Carrying a per-write result back to the component that raised it
+would mean plumbing `refreshPlayerPool`'s report pattern through every operation - the
+write queue's `flush()` returns nothing per entry - which is issue #58's territory rather
+than this fix's.

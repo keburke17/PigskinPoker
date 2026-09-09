@@ -326,13 +326,19 @@ export default function App() {
   /* ---- manager actions: one row each, not the whole league ---- */
   const onSwap = (teamId, slot, benchIdx) => ops.swapLineupSlot(teamId, slot, benchIdx);
   const onSubmitScheme = (teamId, scheme) => ops.submitScheme(teamId, scheme);
+  /* Renaming a team is a WRITE OF ITS OWN, not an ops.mutate().
+   *
+   * It used to be one, and that is why a manager pressing Rename on My Team watched the
+   * name snap back with nothing on screen to say why (2026-09-09): mutate() sends the
+   * whole league blob to `replaceLeague`, which is commissioner-only on purpose, and the
+   * 403 it came back with was then dropped by the client. Both halves are fixed - see
+   * renameTeam in server/operations.js and src/hooks/opError.js. The same call serves
+   * the commissioner's Manage Teams field below; the server decides who may rename
+   * which team, as it does for a lineup or a scheme. */
   const onRenameMyTeam = (teamId, name) => {
     const trimmed = (name || "").trim();
     if (!trimmed) return;
-    ops.mutate("renameTeam:" + teamId, (s) => {
-      const t = s.teams.find((x) => x.id === teamId);
-      if (t) t.name = trimmed;
-    });
+    ops.renameTeam(teamId, trimmed);
   };
 
   /* ---- commissioner: the weekly cycle ---- */
