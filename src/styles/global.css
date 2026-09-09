@@ -469,3 +469,53 @@
 /* Sits directly under the submit button, which is the whole of issue #27 - the durable
    confirmation is the summary above it; this is the "that registered" flicker. */
 .pp-scheme-ack{ display:inline-block; margin-left:10px; font-size:12px; font-weight:700; color: var(--ok); }
+
+/* --------------------------------------------------------------- the action --
+   The week's blocks, steals and redraws (2026-09-08, OQ-20). Scott's read is that
+   picking a scheme and finding out what it did is the best moment in the game, and it
+   was three taps down in grey 13px prose with every week ever in one list.
+
+   The chip is the whole idea: colour says which scheme fired before a word is read.
+   The three scheme colours are the app's own suit colours - blue, red and purple are
+   already what WR, QB and TE wear on a roster row - so a feed reads as part of the same
+   deck rather than as a new colour system. Everything that is not a manager's action
+   takes the quiet chip, so every row keeps one shape and the list scans as a column.
+
+   One row style, drawn by both the week card and League -> Activity. See the note at
+   the top of src/components/activity.jsx for why the sentence is the engine's own words
+   and cannot be broken into parts here. */
+.pp-ev{
+  display:grid; grid-template-columns:auto 1fr; gap:10px;
+  padding:10px 0; border-bottom:1px solid var(--border);
+}
+.pp-ev:last-child{ border-bottom:0; padding-bottom:2px; }
+.pp-ev-glyph{ font-size:15px; line-height:1.3; }
+.pp-ev-line{ font-size:13.5px; color:var(--text-dim); line-height:1.45; margin:0; }
+
+/* Your own row. The card's padding is 12px, so the negative margin lets the tint and
+   the rail run to the card edge instead of stopping short of it. */
+.pp-ev-mine{
+  margin:0 -12px; padding-left:12px; padding-right:12px;
+  background:rgba(232,194,90,0.07); border-left:3px solid var(--gold);
+}
+
+.pp-chip{
+  display:inline-block; font-size:9.5px; font-weight:800; letter-spacing:0.09em;
+  text-transform:uppercase; padding:2px 6px; border-radius:3px;
+  margin-right:7px; vertical-align:1px; color:#06170f; white-space:nowrap;
+}
+.pp-chip-block{ background:var(--blue); }
+.pp-chip-steal{ background:var(--red); color:#2a0d0a; }
+.pp-chip-redraw{ background:var(--purple); }
+.pp-chip-result{ background:var(--gold); }
+.pp-chip-quiet{ background:var(--surface-3); color:var(--text-dim); box-shadow:inset 0 0 0 1px var(--border-soft); }
+
+/* A card title with an action on the same line - "This week's action" and its link out
+   to every week. */
+.pp-card-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.pp-linkbtn{
+  background:none; border:none; cursor:pointer; padding:2px 0;
+  font-family:var(--font-body); font-size:11.5px; font-weight:700;
+  color:var(--gold); white-space:nowrap;
+}
+.pp-linkbtn:hover{ color:var(--gold-bright); }

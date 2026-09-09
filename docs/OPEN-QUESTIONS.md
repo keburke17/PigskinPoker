@@ -1606,3 +1606,122 @@ among what was kept.
 
 **The question for Scott:** the bar now reads "Saved at 3:42" with no button beside it. Is
 that the header you want, or would you rather have the button back?
+### OQ-20. The week's action was three taps down. **[ANSWERED 2026-09-08: it moves onto the week screen, and the tab is renamed]**
+
+**Scott raised this himself on 2026-09-08**, and it is the sharpest statement of what the
+game is that this file has:
+
+> I think "activity" is a big part of the game. I believe one of the few things of this
+> game is picking a play scheme and then getting to see who you stole or drew at random.
+> It is also fun to see who else got stolen and blocked and redrew.
+
+**What it cost to find.** Opening the app cold landed on the Scoreboard, which said nothing
+had happened; the log was League, then Activity, the third sub-tab behind a standings table
+nobody came for. What arrived was every week ever in one list, newest first, in 13px
+`--text-dim` prose with no separation between three hours ago and last month.
+
+**The decision, out of five placements and three treatments drawn at phone size:**
+
+1. **The current week's events sit on the week screen**, in a card between your own team
+   card and the league table. One list, everyone's events together, with the rows naming
+   your team tinted and railed in gold. Not split into "yours" and "theirs" - the fun is
+   partly that the whole league watched the same thing happen to you.
+2. **The scheme becomes a coloured chip** - Block blue, Steal red, Redraw purple, reusing
+   the suit colours a roster row already wears. Everything that is not a manager's action
+   (a finalized week, the clock, a warning) takes a quiet chip so every row keeps one shape.
+3. **The tab is called "Week"**, not "Scoreboard". The old name stopped being true when the
+   screen stopped being a scoreboard; "Week" is also the shortest label in the nav, where
+   "Scoreboard" was the longest, which buys back a little of the header room OQ-8 is about.
+   **Only the label changed - the route key is still `results`, so no saved link breaks.**
+
+**What was considered and not taken**, recorded so it is not re-proposed as new: its own
+nav tab (a seventh pill, and still somewhere you must decide to go - it works better later
+as the "All weeks" destination, which is what the link now does); a one-line ticker under
+the week banner (one event at a time, and another line of header); rearranging the whole
+screen into a single "everything" feed (the same idea with far more work); and putting the
+action ABOVE your own score (right on Thursday, wrong on Sunday, and nothing on the screen
+knows which day it is).
+
+**The honest limit, and the question it leaves open.** An activity entry is
+`{ id, period, periodLabel, ts, type, text }` - prose and nothing else. There is no acting
+team on it, no player ids, no structured anything. So:
+
+- The chip comes from `type`, which is solid.
+- **The sentence is the engine's own words, verbatim.** The mockups Scott approved showed
+  shorter, punchier lines ("You took Ja'Marr Chase from Full House Flyers, and gave up Tank
+  Dell") - those are NOT what shipped, because rewording them means changing what
+  `processSchemes` writes, and `tests/parity.test.js` compares whole states against the
+  artifact after that call. That is a rules-adjacent change and it is his to ask for.
+- **"Is this row mine" is a name match** against the text. A miss leaves a row untinted; a
+  false positive tints a row that only mentions you. Both are better than the flat list this
+  replaces, and neither can corrupt anything.
+
+**So OQ-21 is the follow-up**: should the activity log carry real fields - the acting team,
+the players, the position - instead of only a sentence? That would buy the punchier wording,
+reliable "your row" marking, and a feed that could be filtered. It costs an engine change, a
+parity update, and a migration, because `decompose.js` writes `payload` empty today and a new
+field would not survive a save. Not started; waiting on him.
+
+**REFINED the same day, after measuring the built screen.** The arrangement was chosen from
+mockups in which "Your week" was drawn as a small card - team name, rank, big score, about
+110px. **The real card was 599px**, because it also carried your six starters with their
+stat lines, and that pushed the action card to 940px on an 812px phone. So the
+commissioner, who has no team card at all, saw the action immediately, and a MANAGER - the
+person it was built for - never saw it without scrolling a full screen. Measured, not
+estimated, in the running app.
+
+Scott's call: **the lineup comes off the week card entirely.**
+
+> so i like having your own score displayed, but you dont need to see your roster under
+> that tab. you would see your roster under "my team" and then everyone elses rosters and
+> player pools on the "rosters" tab, right?
+
+Right, and checked before acting: **My Team** carries your starters WITH their points, your
+bench, your swaps and your scheme; **Rosters** carries every team's roster and the
+free-agent pool. The block on the week card was duplication rather than the only copy - both
+it and My Team's points arrived together in issue #29, when My Team showed a lineup with no
+points on it at all. That is long fixed.
+
+So the week card is now the part that answers "how am I doing" in one glance - week, team,
+rank, gap to the leader, top scorer - plus a **"My lineup" link** to where the lineup lives.
+That link was not asked for; it is one line and exists so a manager used to finding his
+starters here is told where they went. **Scott kept it on 2026-09-08** - "keep the my
+lineup link, looks good."
+
+Measured after the change, same phone: the card is **121px**, the action card starts at
+**462px** and all but its last 23px is on the first screen, and the league table follows at
+848. The commissioner's view is unchanged.
+
+### OQ-21. Should an activity entry carry real fields, or just a sentence? **[ASKED 2026-09-08 - ANSWERED: not now]**
+
+Opened by the build of OQ-20, and **answered by Scott the same day: "for now the sentence
+looks fine."** Not declined - deferred, and worth leaving written down because the reason it
+is hard is not obvious.
+
+**What an entry is today.** `{ id, period, periodLabel, ts, type, text }`. The prose is
+written by the engine at the moment the scheme resolves, and it is the only record of what
+happened - there is no acting team on it, no player ids, no position.
+
+**What that costs the week card.** Two things, both visible:
+
+- The sentence is the engine's own words and cannot be shortened or restructured by the UI.
+  The mockups showed "You took Ja'Marr Chase from Full House Flyers, and gave up Tank Dell";
+  what renders is "Pocket Aces stole WR Ja'Marr Chase from Full House Flyers (dropped Tank
+  Dell). Full House Flyers received Rome Odunze (free agent) in return."
+- "Is this row mine" is a **name match** against the text, so the gold rail is a good guess
+  rather than a fact. A false positive tints a row that merely mentions you.
+
+**Why it is not a small change.** Three things have to move together:
+
+1. `processSchemes` and `finalizeCurrentPeriod` would have to write the extra fields, which
+   is an engine change - and `tests/parity.test.js` compares whole states field for field
+   against the artifact after those calls, so it fails by design until it is updated.
+2. `decompose.js` writes `payload: {}` for every event, so a new field would not survive a
+   save and reload. That means a migration and a change to both decompose and hydrate.
+3. **Every event already recorded would still be prose only.** Whatever reads the new fields
+   has to keep working without them, forever, or the log's own history stops rendering.
+
+**What it would buy**, when it is worth doing: the shorter wording, a gold rail that is
+correct rather than probable, and a feed that could be filtered - "just my team", "just
+steals" - which is not possible against a sentence.
+

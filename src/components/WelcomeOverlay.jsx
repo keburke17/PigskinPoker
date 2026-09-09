@@ -156,7 +156,7 @@ function clockSentence(state) {
 
 /* The quieter, permanent version of the same sentence. #26 asked for this specifically:
  * someone who dismissed the card, or joined months ago, should not be back to guessing.
- * It renders on My Team and on the Scoreboard, and it is one line plus a link. */
+ * It renders on My Team and on the Week screen, and it is one line plus a link. */
 export function NextStepNote({ state, role, team, onGoTo }) {
   const step = nextStep(state, role, team);
   return (

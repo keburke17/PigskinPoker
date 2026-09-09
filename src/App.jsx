@@ -86,6 +86,15 @@ export default function App() {
    * address bar the first time someone pressed back. */
   const tab = route.name === "league" ? route.tab : DEFAULT_TAB;
   const setTab = (next) => go({ name: "league", leagueId: routeLeagueId ?? store.getLeagueId?.(), tab: next });
+  /* Which sub-tab League opens on. Only the week card's "All weeks" link sets it, so
+   * that link can land on the activity log rather than dropping you on the standings and
+   * making you find it (OQ-20). It stays OUT of the URL deliberately: TABS is the
+   * shareable unit, and adding sub-tabs to the route means every League link carries one.
+   * LeagueHomeTab reads it once, at mount, so it is keyed below - without the key,
+   * pressing the League pill while already on League would leave you where you were. */
+  const [leagueSub, setLeagueSub] = useState(null);
+  const goToTab = (next) => { setLeagueSub(null); setTab(next); };
+  const goToActivity = () => { setLeagueSub("activity"); setTab("home"); };
   /* The signed-in ACCOUNT, if there is one. Separate from `identity` on purpose:
    * identity is "what may this device do here", which a join code can answer on its
    * own; this is "who is the person", which only an account can. */
@@ -672,7 +681,7 @@ export default function App() {
    * row at 375px), so the nav also wraps on narrow screens - see .pp-nav in global.css.
    * Keep new labels short anyway: two rows of pills is fine, three is a menu. */
   const NAV = [
-    { key: "results", label: "Scoreboard" },
+    { key: "results", label: "Week" },
     ...(identity.role === "manager" ? [{ key: "myteam", label: "My Team" }] : []),
     { key: "home", label: "League" },
     { key: "hub", label: "Rosters" },
@@ -744,7 +753,7 @@ export default function App() {
                 <button
                   key={n.key}
                   className={"pp-nav-btn" + (tab === n.key ? " active" : "")}
-                  onClick={() => (n.route ? go(n.route) : setTab(n.key))}
+                  onClick={() => (n.route ? go(n.route) : goToTab(n.key))}
                 >{n.label}</button>
               ))}
             </nav>
@@ -752,13 +761,13 @@ export default function App() {
         </div>
 
         <div style={{ paddingTop: 14 }}>
-          {tab === "home" && <LeagueHomeTab state={state} />}
+          {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && (
             <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}
-          {tab === "results" && <ScoreboardTab state={state} myTeam={myTeam} />}
+          {tab === "results" && <ScoreboardTab state={state} myTeam={myTeam} onSeeAllActivity={goToActivity} onGoTo={goToTab} />}
           {tab === "rules" && <RulesTab state={state} />}
           {tab === "help" && <HelpTab state={state} role={identity.role} team={myTeam} onGoTo={setTab} />}
           {tab === "comm" && isCommissioner && (
