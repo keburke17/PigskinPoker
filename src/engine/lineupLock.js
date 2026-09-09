@@ -49,7 +49,7 @@ export function lineupLockMode(state) {
   return normalizeLineupLock(state && state._meta ? state._meta.lineupLock : null);
 }
 
-/** This period's kickoffs: NFL team name -> ISO timestamp. Empty when unknown. */
+/** This period's kickoffs: NFL team name -> a game entry. Empty when unknown. */
 export function kickoffsFor(state) {
   const k = state && state._meta ? state._meta.kickoffs : null;
   return k && typeof k === "object" ? k : {};
@@ -61,14 +61,70 @@ const stamp = (iso) => {
 };
 
 /**
+ * The kickoff time out of one team's entry, IN EITHER SHAPE IT CAN BE STORED IN.
+ *
+ * `periods.kickoffs` used to be team -> ISO string, and became team -> `{ at, opp, home }`
+ * on 2026-09-08 when the roster row started naming the opponent. Both shapes are live at
+ * once and will be for the rest of the season: the column is only rewritten when a week's
+ * schedule is re-read, so every period already finalized still holds bare strings, and so
+ * does the current week until the next deal or Refresh Kickoff Times.
+ *
+ * READING BOTH IS THE WHOLE COMPATIBILITY STORY - there is no migration and no backfill.
+ * A lock verdict is the one thing in this file that must never change for a week already
+ * being played, so the old shape is not "legacy", it is a shape this function supports.
+ *
+ * @param {string|{at: string}|null} entry
+ * @returns {string|null} ISO timestamp, or null when there is no usable time
+ */
+export function kickoffAt(entry) {
+  if (!entry) return null;
+  const iso = typeof entry === "string" ? entry : entry.at;
+  return stamp(iso) == null ? null : iso;
+}
+
+/**
+ * One team's whole game this week: when it starts, who they play, and where.
+ *
+ * `opp` is null for a team stored in the old bare-timestamp shape and for a team whose
+ * opponent the schedule did not name - both mean "we do not know who", which a row says
+ * by showing the time alone rather than by inventing a matchup.
+ *
+ * @returns {{at: string, opp: string|null, home: boolean|null}|null} null when this team
+ *   has no game we can put a time on - a bye, or a week nobody has read yet.
+ */
+export function gameFor(kickoffs, nflTeam) {
+  if (!nflTeam) return null;
+  const entry = (kickoffs || {})[nflTeam];
+  const at = kickoffAt(entry);
+  if (!at) return null;
+  const opp = typeof entry === "object" && typeof entry.opp === "string" ? entry.opp : null;
+  const home = typeof entry === "object" && typeof entry.home === "boolean" ? entry.home : null;
+  return { at, opp, home };
+}
+
+/**
+ * Has this week's schedule been read at all?
+ *
+ * THE POINT IS TO TELL A BYE APART FROM NOT KNOWING YET, which a row has to do before it
+ * can say "no game this week" out loud. Both look identical from one player's entry - it
+ * is missing either way - and the difference is whether ANY team has a game. On a Monday
+ * before the times are fetched every player is silent; once they are in, a player with no
+ * entry genuinely is not playing.
+ */
+export function weekScheduleKnown(state) {
+  return Object.values(kickoffsFor(state)).some((entry) => kickoffAt(entry) != null);
+}
+
+/**
  * The first kickoff of the week - what a `weekly` league locks on.
  * @returns {string|null} ISO timestamp, or null when no times are known.
  */
 export function firstKickoff(kickoffs) {
   let best = null;
-  Object.values(kickoffs || {}).forEach((iso) => {
+  Object.values(kickoffs || {}).forEach((entry) => {
+    const iso = kickoffAt(entry);
+    if (iso == null) return;
     const t = stamp(iso);
-    if (t == null) return;
     if (best == null || t < best.t) best = { t, iso };
   });
   return best ? best.iso : null;
@@ -85,8 +141,7 @@ export function firstKickoff(kickoffs) {
 export function lockTimeFor(mode, kickoffs, nflTeam) {
   if (normalizeLineupLock(mode) === LINEUP_LOCK.WEEKLY) return firstKickoff(kickoffs);
   if (!nflTeam) return null;
-  const iso = (kickoffs || {})[nflTeam];
-  return stamp(iso) == null ? null : iso;
+  return kickoffAt((kickoffs || {})[nflTeam]);
 }
 
 /** Has that moment passed? False whenever there is no time to compare against. */
@@ -172,6 +227,12 @@ export function formatKickoffDay(iso) {
  * have not been read, or his team is not playing - never a guess. */
 export function playerKickoff(state, player) {
   if (!player || !player.team) return null;
-  const iso = kickoffsFor(state)[player.team];
-  return stamp(iso) == null ? null : iso;
+  return kickoffAt(kickoffsFor(state)[player.team]);
+}
+
+/** This player's game: when it starts, who his team plays, and whether it is at home.
+ * Null when his team has no game we can put a time on. */
+export function playerGame(state, player) {
+  if (!player) return null;
+  return gameFor(kickoffsFor(state), player.team);
 }

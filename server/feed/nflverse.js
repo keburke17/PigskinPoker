@@ -18,6 +18,7 @@
  * The decisions about what to do with them live in server/operations.js.
  */
 
+import { NFL_TEAM_ABBR } from "../../src/engine/nflTeams.js";
 import { instantOf } from "../tz.js";
 
 /* -------------------------------------------------------------- sources -- */
@@ -56,44 +57,22 @@ export const ROSTER_URL = (season) =>
   season +
   ".csv";
 
-/* nflverse abbreviation -> the full names the player pool has always used. Hand-written
- * because it is 32 rows that change roughly never, and a lookup table is cheaper than a
- * dependency. LAR/LA and JAX/JAC are both accepted: the two files do not always agree. */
+/* nflverse abbreviation -> the full names the player pool has always used.
+ *
+ * DERIVED FROM src/engine/nflTeams.js RATHER THAN TYPED AGAIN (2026-09-08). That map is
+ * the other direction - our name to the three letters a roster row shows - and it went in
+ * when the row started naming a player's opponent. Two hand-written team tables in one
+ * repository is one rename away from the feed and the screens disagreeing about a team,
+ * so this one is the flip of that one plus the alternates below.
+ *
+ * THE ALTERNATES ARE WHY THIS TABLE IS NOT ONE-TO-ONE, and they must stay: nflverse
+ * writes Jacksonville as JAX in one file and JAC in another, and the Rams as LAR or LA,
+ * so 34 keys point at 32 teams. That is exactly what makes this table useless for asking
+ * "how do I write this team short?", which is the question nflTeams.js exists to answer. */
 export const NFL_TEAMS = {
-  ARI: "Arizona Cardinals",
-  ATL: "Atlanta Falcons",
-  BAL: "Baltimore Ravens",
-  BUF: "Buffalo Bills",
-  CAR: "Carolina Panthers",
-  CHI: "Chicago Bears",
-  CIN: "Cincinnati Bengals",
-  CLE: "Cleveland Browns",
-  DAL: "Dallas Cowboys",
-  DEN: "Denver Broncos",
-  DET: "Detroit Lions",
-  GB: "Green Bay Packers",
-  HOU: "Houston Texans",
-  IND: "Indianapolis Colts",
-  JAX: "Jacksonville Jaguars",
+  ...Object.fromEntries(Object.entries(NFL_TEAM_ABBR).map(([name, abbr]) => [abbr, name])),
   JAC: "Jacksonville Jaguars",
-  KC: "Kansas City Chiefs",
   LA: "Los Angeles Rams",
-  LAR: "Los Angeles Rams",
-  LAC: "Los Angeles Chargers",
-  LV: "Las Vegas Raiders",
-  MIA: "Miami Dolphins",
-  MIN: "Minnesota Vikings",
-  NE: "New England Patriots",
-  NO: "New Orleans Saints",
-  NYG: "New York Giants",
-  NYJ: "New York Jets",
-  PHI: "Philadelphia Eagles",
-  PIT: "Pittsburgh Steelers",
-  SEA: "Seattle Seahawks",
-  SF: "San Francisco 49ers",
-  TB: "Tampa Bay Buccaneers",
-  TEN: "Tennessee Titans",
-  WAS: "Washington Commanders",
 };
 
 /* The 32, as the player pool spells them. Derived from the map above rather than typed
@@ -777,8 +756,9 @@ export function resultsFromGames(rows, { season, week }) {
  * as twelve days out, and a Sunday-night game that becomes a one o'clock kickoff locks
  * six hours earlier than the league was told. `refreshKickoffs` exists for that.
  *
- * @returns {{ season, week, kickoffs: Object<string,string> }} full NFL team name ->
- *   ISO timestamp. A game with no time listed is absent rather than guessed at.
+ * @returns {{ season, week, kickoffs }} full NFL team name -> `{ at, opp, home }`:
+ *   when the game starts, who he is playing (abbreviated), and whether it is at home.
+ *   A game with no time listed is absent rather than guessed at.
  */
 export async function fetchKickoffs({ season, week, fetchImpl = fetch } = {}) {
   const res = await fetchImpl(GAMES_URL);
@@ -790,7 +770,25 @@ export async function fetchKickoffs({ season, week, fetchImpl = fetch } = {}) {
   };
 }
 
-/** Exported for testing: one week's kickoff times out of the whole games file. */
+/**
+ * Exported for testing: one week's games out of the whole games file.
+ *
+ * THE OPPONENT COMES FROM HERE NOW (Scott's call, 2026-09-08). It always could: this
+ * function has always read `home_team` and `away_team` to know WHO to file the kickoff
+ * under, and then dropped both names on the floor. A roster row that says when a player
+ * kicks off but not who he is playing is the fact you actually want left out, so each
+ * entry grew from a bare timestamp into `{ at, opp, home }`.
+ *
+ * `at` KEEPS THE OLD NAME'S JOB. Every lock verdict is read off these entries, and a
+ * league mid-season has the old bare-string shape already stored on its periods - so
+ * src/engine/lineupLock.js reads either, and nothing here needs a migration because
+ * `periods.kickoffs` is jsonb.
+ *
+ * THE OPPONENT IS NORMALISED THROUGH OUR OWN NAMES rather than passed straight through,
+ * which is the whole reason it goes abbr -> full name -> abbr and not abbr -> abbr: the
+ * file says JAC in one place and JAX in another, LA and LAR for the Rams. A row that
+ * showed "at JAC" one week and "at JAX" the next would look like two different teams.
+ */
 export function kickoffsFromGames(rows, { season, week }) {
   const wantedSeason = String(season);
   const wantedWeek = String(week);
@@ -803,8 +801,10 @@ export function kickoffsFromGames(rows, { season, week }) {
     if (!iso) continue; // a game with no time yet: absent, never guessed at
     const home = NFL_TEAMS[r.home_team];
     const away = NFL_TEAMS[r.away_team];
-    if (home) out[home] = iso;
-    if (away) out[away] = iso;
+    /* A team we cannot name still gives its opponent a kickoff, just no opponent to show:
+     * the game is being played either way, and the lock has to fire on it. */
+    if (home) out[home] = { at: iso, opp: NFL_TEAM_ABBR[away] || null, home: true };
+    if (away) out[away] = { at: iso, opp: NFL_TEAM_ABBR[home] || null, home: false };
   }
   return out;
 }
