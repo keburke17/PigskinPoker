@@ -1311,6 +1311,11 @@ answered:
   two lines if you want it back.
 - **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
   button and leave the engine field, or take the rule off the board. Recommendation: hide.
+- **OQ-25**, whether a player on a bye should be dealt at all. **Raised by Scott himself on
+  2026-09-08** while looking at the OQ-24 mockups, and the most consequential thing on this
+  list: BYE already keeps a player out of the deal, but nothing ever SETS it, so in a real bye
+  week forty-odd guaranteed-zero cards go into the deal. Answering yes shrinks the dealable
+  pool by about a sixth in those weeks. Nothing was changed either way.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
   kind of like that? but maybe we table that one for now until we hash out all the other
   small issues we need to clean up first." Raise it again when the Phase 4 stage list is
@@ -1789,3 +1794,118 @@ ever was: the manager spent his one action for the week.
 not yet have Kyle's OQ-19 (the Save Now removal, issue #69), and OQ-20 and OQ-21 went to the
 week screen the same afternoon.*
 
+---
+
+### OQ-24. The roster row never said who a player was up against. **[ANSWERED 2026-09-08: it does now - option B of four]**
+
+Scott: **"each player has their roster position, the team they play for, and their game time
+and date. it also needs their opponent next to the date and time of the game. So maybe next
+to each players name it has the abreviation of the players team next to their name, then
+underneath the name it says the players game date, time, and opponent."**
+
+**What the row was missing, and what it was wasting.** It already carried the kickoff - that
+went in with the playing-card row (OQ-J, issue #33) - but it spelled the NFL team out in full
+to do it: "Philadelphia Eagles - Sun 9/14 8:20 PM". On a 375px phone that is most of a line
+spent on a fact you have already read off the player's name, and the fact a manager actually
+wants before choosing a block - who the man is playing - was not on the screen anywhere.
+
+**Four mockups were drawn and Scott picked B.** The others were A (kickoff first, opponent
+trailing), C (the matchup on its own line above the time), and D (the game right-aligned in
+its own column, the way ESPN does it).
+
+What B is:
+
+| | |
+|---|---|
+| Name line | the player, then his team as a small gold chip - `Jordan Love` `GB` |
+| Under it | `at NYJ - Sun, 9/20 1:00 PM` - the matchup FIRST, the time trailing |
+
+**The matchup leading the line is the whole of what made B different.** Every row starts with
+the same kind of fact, so the matchups line up down the left edge of the card and read in one
+pass, instead of being hunted for at the end of six sentences of different lengths.
+
+**Three calls inside it, all reversible, all worth knowing:**
+
+- **`vs` at home, `at` on the road.** Free: the schedule names both teams in a game, so
+  knowing the opponent is knowing which side he is on. A road game at 8:20pm is a different
+  proposition from the same time at home. **Reverse:** drop the preposition in
+  `slotMetaLine`.
+- **A bye says "No game this week" out loud** - but ONLY once the week's kickoff times have
+  actually been read. Before that every player looks identical to a bye, and the row would
+  announce thirty-two of them. `weekScheduleKnown` is what tells the two apart.
+- **The commissioner's stat-entry row got the chip too.** It shares `slotMetaLine`, so
+  without it that screen would have been the one place showing a player with no team on him
+  at all. It earns its place there: for a Coach that row is where Win/Tie/Loss gets typed,
+  and the opponent beside it is the game being recorded.
+
+**Where the opponent came from: nowhere new.** `kickoffsFromGames` has always read
+`home_team` and `away_team` to know which team to file a kickoff under, and then dropped both
+names on the floor. Each entry in `periods.kickoffs` grew from a bare timestamp into
+`{ at, opp, home }`. **No migration** - the column is jsonb - and **no rules moved**;
+`src/engine/` changed only to read the new field.
+
+**The compatibility half matters more than the feature.** Every period already finalized
+holds bare timestamps, and so does a current week until its schedule is next read, so both
+shapes are live at once and will be all season. `kickoffAt` reads either, and
+`tests/lineupLock.test.js` keeps its whole suite on the OLD shape deliberately - so every
+lock assertion in it is the compatibility test - then runs the interesting ones twice.
+
+`src/engine/nflTeams.js` is new: the 32 teams and the three letters each is written as. The
+feed's own team table is now derived from it, because two hand-written team tables in one
+repository is one rename away from the screens and the schedule reader disagreeing.
+
+---
+
+### OQ-25. Should a player on a bye be dealt at all? **[FOUND 2026-09-08 - one for Scott]**
+
+Raised by Scott the moment he saw the mockups: **"kittle should not be rostered with no game
+being played. he should be in the 'bye' pool of players right?"**
+
+**Half of that is already true, and the half that is missing is the half that matters.**
+
+- `dealRosters` deals only players whose status is `Active` (`src/engine/deal.js`). A player
+  marked **BYE** is genuinely out of the deal, out of the free-agent lists, and unstealable.
+  The status exists, the pool screen has a tab for it, and the engine honours it.
+- **Nothing ever sets it.** The only way a player becomes BYE is the commissioner choosing it
+  from the dropdown on the Player Pool screen, one player at a time. The weekly pool refresh
+  reads the depth charts, which say who is fit - Active, OUT, IR - and know nothing about
+  what week it is, so they never set BYE.
+
+**So in a real week, six teams are on bye and their forty-odd players are dealt exactly like
+everyone else**, unless somebody marked them all by hand on the Tuesday. A manager dealt one
+holds a card that is guaranteed to score nothing, and nothing on the screen said so until
+this change - which is how Scott came to notice.
+
+**What makes this newly answerable:** the same schedule read that put the opponent on the row
+knows precisely who is not playing. A team absent from a week's kickoffs is on bye. The
+information is now sitting in `periods.kickoffs` at the moment a week is dealt.
+
+**What it would do to the league, if the answer is yes - say it before changing anything:**
+
+- **The dealable pool shrinks in bye weeks**, by roughly a sixth once byes are in full swing
+  (six teams of the 32). Thinnest at Coach and QB, where each NFL team contributes exactly
+  one: 32 becomes 26. Still more than a six-team league needs, but it is a real reduction in
+  variety, and in the weeks with the most byes it is the difference between a deep pool and a
+  shallow one.
+- **Nobody is ever dealt a dead card again**, which is the point. Today a bye player is pure
+  bad luck - not a decision anyone made, and not something a scheme can fix, because the free
+  agents he could be swapped for are just as likely to be on a bye themselves.
+- **It changes steals and redraws too**, not just the deal: a bye player would not be in the
+  pool to be redrawn INTO, which is where most of the value is.
+- **It must never fire on a guess.** If the schedule cannot be read at deal time, the deal has
+  to go ahead exactly as it does today rather than exclude everybody - the same rule the
+  lineup lock already follows. A deal that silently refuses forty players because a CSV was
+  slow is worse than the problem.
+- **It is a genuine rules change**, so it needs the parity test updated to record the
+  difference, and `LegacyProject/` will disagree with it forever.
+
+**Not built. Nothing was changed either way** - this is recorded exactly as found, per the
+rule about game logic in CLAUDE.md.
+
+**The question for Scott:** should dealing skip a player whose NFL team has no game that
+week - automatically, from the schedule? And if yes: should the same apply to steals and
+redraws mid-week, or only to the Tuesday deal?
+
+*Numbered OQ-24 and OQ-25 rather than OQ-23: written on 2026-09-08 against a main that ended
+at the repeat-block ruling, while OQ-23 (all of league setup on one page) was open on
+`scott/one-screen-league-setup` the same evening. Keep both when they merge.*

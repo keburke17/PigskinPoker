@@ -12,6 +12,7 @@
 export * from "./rng.js";
 export * from "./constants.js";
 export * from "./helpers.js";
+export * from "./nflTeams.js";
 export * from "./pool.js";
 export * from "./state.js";
 export * from "./lineupLock.js";

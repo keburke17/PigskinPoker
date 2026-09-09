@@ -2115,3 +2115,56 @@ ten buttons to nine, which is the small half of OQ-8. The Rules tab's standings 
 the reverse ladder and says it is fixed, rather than printing a list of numbers with no
 account of where they came from. `docs/RULES.md` section 7 dropped its `[configurable]`
 marker in the same change.
+
+---
+
+## The roster row names the opponent (2026-09-08, OQ-24)
+
+Scott's request, built as option B of four mockups: each player's NFL team moved onto the
+name line as an abbreviation, and the line under it leads with the matchup - `at NYJ - Sun,
+9/20 1:00 PM` - instead of spelling the team out and stopping at the kickoff.
+
+**No rule moved.** Dealing, scheme resolution, scoring, ranking and finalizing are untouched;
+`tests/parity.test.js` needed no change. This is what a row says, not what a week does.
+
+**The opponent was already being read and thrown away.** `kickoffsFromGames` has always
+looked at `home_team` and `away_team` - that is how it knows which team to file a kickoff
+under - and then kept only the timestamp. Each entry in `periods.kickoffs` grew from a bare
+ISO string into `{ at, opp, home }`. **No migration:** the column is jsonb, and the two
+alternates below are the reason it did not need a backfill either.
+
+**Both shapes are live at once, and will be all season.** `periods.kickoffs` is only
+rewritten when a week's schedule is read, so every period already finalized holds bare
+strings and so does the current week until the next deal or Refresh Kickoff Times.
+`kickoffAt()` in `src/engine/lineupLock.js` reads either, and every function that used to
+index the map directly now goes through it. A lock verdict is the one thing here that must
+not change for a week already being played.
+
+`tests/lineupLock.test.js` keeps its whole suite on the OLD shape on purpose, so every lock
+assertion in it doubles as the compatibility test, and a new block runs the interesting ones
+against both.
+
+**A new file, and one fewer hand-written team table.** `src/engine/nflTeams.js` holds the 32
+teams and the three letters each is written as - one-to-one, which is what a display needs.
+`NFL_TEAMS` in `server/feed/nflverse.js` is now derived from it, plus the two alternate
+spellings nflverse actually uses (JAC for JAX, LA for LAR); that table is many-to-one and so
+could never have answered "how do I write this team short?". Deriving it means a rename
+cannot leave the screens and the schedule reader disagreeing about a team.
+
+**The opponent is normalised through our own names** - abbr to full name to abbr - rather
+than passed through from the file. Otherwise a row would read "at JAC" one week and "at JAX"
+the next and look like two different teams.
+
+**A bye is now said out loud, but only when it is knowable.** `weekScheduleKnown()` is the
+guard: before a week's times are read every player looks exactly like a player on a bye, and
+the row would have announced thirty-two of them. Once they are in, a player with no entry
+genuinely is not playing and the row says so.
+
+**Two screens, one function.** The commissioner's stat-entry row shares `slotMetaLine`, so it
+took the chip as well - without it, that screen would have been the only place in the app
+showing a player with no team on him at all. It reads best there, in fact: for a Coach that
+row is where Win/Tie/Loss is typed, and the opponent beside it is the game being recorded.
+
+**What it turned up.** Seeing a bye player on a mockup roster is what prompted OQ-25 - BYE
+keeps a player out of the deal, but nothing ever sets it, so bye-week players are dealt like
+everyone else. Recorded, not fixed.
