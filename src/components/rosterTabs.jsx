@@ -8,7 +8,7 @@
  *     See the comment on that filter. */
 
 import { useState } from "react";
-import { FA_TABS, ICON, allRosteredPlayerIds, teamPeriodScore } from "../engine/index.js";
+import { FA_TABS, ICON, allRosteredPlayerIds, isOnByeThisWeek, isPlayerAvailable, teamPeriodScore } from "../engine/index.js";
 import { EmptyState, SuitBadge, Tag } from "./atoms.jsx";
 import { TeamRosterBlock } from "./roster.jsx";
 
@@ -82,10 +82,22 @@ export function FreeAgentsTab({ state }) {
    * commissioner's Player Pool screen. */
   const pool = state.playerPool.filter((p) => !p.retired);
   let list;
-  if (tab === "BYE" || tab === "IR" || tab === "OUT") {
+  if (tab === "BYE") {
+    /* THE BYE TAB FILLS ITSELF NOW (OQ-25, Scott 2026-09-08). It used to list only players
+     * a commissioner had marked BYE by hand, which in practice meant it was empty all
+     * season while forty players a week sat out. It now also holds everyone the schedule
+     * says has no game - the same question that keeps them out of the deal - so the tab
+     * finally answers "who is unavailable this week" rather than "who did somebody
+     * remember to flag". */
+    list = pool.filter((p) => p.status === "BYE" || isOnByeThisWeek(state, p));
+  } else if (tab === "IR" || tab === "OUT") {
     list = pool.filter((p) => p.status === tab);
   } else {
-    list = pool.filter((p) => p.position === tab && p.status === "Active" && !rostered.has(p.id));
+    /* A player on a bye is NOT a free agent at his position, because no redraw or steal can
+     * reach him. Listing him here would be the screen offering something the rules refuse. */
+    list = pool.filter(
+      (p) => p.position === tab && isPlayerAvailable(state, p) && !rostered.has(p.id)
+    );
   }
   list = list.slice().sort((a, b) => a.name.localeCompare(b.name));
   return (
@@ -97,7 +109,13 @@ export function FreeAgentsTab({ state }) {
       </div>
       <div className="pp-card">
         {list.length === 0 ? (
-          <EmptyState>No {tab === "BYE" || tab === "IR" || tab === "OUT" ? "players marked " + tab : tab + " free agents"} right now.</EmptyState>
+          <EmptyState>
+            {tab === "BYE"
+              ? "Nobody is sitting out this week."
+              : tab === "IR" || tab === "OUT"
+                ? "No players marked " + tab + " right now."
+                : "No " + tab + " free agents right now."}
+          </EmptyState>
         ) : (
           list.map((p) => (
             <div key={p.id} className="pp-roster-slot">
@@ -106,7 +124,10 @@ export function FreeAgentsTab({ state }) {
                 <div className="pp-roster-slot-name">{p.name}</div>
                 <div className="pp-roster-slot-meta">{p.position} - {p.team}</div>
               </div>
-              {p.status !== "Active" ? <Tag>{p.status}</Tag> : null}
+              {/* A player the SCHEDULE has sitting out is still "Active" - nothing wrote a
+                  status on him - so he would otherwise appear in the BYE list with no tag,
+                  looking like an ordinary free agent who had wandered in. */}
+              {p.status !== "Active" ? <Tag>{p.status}</Tag> : isOnByeThisWeek(state, p) ? <Tag>BYE</Tag> : null}
             </div>
           ))
         )}

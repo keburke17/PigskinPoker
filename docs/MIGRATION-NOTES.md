@@ -2168,3 +2168,61 @@ row is where Win/Tie/Loss is typed, and the opponent beside it is the game being
 **What it turned up.** Seeing a bye player on a mockup roster is what prompted OQ-25 - BYE
 keeps a player out of the deal, but nothing ever sets it, so bye-week players are dealt like
 everyone else. Recorded, not fixed.
+
+---
+
+## A player on a bye is no longer dealt (2026-09-08, OQ-25)
+
+Scott's ruling, the same day he raised it: "the deal should skip a player who has no game
+scheduled. they cannot be redrawn, stolen, or dealt to teams at all. once they have a game
+scheduled they will resume being placed in the deal."
+
+**This is a genuine rules change**, the second since the port (the first was OQ-A's sixth
+tiebreaker). Before it, a player whose NFL team was on a bye was dealt like anyone else and
+scored a guaranteed nothing - and no scheme could rescue the card, because the free agents he
+might be swapped for were just as likely to be sitting out too.
+
+**What was already there, and what was missing.** `dealRosters` has always taken only Active
+players, and BYE has always been one of the statuses that keeps a player out. What never
+existed was anything that SET it: the pool refresh reads depth charts, which say who is fit,
+and know nothing about what week it is. So the status was only ever set by a commissioner
+working down the pool screen by hand, and in practice never was.
+
+**Derived, not stored.** `src/engine/availability.js` asks the schedule each time the
+question is asked rather than writing BYE onto forty status rows every Tuesday and clearing
+them the week after. That is what makes "they will resume being placed in the deal" free -
+there is nothing to undo and no way for a player to get stuck sitting out. It also leaves the
+BYE status as the commissioner's manual override, rather than something a robot writes over.
+
+**Three doors, all shut**: the deal (`src/engine/deal.js`), the redraw and the steal (both in
+`src/engine/schemes.js`). Shutting only the deal would have left a redraw free to hand
+somebody a guaranteed zero, which is where the sting was worst - a redraw is a manager's one
+action for the week.
+
+**Two ways of knowing nothing, both of which deal the player:** a week whose schedule has not
+been read (every player then looks like a bye, and filtering would deal nobody), and a player
+on a team the schedule cannot speak about (a commissioner's hand-typed team, where a typo
+would otherwise remove him from every deal forever). Same principle as the lineup lock.
+
+**THE SUBTLE HALF WAS THE ORDERING, NOT THE RULE.** `readKickoffs` ran in `applyDeal`'s
+`afterPersist` - after the deal - which was fine while the times only fed the lineup lock,
+which does not matter until Thursday. Left there, the deal would have filtered against LAST
+week's schedule, so the rule would have silently never fired on the first deal of a new week,
+which is every deal. The fetch is now split from the write (`fetchKickoffsFor`), the deal
+runs against the answer, and `afterPersist` stores the same reading rather than fetching a
+second time - so a roster and the lock that freezes it cannot disagree about a flexed game.
+`tests/server.test.js` pins the ordering against the real database and the real feed, on NFL
+week 11 (13 games, six teams out); nothing in the engine could have caught it.
+
+**Parity holds where it matters.** Every dealt roster still matches the artifact on every
+seed, because the parity fixture has no schedule and the rule does not fire without one -
+which is the same guard that protects a real league on a bad feed day. What diverged is the
+wording of five refusal messages: "Not enough Active QBs" became "Not enough available QBs",
+and the count now carries ", with N more on a bye this week", because the old sentence in
+front of a pool screen showing 32 active quarterbacks reads as a bug.
+`tests/parity.test.js` records that, and adds an explicit test of the divergence itself.
+
+**On screen.** The Free Agents BYE tab fills itself now instead of sitting empty all season,
+and bye players no longer appear under the position tabs - listing them would be the screen
+offering something the rules refuse. The Rules tab and `docs/RULES.md` section 4 say the rule
+in the league's own words.

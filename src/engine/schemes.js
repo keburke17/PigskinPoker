@@ -1,6 +1,11 @@
 /* Pigskin Poker - scheme processing (block / steal / redraw).
- * Moved from PigskinPokerCode.jsx lines 554-657. Behaviour is unchanged; the only
- * edits are the `rng` parameter replacing Math.random (lines 584, 617) and the shuffle.
+ * Moved from PigskinPokerCode.jsx lines 554-657. The `rng` parameter replaced
+ * Math.random (lines 584, 617) and the shuffle.
+ *
+ * ONE RULE HAS CHANGED SINCE - SCOTT'S RULING OF 2026-09-08 (OQ-25): a player whose NFL
+ * team has no game this week cannot be redrawn INTO a roster or stolen off one. The deal
+ * stopped handing them out in the same change. Both branches ask `isPlayerAvailable`; see
+ * src/engine/availability.js.
  *
  * Rule order matters and is deliberate: blocks resolve FIRST and apply immediately,
  * then steals and redraws resolve in a single shuffled pass so that freed players can
@@ -18,6 +23,7 @@
  */
 
 import { defaultRng } from "./rng.js";
+import { isPlayerAvailable } from "./availability.js";
 import { deepClone, nowStamp, periodLabel, shuffle, uid } from "./helpers.js";
 import { allRosteredPlayerIds, getPlayer, slotForPlayer } from "./state.js";
 import { POSITIONS } from "./constants.js";
@@ -59,10 +65,15 @@ export function processSchemes(state, rng = defaultRng) {
   );
   const shuffled = shuffle(actionEntries, rng);
 
+  /* A REDRAW CANNOT LAND ON A PLAYER WHO IS NOT PLAYING (OQ-25, Scott 2026-09-08). This
+   * is where most of the value of that ruling is: swapping a man you do not fancy for one
+   * who is guaranteed to score nothing is worse than doing nothing at all, and it was
+   * roughly a one-in-six chance in the thick of the bye season. Same question the deal
+   * asks - see src/engine/availability.js. */
   const freeAgentIdOfPosition = (pos) => {
     const rostered = allRosteredPlayerIds(next);
     const candidates = next.playerPool.filter(
-      (p) => p.position === pos && p.status === "Active" && !rostered.has(p.id)
+      (p) => p.position === pos && isPlayerAvailable(next, p) && !rostered.has(p.id)
     );
     if (candidates.length === 0) return null;
     return candidates[Math.floor(rng() * candidates.length)].id;
@@ -83,7 +94,12 @@ export function processSchemes(state, rng = defaultRng) {
           const pid = t.roster.starters[slot];
           if (pid) {
             const pl = getPlayer(next, pid);
-            if (pl && pl.position === sc.position && !protectedIds.has(pid)) {
+            /* A PLAYER WHO IS NOT PLAYING CANNOT BE STOLEN EITHER (OQ-25). Since the deal
+             * stopped handing them out this is mostly belt and braces - but not entirely:
+             * a lineup dealt before the schedule was read can hold one, and a game can be
+             * postponed after the deal. Stealing a guaranteed zero would spend a team's one
+             * action for the week on nothing, which is not a trap worth leaving open. */
+            if (pl && pl.position === sc.position && !protectedIds.has(pid) && isPlayerAvailable(next, pl)) {
               victims.push({ team: t, slot, playerId: pid });
             }
           }

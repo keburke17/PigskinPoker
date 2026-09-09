@@ -16,6 +16,7 @@ export * from "./nflTeams.js";
 export * from "./pool.js";
 export * from "./state.js";
 export * from "./lineupLock.js";
+export * from "./availability.js";
 export * from "./weeklyClock.js";
 export * from "./deal.js";
 export * from "./schemes.js";

@@ -249,6 +249,29 @@ async function mapNewPeriod(client, seasonId, current, { season, feed } = {}) {
  * @returns {{ ok: boolean, count: number, error?: string }}
  */
 async function readKickoffs(client, periodRow, season, feed) {
+  const fetched = await fetchKickoffsFor(periodRow, season, feed);
+  if (!fetched.ok) return { ok: false, count: 0, error: fetched.error };
+
+  const { error } = await client
+    .from("periods")
+    .update({ kickoffs: fetched.kickoffs, kickoffs_read_at: new Date().toISOString() })
+    .eq("id", periodRow.id);
+  if (error) return { ok: false, count: 0, error: error.message };
+  return { ok: true, count: fetched.count };
+}
+
+/**
+ * The fetch half of the above, WITHOUT the write.
+ *
+ * SPLIT OUT FOR THE DEAL (OQ-25, 2026-09-08). Dealing has to know which teams are playing
+ * before it deals, because a player whose team has no game is no longer dealt - and the
+ * write half needs a database client that the operation body does not have (it only reaches
+ * one in `afterPersist`, which runs after the deal has already happened). So `applyDeal`
+ * fetches here, deals against the answer, and lets `afterPersist` do the storing.
+ *
+ * @returns {{ ok: boolean, count: number, kickoffs?: object, error?: string }}
+ */
+async function fetchKickoffsFor(periodRow, season, feed) {
   if (!periodRow) return { ok: false, count: 0, error: "no current week" };
   if (!isValidNflWeek(periodRow.nfl_week)) {
     return { ok: false, count: 0, error: "this week is not mapped to an NFL week yet" };
@@ -265,13 +288,7 @@ async function readKickoffs(client, periodRow, season, feed) {
    * published the feed genuinely returns nothing, and replacing a good week's times
    * with {} would silently unlock a league mid-Sunday. */
   if (count === 0) return { ok: false, count: 0, error: "the schedule has no times for that week yet" };
-
-  const { error } = await client
-    .from("periods")
-    .update({ kickoffs, kickoffs_read_at: new Date().toISOString() })
-    .eq("id", periodRow.id);
-  if (error) return { ok: false, count: 0, error: error.message };
-  return { ok: true, count };
+  return { ok: true, count, kickoffs };
 }
 
 /* ----------------------------- accounts ---------------------------------- */
@@ -1120,10 +1137,28 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
       v.currentPeriod.type === "playoff" ? v.playoffConfig.activeTeamIds : v.teams.map((t) => t.id);
     if (teamIds.length === 0) return { error: "Add at least one team before dealing rosters." };
 
+    /* THE SCHEDULE IS READ BEFORE THE DEAL, NOT AFTER (OQ-25, 2026-09-08). It used to be
+     * read only in `afterPersist` below, which was fine when nothing about the deal
+     * depended on it - the times were for the lineup lock, and the lock does not start
+     * mattering until Thursday. Now a player whose NFL team has no game is not dealt, and a
+     * week's own kickoffs are the only thing that knows who those players are. Left where
+     * it was, the rule would have read LAST week's schedule and quietly never fired on the
+     * first deal of a new week, which is every deal.
+     *
+     * BEST EFFORT, EXACTLY AS BEFORE. A schedule that is slow, unpublished or unreadable
+     * leaves `_meta.kickoffs` as it was and the deal goes ahead dealing everybody, which is
+     * the behaviour that shipped before this rule. A deal that refused forty players
+     * because a CSV timed out would be far worse than the problem it solves - see the
+     * "two ways to know nothing" note in src/engine/availability.js. */
+    const schedule = await fetchKickoffsFor(ctx.period, ctx.rows.seasons[0]?.year, feed);
+    const dealView = schedule.ok
+      ? { ...v, _meta: { ...(v._meta || {}), kickoffs: schedule.kickoffs } }
+      : v;
+
     // Minted HERE, server-side, and stored on the period: the deal can be replayed and
     // audited, and a client cannot re-roll one it did not like (P5).
     const seed = newSeed();
-    const result = dealRosters(v, teamIds, seededRng(seedFromString(seed)));
+    const result = dealRosters(dealView, teamIds, seededRng(seedFromString(seed)));
     if (result.error) return { error: result.error };
 
     const blob = JSON.parse(JSON.stringify(v));
@@ -1163,12 +1198,19 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
            * and a week dealt "now" must not immediately look overdue. */
           .update({ deal_seed: seed, dealt_at: new Date(now ?? Date.now()).toISOString() })
           .eq("id", ctx.period.id);
-        /* Read the week's kickoff times here, because dealing is when the week starts
-         * and the lock needs a clock from that moment on. Best effort by design: a
-         * schedule file that is slow or not yet published must not fail a deal, and a
-         * league with no times simply locks nothing until the commissioner refreshes
-         * them - see readKickoffs. */
-        await readKickoffs(client, ctx.period, ctx.rows.seasons[0]?.year, feed);
+        /* Store the week's kickoff times, because dealing is when the week starts and the
+         * lock needs a clock from that moment on. These are the SAME times the deal just
+         * dealt against, kept from the fetch above rather than fetched a second time - so
+         * the schedule a roster was built from and the schedule its lock fires on cannot
+         * be two different readings of a flexed game. Best effort by design: a file that
+         * was slow or not yet published leaves the period's existing times alone, and the
+         * league locks nothing until the commissioner refreshes them. */
+        if (schedule.ok) {
+          await client
+            .from("periods")
+            .update({ kickoffs: schedule.kickoffs, kickoffs_read_at: new Date().toISOString() })
+            .eq("id", ctx.period.id);
+        }
       },
     };
   };
