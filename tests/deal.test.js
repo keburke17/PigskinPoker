@@ -79,11 +79,11 @@ describe("dealRosters", () => {
   // --- pool exhaustion, one case per position (legacy lines 500-514) ---
   describe("refuses to deal from an exhausted pool", () => {
     const cases = [
-      ["Coach", /Not enough Active Coaches/],
-      ["QB", /Not enough Active QBs/],
-      ["TE", /Not enough Active TEs/],
-      ["WR", /Not enough Active WRs/],
-      ["RB", /Not enough Active RBs/],
+      ["Coach", /Not enough available Coaches/],
+      ["QB", /Not enough available QBs/],
+      ["TE", /Not enough available TEs/],
+      ["WR", /Not enough available WRs/],
+      ["RB", /Not enough available RBs/],
     ];
     for (const [pos, pattern] of cases) {
       it("errors when no Active " + pos + "s remain", () => {
@@ -104,7 +104,7 @@ describe("dealRosters", () => {
         if (p.position === "QB" && kept++ >= 11) p.status = "OUT";
       });
       const res = dealRosters(s, ids(s), seededRng(1));
-      expect(res.error).toMatch(/Not enough Active QBs \(11\)/);
+      expect(res.error).toMatch(/Not enough available QBs \(11\)/);
     });
 
     it("errors when the pool runs dry partway through (legacy lines 539-542)", () => {
@@ -121,7 +121,7 @@ describe("dealRosters", () => {
       let sawExhaustion = false;
       for (let seed = 0; seed < 60 && !sawExhaustion; seed++) {
         const res = dealRosters(s, ids(s), seededRng(seed));
-        if (res.error && /Ran out of Active players while dealing/.test(res.error)) {
+        if (res.error && /Ran out of available players while dealing/.test(res.error)) {
           sawExhaustion = true;
         }
       }

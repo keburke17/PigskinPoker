@@ -1,20 +1,45 @@
 /* Pigskin Poker - roster dealing.
- * Moved from PigskinPokerCode.jsx lines 476-549. Behaviour is unchanged; the only
- * edit is the `rng` parameter replacing the internal Math.random calls (lines 534-535)
- * and the shuffles.
+ * Moved from PigskinPokerCode.jsx lines 476-549. The `rng` parameter replaced the
+ * internal Math.random calls (lines 534-535) and the shuffles.
+ *
+ * ONE RULE CHANGED SINCE, and it is a real one - SCOTT'S RULING OF 2026-09-08 (OQ-25):
+ * a player whose NFL team has no game this week is not dealt. He was, before; he scored a
+ * guaranteed nothing, and no scheme could fix it because the free agents he might be
+ * swapped for were just as likely to be sitting out too.
+ *
+ * WHAT THAT COSTS, so nobody rediscovers it as a bug: in the thick of the bye season the
+ * dealable pool is about a sixth smaller, and it is thinnest at Coach and QB where each
+ * NFL team contributes exactly one - 32 becomes 26. Every team still gets a full hand;
+ * there is simply less variety in those weeks.
+ *
+ * The question is asked in ONE place, `isPlayerAvailable` - see src/engine/availability.js
+ * for why it is derived from the schedule rather than written onto anybody's status, and
+ * for the two cases where "we do not know" deliberately deals the player anyway.
  */
 
 import { defaultRng } from "./rng.js";
 import { shuffle } from "./helpers.js";
+import { byeCountAt, isPlayerAvailable } from "./availability.js";
+
+/* "(26)" in front of a pool screen showing 32 active quarterbacks is how a commissioner
+ * loses an evening. When byes are the reason, the message says so. */
+const shortfall = (state, position, count) => {
+  const byes = byeCountAt(state, position);
+  return (
+    count +
+    (byes ? ", with " + byes + " more on a bye this week" : "")
+  );
+};
 
 export function dealRosters(state, teamIds, rng = defaultRng) {
   const pool = state.playerPool;
+  const canPlay = (p, pos) => p.position === pos && isPlayerAvailable(state, p);
   const activeByPos = {
-    Coach: pool.filter((p) => p.position === "Coach" && p.status === "Active"),
-    QB: pool.filter((p) => p.position === "QB" && p.status === "Active"),
-    WR: pool.filter((p) => p.position === "WR" && p.status === "Active"),
-    RB: pool.filter((p) => p.position === "RB" && p.status === "Active"),
-    TE: pool.filter((p) => p.position === "TE" && p.status === "Active"),
+    Coach: pool.filter((p) => canPlay(p, "Coach")),
+    QB: pool.filter((p) => canPlay(p, "QB")),
+    WR: pool.filter((p) => canPlay(p, "WR")),
+    RB: pool.filter((p) => canPlay(p, "RB")),
+    TE: pool.filter((p) => canPlay(p, "TE")),
   };
   const available = {
     Coach: shuffle(activeByPos.Coach.map((p) => p.id), rng),
@@ -35,8 +60,8 @@ export function dealRosters(state, teamIds, rng = defaultRng) {
   if (available.Coach.length < need.Coach) {
     return {
       error:
-        "Not enough Active Coaches (" +
-        available.Coach.length +
+        "Not enough available Coaches (" +
+        shortfall(state, "Coach", available.Coach.length) +
         ") to deal " +
         teamIds.length +
         " team(s). Add more Coaches to the player pool or mark fewer as OUT/IR/BYE.",
@@ -45,8 +70,8 @@ export function dealRosters(state, teamIds, rng = defaultRng) {
   if (available.QB.length < need.QB) {
     return {
       error:
-        "Not enough Active QBs (" +
-        available.QB.length +
+        "Not enough available QBs (" +
+        shortfall(state, "QB", available.QB.length) +
         ") to deal " +
         teamIds.length +
         " team(s). Add more QBs to the player pool.",
@@ -55,8 +80,8 @@ export function dealRosters(state, teamIds, rng = defaultRng) {
   if (available.TE.length < need.TE) {
     return {
       error:
-        "Not enough Active TEs (" +
-        available.TE.length +
+        "Not enough available TEs (" +
+        shortfall(state, "TE", available.TE.length) +
         ") to deal " +
         teamIds.length +
         " team(s). Add more TEs to the player pool.",
@@ -65,8 +90,8 @@ export function dealRosters(state, teamIds, rng = defaultRng) {
   if (available.WR.length < minWR) {
     return {
       error:
-        "Not enough Active WRs (" +
-        available.WR.length +
+        "Not enough available WRs (" +
+        shortfall(state, "WR", available.WR.length) +
         ") to deal " +
         teamIds.length +
         " team(s).",
@@ -75,8 +100,8 @@ export function dealRosters(state, teamIds, rng = defaultRng) {
   if (available.RB.length < minRB) {
     return {
       error:
-        "Not enough Active RBs (" +
-        available.RB.length +
+        "Not enough available RBs (" +
+        shortfall(state, "RB", available.RB.length) +
         ") to deal " +
         teamIds.length +
         " team(s).",
@@ -122,9 +147,9 @@ export function dealRosters(state, teamIds, rng = defaultRng) {
     ) {
       return {
         error:
-          "Ran out of Active players while dealing rosters (pool exhausted partway " +
+          "Ran out of available players while dealing rosters (pool exhausted partway " +
           "through). Add more players at the affected position(s) or reduce the number " +
-          "of teams.",
+          "of teams. Players whose NFL team has no game this week are not dealt.",
       };
     }
 
