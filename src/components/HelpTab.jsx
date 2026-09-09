@@ -102,12 +102,12 @@ export function HelpTab({ state, role, team, onGoTo }) {
       ) : null}
 
       <RuleCard title="What each screen does">
-        <li><strong>Scoreboard</strong> - the week in progress. Live scores, and a projected standings-points column that is read-only until the week is finalized.</li>
+        <li><strong>Week</strong> - the week in progress: your team and its score, what every team blocked, stole or redrew this week, and the live scoreboard with a projected standings-points column that is read-only until the week is finalized.</li>
         <li><strong>My Team</strong> - your roster, your lineup swaps, and your scheme. The only screen where you do anything.</li>
-        <li><strong>League</strong> - season standings, playoff bracket, and the activity log of steals, blocks and redraws.</li>
+        <li><strong>League</strong> - season standings, playoff bracket, and every week of the activity log. The Week screen shows the current week of it; this is where all of it lives.</li>
         <li><strong>Rosters</strong> - everybody's rosters and the free-agent pool.</li>
         <li><strong>Rules</strong> - the game itself: scoring rates, tiebreakers, playoffs. The numbers there are read from your league's own settings.</li>
-        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring, Standings Cfg and Playoffs are setup, and all three settings panels also appear together on the setup screen before your first week is dealt; Manage Rosters acts on a manager's behalf; Delete League is the one escape hatch, and it takes the league away from everyone in it and cannot be undone.</li> : null}
+        {isCommissioner ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring and Playoffs are setup, and both settings panels also appear together on the setup screen before your first week is dealt; Manage Rosters acts on a manager's behalf; Delete League is the one escape hatch, and it takes the league away from everyone in it and cannot be undone.</li> : null}
       </RuleCard>
 
       {/* ISSUE #52. The one card whose entire job is "what moves without anybody

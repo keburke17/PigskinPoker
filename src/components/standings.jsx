@@ -1,10 +1,14 @@
-/* Pigskin Poker UI - extracted verbatim from
+/* Pigskin Poker UI - extracted from
  * LegacyProject/PigskinPokerCode.jsx lines 1131-1245.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ *
+ * It was extracted verbatim, with only module boundaries added. ONE component body has
+ * been edited since: ActivityPanel's row moved out to activity.jsx on 2026-09-08 so the
+ * week card and the full log draw the same thing (OQ-20). What it shows and the order
+ * it shows it in are unchanged; StandingsTable and PlayoffsPanel are still untouched.
  */
 
 import { ICON } from "../engine/index.js";
+import { ActivityEvent } from "./activity.jsx";
 import { EmptyState } from "./atoms.jsx";
 
 export function StandingsTable({ rows, teams }) {
@@ -90,7 +94,11 @@ export function PlayoffsPanel({ state }) {
   );
 }
 
-export function ActivityPanel({ state }) {
+/* The full log, every week of it. Unchanged in what it shows and in what order; the row
+ * itself moved to activity.jsx on 2026-09-08 (OQ-20) so that this screen and the week
+ * card draw the identical thing. `myTeam` is optional and only tints the rows that name
+ * your team - see the note in that file about why a name match is the signal available. */
+export function ActivityPanel({ state, myTeam }) {
   const log = (state.activityLog || []).slice().reverse();
   if (log.length === 0) return <EmptyState>No activity yet. Steals, redraws, blocks, and week results will show up here.</EmptyState>;
   const grouped = [];
@@ -102,23 +110,13 @@ export function ActivityPanel({ state }) {
     }
     grouped.push(entry);
   });
-  const iconFor = (type) => ({
-    steal: ICON.football, "steal-failed": ICON.warn, redraw: ICON.redraw, block: ICON.shield,
-    result: ICON.flag, warning: ICON.warn, "playoffs-start": ICON.trophy, advance: ICON.forward, champion: ICON.trophy,
-    /* Something the schedule did on its own - issue #52. Deliberately its own icon:
-       scrolling the log, the clock entries are the ones nobody pressed a button for. */
-    auto: ICON.clock,
-  }[type] || "*");
   return (
     <div>
       {grouped.map((item, i) =>
         item.header ? (
           <div key={"h" + i} className="pp-eyebrow" style={{ margin: "14px 0 6px" }}>{item.header}</div>
         ) : (
-          <div key={item.id} className="pp-card pp-card-tight" style={{ marginBottom: 8, display: "flex", gap: 10 }}>
-            <span>{iconFor(item.type)}</span>
-            <span style={{ fontSize: 13, color: "var(--text-dim)" }}>{item.text}</span>
-          </div>
+          <ActivityEvent key={item.id} entry={item} myTeamName={myTeam ? myTeam.name : null} />
         )
       )}
     </div>

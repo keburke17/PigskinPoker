@@ -8,16 +8,21 @@
  * So it now carries the week in progress at the top and the finished weeks underneath,
  * which is one tab that answers the question all week and keeps every past week in the
  * same place it has always been. The finalized half below is unchanged.
+ *
+ * IT IS CALLED "WEEK" IN THE NAV, not "Scoreboard" (Scott, 2026-09-08, OQ-20). The name
+ * stopped being true once the week's action moved onto it: a scoreboard is now roughly a
+ * third of what the screen holds, alongside your own card and what every other team did.
+ * Only the LABEL changed - the route key is still `results`, so no saved link breaks.
  */
 
 import { WeeklyResultsTab } from "./WeeklyResultsTab.jsx";
 import { WeekScoreboard } from "./scoreboard.jsx";
 
-export function ScoreboardTab({ state, myTeam }) {
+export function ScoreboardTab({ state, myTeam, onSeeAllActivity, onGoTo }) {
   const finished = state.weeklyResults.length > 0;
   return (
     <div>
-      <WeekScoreboard state={state} myTeam={myTeam} />
+      <WeekScoreboard state={state} myTeam={myTeam} onSeeAllActivity={onSeeAllActivity} onGoTo={onGoTo} />
       {finished ? (
         <>
           <div className="pp-eyebrow" style={{ margin: "18px 0 8px" }}>Finished Weeks</div>

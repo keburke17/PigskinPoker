@@ -18,7 +18,7 @@ export function createDefaultState() {
     teams: [], // {id, name, joinCode, roster:{starters,bench}, cumulative, playoffCumulative}
     playerPool: generatePlayerPool(),
     scoringConfig: deepClone(DEFAULT_SCORING),
-    standingsPointsOverride: null, // array or null (null = derive from team count)
+    standingsPointsOverride: null, // DEAD since OQ-13 - kept for parity, read by nothing
     currentPeriod: { type: "week", number: 1, phase: "pre-deal" },
     // phase: pre-deal | dealt | schemes-processed | stats | finalized
     schemes: {}, // teamId -> {type:'block'|'steal'|'redraw'|'noaction', position, playerId, submittedAt}

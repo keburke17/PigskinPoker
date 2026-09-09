@@ -15,6 +15,10 @@
  *     run either on a clock (issue #52, OQ-14). "Schemes close when the commissioner
  *     processes the week" is the rule for a league that has not switched that on, and
  *     the wrong rule - in the expensive direction - for one that has.
+ *   2026-09-08 - the standings-points line names the reverse ladder and says it is fixed
+ *     (OQ-13, issue #48). It used to print a list of numbers without saying where they
+ *     came from, which was fine while a commissioner could change them and misleading
+ *     the moment he could not.
  *
  * docs/RULES.md is the long form of the same thing. Change both together. */
 
@@ -116,7 +120,12 @@ export function RulesTab({ state }) {
       </RuleCard>
 
       <RuleCard title={SUIT_CH.club + " Standings & Tiebreakers"}>
-        <li>Teams are ranked by that week's score and earn standings points by finish: {spArr.join(", ")} (1st {ARROW} last).</li>
+        <li>Teams are ranked by that week's score and earn standings points by finish, on a <strong>reverse ladder</strong>: the winner of the week takes one point per team in the league, and each place below takes one fewer, down to 1 for last.</li>
+        {teamCount > 0 ? (
+          <li>This league has {teamCount} team{teamCount === 1 ? "" : "s"}, so the ladder is {spArr.join(", ")} (1st {ARROW} last). It always matches the team count, so it grows when a team joins - and it is fixed, with no setting behind it.</li>
+        ) : (
+          <li>This league has no teams yet, so there is no ladder to show. It always matches the team count, and it is fixed - there is no setting behind it.</li>
+        )}
         <li>Ties share the higher value.</li>
         <li>Season standings = sum of weekly standings points, not raw weekly scores.</li>
         <li>Tiebreaker order, in this order: {["Standings Points", "Week Wins", "Coach Wins", "Total TDs", "Total Yards", "Best single-player score in a week"].join(" " + ARROW + " ")}.</li>

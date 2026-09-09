@@ -103,11 +103,15 @@ describe("projectCurrentPeriod", () => {
     expect(ranks).toEqual(ranks.slice().sort((a, b) => a - b));
   });
 
-  it("respects a standings-points override, exactly as finalize does", () => {
+  /* The point of this test has always been that the projection and the finalize agree
+   * about the ladder, and it survives OQ-13 (2026-09-08) with the answer inverted: the
+   * override is now ignored by BOTH, so a mid-week projection still cannot lie about what
+   * finalizing will pay. */
+  it("ignores a standings-points override, exactly as finalize does", () => {
     const s = scored(4, 44);
     s.standingsPointsOverride = [100, 50, 20, 5];
     const projected = projectCurrentPeriod(s);
-    expect(projected.rows.map((r) => r.standingsPoints)).toEqual([100, 50, 20, 5]);
+    expect(projected.rows.map((r) => r.standingsPoints)).toEqual([4, 3, 2, 1]);
     const { state } = finalizeCurrentPeriod(s, RNG());
     projected.rows.forEach((r) => {
       expect(state.weeklyResults.find((w) => w.teamId === r.teamId).standingsPoints)

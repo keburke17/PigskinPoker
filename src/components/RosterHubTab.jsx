@@ -14,7 +14,7 @@ import { AllRostersTab, FreeAgentsTab } from "./rosterTabs.jsx";
  * Stats and Finalize Week. A manager who found it scrolled past the only scoreboard in the
  * app into a screen full of inputs they could not use (issues #29, #30).
  *
- * The scoreboard is now the Scoreboard tab, which is where people were looking for it.
+ * The scoreboard is now the Week tab, which is where people were looking for it.
  * The stat entry moved to the Commissioner tab, next to Deal and Process Schemes - the
  * other two steps of the same weekly flow. Finalize did not get harder to find; it got
  * filed with the rest of the commissioner's week.

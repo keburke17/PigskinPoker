@@ -217,7 +217,15 @@ Implemented in `src/engine/scoring.js`.
 ## 7. Standings and tiebreakers
 
 Each week teams are **ranked by that week's raw score**, and earn **standings points by
-finish** `[configurable]` - more for first, fewer for last, scaled to the number of teams.
+finish** on a **reverse ladder**: in a league of N teams the winner of the week takes N,
+and every place below takes one fewer, down to 1 for last. Six teams pay
+`6, 5, 4, 3, 2, 1`.
+
+The ladder always matches the team count, so it grows the moment a team joins - and it is
+**fixed, not a setting**. A commissioner could type any ladder he liked until 2026-09-08;
+no league ever moved it off the default, so it came off the board (**OQ-13**, issue #48).
+`standingsPointsOverride` still exists in the state shape and in
+`seasons.standings_points_override`, and is read by nothing.
 
 **The season standings are the sum of weekly standings points, not raw scores.** A team that
 wins three weeks narrowly beats a team that wins one week enormously.
@@ -389,9 +397,9 @@ numbers onto another (OQ-E). Nothing in normal play can trigger it.
 ## 11. Who does what
 
 **The commissioner** advances every phase, deals the week, refreshes and edits the player
-pool, enters or pulls the stats, locks rosters, sets the scoring rates and standings points,
-chooses when lineups lock, decides whether the week runs on a clock, and configures the
-playoff bracket. **Every phase change is his to make**, and in a league with the clock
+pool, enters or pulls the stats, locks rosters, sets the scoring rates, chooses when
+lineups lock, decides whether the week runs on a clock, and configures the playoff bracket.
+He does **not** set the standings ladder - see section 7. **Every phase change is his to make**, and in a league with the clock
 switched off nothing moves the week along on its own.
 
 **The clock**, where a league has opted in, presses two of those buttons on his behalf -

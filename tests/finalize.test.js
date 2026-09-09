@@ -60,13 +60,30 @@ describe("finalizeCurrentPeriod", () => {
     expect(byRank.map((r) => r.standingsPoints)).toEqual([4, 3, 2, 1]);
   });
 
-  it("honours a standings points override", () => {
+  /* The ladder stopped being configurable on 2026-09-08 (OQ-13, issue #48). This test
+   * used to assert the opposite - that a saved override was honoured - and it is kept
+   * inverted rather than deleted because `standingsPointsOverride` is still in the state
+   * shape and still round-trips through storage. A league that saved one before today
+   * must come back to the reverse ladder, silently and without a migration. */
+  it("ignores a saved standings points override - the ladder is the team count", () => {
     const s = dealtState(3, 4);
     s.standingsPointsOverride = [10, 5, 1];
     fillStats(s, s.teams.map((t) => t.id), 4);
     const { state } = finalizeCurrentPeriod(s, RNG());
     const byRank = state.weeklyResults.slice().sort((a, b) => a.rank - b.rank);
-    expect(byRank.map((r) => r.standingsPoints)).toEqual([10, 5, 1]);
+    expect(byRank.map((r) => r.standingsPoints)).toEqual([3, 2, 1]);
+  });
+
+  it("grows the ladder with the team count", () => {
+    [2, 5, 8].forEach((n) => {
+      const s = dealtState(n, 7);
+      fillStats(s, s.teams.map((t) => t.id), 7);
+      const { state } = finalizeCurrentPeriod(s, RNG());
+      const byRank = state.weeklyResults.slice().sort((a, b) => a.rank - b.rank);
+      const expected = [];
+      for (let i = n; i >= 1; i--) expected.push(i);
+      expect(byRank.map((r) => r.standingsPoints)).toEqual(expected);
+    });
   });
 
   describe("cumulative rollups", () => {
