@@ -1606,3 +1606,56 @@ among what was kept.
 
 **The question for Scott:** the bar now reads "Saved at 3:42" with no button beside it. Is
 that the header you want, or would you rather have the button back?
+
+### OQ-23. The setup checklist's Open buttons. **[ANSWERED 2026-09-08: they are gone - one page, top to bottom]**
+
+Scott, on the create-a-league screen: **"the open button once you click on it opens the page
+you need to edit, but it is waaaay at the bottom of that list. i think the open buttons are
+irrelevant... essentially im looking for all of the intital settings in one screen like it is
+that needs to be filled out and completed. basically just remove the open buttons and just
+allow the commish to scroll the page filling out the settings."**
+
+**What was wrong with them.** Each of the five steps carried an **Open** button that set the
+Commissioner tab's sub-tab - and the sub-tab renders BELOW the sub-nav, which renders below
+the checklist. So pressing Open on step 1 scrolled nothing: it changed a panel most of a
+screen further down, and following the list in order meant five trips down the page and back
+up to find the next line. The checklist read like navigation and behaved like a remote
+control for something off-screen.
+
+**What it is now.** Every panel a new league needs is rendered on the setup screen itself, in
+the checklist's own order:
+
+| | |
+|---|---|
+| 1 | Add a Team |
+| 2 | Invite Someone |
+| 3 | NFL Week |
+| 4 | Playoff Settings, then Scoring |
+| | Lineup Lock, then Run the week on a clock |
+| 5 | Deal Week 1 |
+
+The checklist stays exactly as it was otherwise - same five steps, same ticks, same
+disappearing act the moment the first week is dealt - but it is now a map of what is below it
+rather than a set of links. Nothing on it can be pressed.
+
+**Three consequences worth knowing, all reversible:**
+
+- **The sub-nav shrinks while a league is being set up**, to Player Pool and Delete League -
+  the only two panels the setup screen does not hold. Listing Teams, Invite, Weeks, Scoring
+  and Playoffs there as well would render each of them on the page twice. The full nine tabs
+  come back the moment Week 1 is dealt. **Reverse:** one line in `CommissionerTab` - the
+  `subs` ternary.
+- **The Deal button is the last thing on the page**, which is deliberate: it is step 5, it is
+  the one action there that cannot be taken back, and reaching it means having scrolled past
+  everything else. It arrives via a new `CommWeekActionsPanel`, split out of `CommWeeksPanel`
+  so the Weeks tab and the setup screen render the SAME card rather than two copies of it.
+- **Two lines of copy stopped naming tabs.** "Add them under the Teams tab first" and "deal
+  Week 1 from Weeks" were both true from the Weeks tab and wrong from a page that has Teams
+  a few inches up. Neither names a tab now.
+
+**No rule moved and no engine file was touched.** This is `src/components/commissioner.jsx`
+only - the same panels, in a different order, on one screen.
+
+*Numbered OQ-23 rather than OQ-20: written on 2026-09-08 against a main that ended at Kyle's
+OQ-19, while OQ-20, OQ-21 (the week screen) and OQ-22 (the repeat-block ruling) were open on
+other branches the same afternoon. Keep all four when they merge.*
