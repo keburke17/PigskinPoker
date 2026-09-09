@@ -433,7 +433,7 @@ himself, with no tools and nobody's help. **Scott: if you want that back, say so
 honest version would be a server-side export that reads the database rather than the
 browser's view of it, and it is a different feature from the one that was removed.
 
-### OQ-8. Phone check. **[DONE in Phase 1 - one finding for you]**
+### OQ-8. Phone check. **[DONE in Phase 1; the touch-target finding TABLED 2026-09-08]**
 
 Measured at 375x812 with the demo league loaded, not assumed:
 
@@ -447,6 +447,32 @@ The layout holds up. The touch targets are the finding: usable, but fiddly for p
 checking scores one-thumbed on a Sunday. It is a CSS-only fix (padding plus `min-height`)
 but it changes the proportions of every screen, so it is a design call rather than a port
 call. **Want me to raise the touch targets, or leave the look exactly as he designed it?**
+
+**Answered 2026-09-08 - tabled, with a preference on the record.** Scott was shown four
+phone mockups at true size (today; 44px targets alone; a quiet header folding the
+housekeeping behind one button; and the nav moved to a bottom bar), with every control
+outlined and measured. His read: **"the buttons dont seem to be that big a deal honestly"**
+- so this is NOT being built now. **If it is ever built, he picked the quiet header**: 44px
+targets, with Log Out and Save Now folded into a single button rather than sitting in the
+header. He did not choose the bottom nav.
+
+**Part of it has since happened by another route.** Kyle removed the Save Now button
+altogether on 2026-09-08 (OQ-19, issue #69) because it did nothing in the port, which took
+16px off the header on its own. What is left of the fold-away idea is Log Out and the
+signed-in-as line.
+
+So the three pieces, in the order he would take them:
+
+1. **Raise the targets to 44px** - one stylesheet, no game logic. On its own it makes the
+   header TALLER, which is why it was never worth doing alone.
+2. **Fold Log Out, Save Now and the signed-in-as line behind one button** - the part he
+   actually liked, and the only one that buys screen back. The cost he accepted in
+   principle: the save status shrinks to a dot, so you trust the auto-save rather than
+   watch it.
+3. **The bottom nav** - not chosen. Leave it here as the option that was declined, not as
+   the next step.
+
+The header's height (OQ-8's other half) was not separately answered and is still open.
 
 ### OQ-9. Should resolved schemes become public? **[ANSWERED: yes, once resolved]**
 
@@ -1560,7 +1586,7 @@ rather than repoint it at Delete, and that is the honest answer: those settings 
 for the season precisely so a bracket cannot be re-cut around teams already playing in it,
 and Reset was never a good escape from that.
 
-### OQ-19. The Save Now button did nothing. **[BUILT 2026-09-08 - one call for Scott]**
+### OQ-19. The Save Now button did nothing. **[ANSWERED 2026-09-08: it stays gone]**
 
 **Raised as issue #69 by Kyle, built the same day, and the decision is still Scott's** - it
 takes a control off the header, which is a look-and-feel call rather than a port cleanup.
@@ -1606,6 +1632,16 @@ among what was kept.
 
 **The question for Scott:** the bar now reads "Saved at 3:42" with no button beside it. Is
 that the header you want, or would you rather have the button back?
+
+**Answered by Scott on 2026-09-08: "yeah im fine with save now being gone."** So the
+removal stands and this is closed - no two-line change needed, and nothing is waiting on
+him here.
+
+One knock-on, recorded because it lands somewhere else: the button was 16px of the sticky
+header, so its removal is also a small down-payment on OQ-8, which is about that header
+being 217px of an 812px phone. Measured after the merge, the header is 236px for a manager
+with the league name in it - the name arrived with OQ-18.
+
 ### OQ-20. The week's action was three taps down. **[ANSWERED 2026-09-08: it moves onto the week screen, and the tab is renamed]**
 
 **Scott raised this himself on 2026-09-08**, and it is the sharpest statement of what the
@@ -1724,4 +1760,32 @@ happened - there is no acting team on it, no player ids, no position.
 **What it would buy**, when it is worth doing: the shorter wording, a gold rail that is
 correct rather than probable, and a feed that could be filtered - "just my team", "just
 steals" - which is not possible against a sentence.
+
+### OQ-22. Can a team block the same player two weeks running? **[ANSWERED 2026-09-08: yes - no cooldown]**
+
+Scott raised it and answered it in the same breath on 2026-09-08: **"sure. why not. thats what
+they were dealt they can do whatever they want."**
+
+**This is a confirmation, not a change.** Nothing in the game remembers last week's scheme.
+`processSchemes` clears the board when it is done (`next.schemes = {}`,
+`src/engine/schemes.js:182`), so a new week opens with no record of who protected whom, and the
+Block picker offers a manager all six of his current starters with nothing filtered out
+(`src/components/scheme.jsx:58`). No code moved for this answer. It is written down so that a
+later session reading "can you block the same guy every week?" as a loophole does not add a
+cooldown to close it.
+
+**What makes it rarer than it sounds, and it is worth knowing.** Rosters are re-dealt from the
+whole active pool every week (`src/engine/deal.js`) - a manager does not carry a player forward
+by choice. So blocking the same player two weeks running only comes up when the deal hands him
+back, which is luck rather than strategy. The one case where it is a genuine repeated decision
+is a star who keeps being dealt to the same team.
+
+**And Block only stops a steal.** A protected player is skipped when another team's Steal looks
+for a victim (`src/engine/schemes.js:86`); he is not protected from anything else, and blocking
+does not hold him on the roster into next week. So the cost of repeating it is the same as it
+ever was: the manager spent his one action for the week.
+
+*Numbered OQ-22 rather than OQ-19: this was written on 2026-09-08 against a main that did
+not yet have Kyle's OQ-19 (the Save Now removal, issue #69), and OQ-20 and OQ-21 went to the
+week screen the same afternoon.*
 
