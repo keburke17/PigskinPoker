@@ -15,7 +15,8 @@
 #   NOTIFY_FROM                    e.g. "Pigskin Poker <league@notify.ballsohard.org>".
 #                                  A DIFFERENT subdomain from the magic-link sender on
 #                                  purpose - see docs/EMAIL-SETUP.md.
-#   NOTIFY_SIGNING_SECRET          SERVER ONLY. Signs unsubscribe links. openssl rand -hex 32.
+#   NOTIFY_SIGNING_SECRET          SERVER ONLY. Signs unsubscribe links. 64 random hex
+#                                  characters - docs/EMAIL-SETUP.md says how to make one.
 #   SITE_URL                       optional; Netlify's own URL is used when it is unset.
 
 [build]

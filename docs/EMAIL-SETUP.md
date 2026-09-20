@@ -410,11 +410,29 @@ Resend's free plan allows three domains, so this costs nothing.
    **none may be prefixed `VITE_`**, and `tests/bundle.test.js` fails if one ever reaches
    the browser bundle.
 
-   | Variable | Value |
-   |---|---|
-   | `RESEND_API_KEY` | the key from step 3 |
-   | `NOTIFY_FROM` | `Pigskin Poker <league@notify.ballsohard.org>` |
-   | `NOTIFY_SIGNING_SECRET` | `openssl rand -hex 32` |
+   | Variable | Value | Mark as secret? |
+   |---|---|---|
+   | `RESEND_API_KEY` | the key from step 3 | yes |
+   | `NOTIFY_FROM` | `Pigskin Poker <league@notify.ballsohard.org>` | **no** |
+   | `NOTIFY_SIGNING_SECRET` | 64 random hex characters - generate them, see below | yes |
+
+   **Generate the signing secret. Do not paste the command in as the value.** Run this
+   and paste what it PRINTS:
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   That went wrong once already, on 2026-09-19: the command itself was entered as the
+   value, and Netlify's secrets scanning failed the build because that string appears in
+   this very document. It was right to fail. A signing secret anybody can read is one
+   anybody can forge unsubscribe links with.
+
+   **Do NOT mark `NOTIFY_FROM` as secret.** It is the From header on every message we
+   send - about as public as a value gets - and it is written out in this document, so
+   flagging it fails every build against our own runbook. Netlify scans the repository
+   for the values of variables you flag, which is a good rule that simply does not apply
+   to an address. The other two are real secrets and stay flagged.
 
    There is no inbox behind that address and **replies go nowhere**, which is the
    decision recorded in issue #57. The footer of every message says where to go instead.
