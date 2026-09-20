@@ -32,6 +32,7 @@ import {
   schemesEligibility,
   summarize as summarizeCycle,
   zoneOf,
+  reminderEligibility,
 } from "./autoCycle.js";
 import { isValidTimeZone } from "./tz.js";
 import { isValidNflWeek, nextNflWeek } from "./schedule.js";
@@ -2010,7 +2011,7 @@ export async function setNotifyMembers(db, { leagueId, token, enabled }) {
 export async function scheduledWeeklyCycle(db, { now = Date.now(), feed } = {}) {
   const { data: leagues, error } = await db
     .from("leagues")
-    .select("id, name, tz, auto_process_schemes, auto_advance_week, auto_pull_stats")
+    .select("id, name, tz, auto_process_schemes, auto_advance_week, auto_pull_stats, notify_members")
     .or("auto_process_schemes.eq.true,auto_advance_week.eq.true");
   if (error) return fail(500, "Could not list leagues: " + error.message);
 
@@ -2029,6 +2030,15 @@ export async function scheduledWeeklyCycle(db, { now = Date.now(), feed } = {}) 
         const processed = await processOneLeague(db, { league, now });
         steps.push(...processed.steps);
         if (processed.failure) failure = processed.failure;
+      }
+
+      /* Issue #57. LAST, and after the scheme step on purpose: if this tick is the one
+       * that closes the week, the phase has already moved by now and the reminder
+       * correctly finds nothing to do rather than emailing people about a deadline that
+       * passed thirty seconds ago. */
+      if (!failure) {
+        const reminded = await remindOneLeague(db, { league, now });
+        steps.push(...reminded.steps);
       }
     } catch (err) {
       failure = "unexpected: " + (err?.message ?? String(err));
@@ -2204,7 +2214,56 @@ async function processOneLeague(db, { league, now }) {
   return { steps: [{ step: "schemes", did: true, why: verdict.why }] };
 }
 
-/** Teams eligible for the period in front of us - all of them, or the survivors. */
+/**
+ * Wednesday afternoon: tell whoever has not picked that the week is about to close.
+ *
+ * Issue #57. THE ONLY MESSAGE THAT NEEDS A SCHEDULE OF ITS OWN - the other two are sent
+ * by the step that caused them, from `runLifecycle`. Nothing happens twelve hours before
+ * a deadline, which is precisely why somebody has to be told.
+ *
+ * IT WRITES NOTHING TO THE LEAGUE. No phase moves, no blob is persisted, no version
+ * changes: this step reads two tables and may insert rows into `notifications`. That is
+ * what makes it safe to bolt onto an hourly job that otherwise only acts twice a week,
+ * and it is why a failure here is reported as a skipped step rather than failing the
+ * league's run - a missed reminder must never stop a week being finalized.
+ *
+ * WHO IS LEFT OUT is the whole point: anybody with a scheme row for this period, whether
+ * they picked a block or explicitly picked No Action. Both are decisions, and reminding
+ * somebody about a decision they have already made is how a sender gets filtered.
+ */
+async function remindOneLeague(db, { league, now }) {
+  const ctx = await systemContext(db, league.id);
+  if (ctx.error) return { steps: [{ step: "remind", did: false, why: "no such league" }] };
+
+  const verdict = reminderEligibility({ league, period: ctx.period, now });
+  if (!verdict.eligible) return { steps: [{ step: "remind", did: false, why: verdict.why }] };
+
+  /* Every team that has submitted anything for this week. At `dealt` nothing is
+   * resolved yet, so the presence of the row IS the submission. */
+  const { data: schemes, error } = await db
+    .from("schemes")
+    .select("team_id")
+    .eq("period_id", ctx.period.id);
+  if (error) return { steps: [{ step: "remind", did: false, why: "could not read schemes: " + error.message }] };
+
+  const told = await notifyLeague(db, {
+    rows: ctx.rows,
+    view: ctx.view,
+    kind: "scheme_reminder",
+    now,
+    skipTeamIds: (schemes ?? []).map((row) => row.team_id),
+    extra: { hoursLeft: verdict.hoursLeft },
+  });
+
+  /* `queued` is the only outcome that counts as having done something. "Everybody has
+   * already picked" and "already reminded this week" are both skips, and a Wednesday on
+   * which every manager is organised should read as a quiet hour. */
+  return {
+    steps: [{ step: "remind", did: told.status === "queued", why: told.why ?? verdict.why }],
+  };
+}
+
+/** Teams eligible for the period in front of us - all of them, or the survivors. *//** Teams eligible for the period in front of us - all of them, or the survivors. */
 function periodTeamCount(view) {
   if (!view) return 0;
   return view.currentPeriod?.type === "playoff"

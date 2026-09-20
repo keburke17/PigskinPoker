@@ -196,7 +196,7 @@ export function schemeEventsFor(view, teamId) {
  * records the decision that a knocked-out team hears nothing further rather than
  * receiving an email about a week it is not playing.
  */
-export function factsFor(kind, view, teamId, now = Date.now()) {
+export function factsFor(kind, view, teamId, now = Date.now(), extra = {}) {
   const team = teamOf(view, teamId);
   if (!team) return null;
   const label = periodLabel(view.currentPeriod);
@@ -223,14 +223,19 @@ export function factsFor(kind, view, teamId, now = Date.now()) {
   }
 
   if (kind === "scheme_reminder") {
-    /* PR 3 sends this one; the facts are here because it is the same view and the same
-     * deadline sentence, and splitting them across two files would be how the reminder
-     * ends up describing a deadline the other two emails do not. */
+    /* Same view and the SAME deadline sentence the dealt email carried, lower-cased to
+     * sit mid-sentence. Two wordings of one deadline is how a league ends up with two
+     * beliefs about when its week closes.
+     *
+     * `hoursLeft` is measured by the caller against the real deadline rather than
+     * assumed to be twelve: the hourly job may fire at any point inside the window, and
+     * an email that says twelve hours when there are four is worse than one that says
+     * four. */
     if (!team.roster) return null;
     return {
       teamName: team.name,
       periodLabel: label,
-      hoursLeft: 12,
+      hoursLeft: extra.hoursLeft ?? 12,
       deadline: deadlineWords(view, now).replace(/^Schemes close /, "schemes close "),
     };
   }

@@ -398,7 +398,7 @@ accepted, and code-as-login is switched off only at a season boundary. Full mode
 > exactly as written - accounts authenticate, a code invites - it just arrived directly
 > rather than through a cutover. See `docs/AUTH.md`.
 
-### OQ-6. Do you want to be able to notify people? *(out of scope this pass)*
+### OQ-6. Do you want to be able to notify people? **[ANSWERED 2026-09-20: yes, three emails, per league, off by default]**
 
 There was no email, no push, nothing. So "rosters are dealt - submit your scheme before
 Sunday" could not exist. For a commissioner chasing 12 managers, this is plausibly the
@@ -407,6 +407,63 @@ single biggest quality-of-life feature in the app.
 **Recommendation: out of scope now, but say if you want it**, because it slightly affects
 whether Phase 3 collects email addresses. Collecting them later is a chore; collecting them
 while building the members table is free.
+
+---
+
+**ANSWERED 2026-09-20 by Kyle, as issue #57.** It stopped being a quality-of-life
+feature when OQ-14 shipped. With the clock on, rosters are dealt at 6am Tuesday and
+schemes close at 3am Thursday, and **the step the automation removed is the commissioner
+posting in the group chat**. A manager was left to find out by remembering to open the
+app, which OQ-14 recorded at the time as the honest gap rather than pretending otherwise.
+
+**Three messages, and no more.** Each is a thing that happened to your team and that you
+may have to act on:
+
+| Kind | Sent when | To |
+|---|---|---|
+| `week_dealt` | a week is dealt - button or clock | every manager dealt in |
+| `scheme_reminder` | 12 hours before the scheme deadline | only managers with nothing on file, only where the deadline is a clock |
+| `schemes_processed` | schemes are resolved - button or clock | every manager dealt in |
+
+The first carries last week's result, so a recap is not a second email. The third carries
+what the schemes did to your roster and when your lineup locks.
+
+**How it is switched on.** One switch per league (`leagues.notify_members`,
+**default false**, Commish -> Weeks), and each member can turn off each kind for
+themselves from the footer of any message, without signing in. A league email nobody can
+stop is a spam complaint against the sending domain - and that domain also carries the
+magic links that are the only way into this app.
+
+#### Decisions taken as provisional defaults, for Scott
+
+**The wording is a first draft and it is his.** These were settled so the plumbing could
+be built; every one is a sentence to change, not a rebuild:
+
+1. **Off by default per league**, because switching it on starts mail landing in twelve
+   inboxes.
+2. **Each manager opts out per kind**, not all-or-nothing.
+3. **Reminder 12 hours out** - about 3pm Wednesday in the league's own time.
+4. **A league with no clock still gets the dealt and processed emails** when the
+   commissioner presses the buttons; the reminder needs a real deadline, so it stays off
+   there. A "nudge" button for those leagues is unbuilt.
+5. **The processed email sends when it happens, 3am included.** No quiet hours.
+6. **A knocked-out playoff team hears nothing further.**
+7. **Replies go nowhere.** There is no inbox behind the sending address; the footer says
+   so, and anything a manager needs to say still goes to the commissioner.
+
+#### What it cost, and what is guarded
+
+- **A send log** (`notifications`), unique on (period, kind, person), whose row id is the
+  provider's idempotency key. The hourly cycle is built so a retried run is harmless, and
+  that property does not survive an email sender without this.
+- **A mail failure never fails a week.** The send happens after the write and everything
+  it can go wrong with lands in a row the hourly drain retries.
+- **Nothing sends from a development machine**, key or no key.
+- **League mail sends from its own subdomain** so a complaint cannot reach the sign-in
+  mail's reputation.
+
+Still unbuilt, and deliberately: a digest, anything at all for the commissioner (he is the
+one pressing the buttons), and any notification that is not email.
 
 ### OQ-7. Backup/restore is now a convenience, not a lifeline. **[ANSWERED 2026-09-07: removed]**
 

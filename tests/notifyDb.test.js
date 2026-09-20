@@ -436,6 +436,118 @@ gate()("dealing a week tells the league", () => {
   });
 });
 
+/* ---------------------------------------------------------------------------
+ * The reminder, driven through the real hourly job.
+ *
+ * Every other message rides on something that happened. This one has to decide for
+ * itself, in a job nobody is watching, which is why it is worth running the actual
+ * `scheduledWeeklyCycle` here rather than the rule in isolation - the rule is pinned in
+ * tests/notifyReminder.test.js, and what this proves is the wiring: the right leagues
+ * are looked at, the right managers are left out, and a second tick writes nothing.
+ * --------------------------------------------------------------------------- */
+const THURSDAY_3AM = Date.parse("2026-09-17T07:00:00Z"); // 03:00 EDT
+const WEDNESDAY_3PM = THURSDAY_3AM - 12 * 60 * 60 * 1000;
+
+/** Put the league on the clock, with email on, and its week dealt on the Tuesday. */
+async function weekAwaitingSchemes(token) {
+  await db.from("leagues").update({
+    notify_members: true,
+    auto_process_schemes: true,
+    auto_advance_week: false,
+    tz: "America/New_York",
+  }).eq("id", leagueId);
+
+  await finalizeAndDeal(token);
+  await clearOutbox();
+
+  const rows = await fetchLeagueRows(db, leagueId);
+  const view = hydrate(rows);
+  /* Dealt on the Tuesday morning - before the reminder window opens, which is the
+   * ordinary case and the only one that should be reminded. */
+  await db.from("periods")
+    .update({ dealt_at: "2026-09-15T10:00:00Z" })
+    .eq("id", view._meta.periodId);
+  return view._meta.periodId;
+}
+
+gate()("the scheme reminder", () => {
+  beforeEach(async () => {
+    await resetDemo();
+    await clearOutbox();
+  });
+
+  it("reminds only the managers with nothing on file", async () => {
+    const token = await commissionerToken();
+    const one = await managerOf("demo_team_1", "notify-one@example.test");
+    const two = await managerOf("demo_team_2", "notify-two@example.test");
+    const periodId = await weekAwaitingSchemes(token);
+
+    /* Team two has picked - a block on somebody - so team two hears nothing. */
+    const { data: player } = await db
+      .from("players").select("id").eq("league_id", leagueId).eq("position", "QB").limit(1).maybeSingle();
+    await db.from("schemes").insert({
+      period_id: periodId, team_id: two.teamId, type: "block", position: "QB", player_id: player.id,
+    });
+
+    const run = await ops.scheduledWeeklyCycle(db, { now: WEDNESDAY_3PM + 30 * 60 * 1000 });
+    expect(run.status).toBe(200);
+
+    const { data } = await db
+      .from("notifications").select("kind, user_id, team_id, payload").eq("league_id", leagueId);
+    expect(data.every((n) => n.kind === "scheme_reminder")).toBe(true);
+    expect(data.some((n) => n.user_id === one.userId)).toBe(true);
+    expect(data.some((n) => n.user_id === two.userId)).toBe(false);
+    expect(data[0].payload.subject).toContain("hours");
+  });
+
+  /* The job runs every hour and the window is twelve hours long, so without the unique
+   * key a forgetful manager would be emailed twelve times in an afternoon. */
+  it("reminds once, however many times the hour comes round", async () => {
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+    await weekAwaitingSchemes(token);
+
+    await ops.scheduledWeeklyCycle(db, { now: WEDNESDAY_3PM + 30 * 60 * 1000 });
+    const first = await outboxCount();
+    expect(first).toBeGreaterThan(0);
+
+    await ops.scheduledWeeklyCycle(db, { now: WEDNESDAY_3PM + 90 * 60 * 1000 });
+    expect(await outboxCount()).toBe(first);
+  });
+
+  it("says nothing outside the window", async () => {
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+    await weekAwaitingSchemes(token);
+
+    /* Tuesday afternoon: dealt, open, and nowhere near closing. */
+    await ops.scheduledWeeklyCycle(db, { now: Date.parse("2026-09-15T18:00:00Z") });
+    expect(await outboxCount()).toBe(0);
+  });
+
+  /* A league that processes schemes by hand has no deadline to be reminded of, and the
+   * hourly job must not invent one for it. */
+  it("says nothing to a league whose deadline is a person", async () => {
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+    await weekAwaitingSchemes(token);
+    await db.from("leagues").update({ auto_process_schemes: false }).eq("id", leagueId);
+
+    await ops.scheduledWeeklyCycle(db, { now: WEDNESDAY_3PM + 30 * 60 * 1000 });
+    expect(await outboxCount()).toBe(0);
+  });
+
+  it("says nothing to a league that has not asked for email", async () => {
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+    await weekAwaitingSchemes(token);
+    await db.from("leagues").update({ notify_members: false }).eq("id", leagueId);
+
+    await ops.scheduledWeeklyCycle(db, { now: WEDNESDAY_3PM + 30 * 60 * 1000 });
+    expect(await outboxCount()).toBe(0);
+  });
+});
+
 gate()("what a browser can see", () => {
   /* The send log is server-only: RLS with no policy, and no grant to either browser
    * role. scripts/verify-grants.mjs asserts the same thing against the HOSTED project,
