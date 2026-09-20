@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **680 passed, 29 files**. If the output says
+2. `npm test` before committing: **760 passed, 33 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -267,7 +267,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          29 suites
+tests/          31 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -372,7 +372,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-680 tests. Three groups worth knowing about:
+760 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -380,8 +380,8 @@ npm test
   playoffs to a champion. **If it fails, the game has changed.** That is either a bug you
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
-- **`rls.test.js`, `server.test.js`, `bootstrap.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 184 of the 680
+- **`rls.test.js`, `server.test.js`, `bootstrap.test.js`, `notifyDb.test.js`** need the local Supabase stack
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 202 of the 760
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

@@ -373,6 +373,84 @@ bounce, confirm DNS is verified, and check spam.
 
 ---
 
+## 6. League email - a SECOND sending domain (issue #57)
+
+Everything above is about the one email that has to work: the sign-in link. This section
+is about the three that people will one day get tired of - "your roster is dealt",
+"schemes close in 12 hours", "schemes are in, set your lineup" - and it is deliberately
+kept apart from it.
+
+**Why a separate subdomain.** League mail is the kind of mail somebody eventually marks
+as spam. A complaint is recorded against the SENDING DOMAIN, not against the message, and
+`mail.ballsohard.org` is where magic links come from. Sign-in is the only way into this
+app, so the day league mail drags that domain's reputation down is the day nobody can get
+in at all. Two subdomains, two reputations, and the expensive one stays clean.
+
+Resend's free plan allows three domains, so this costs nothing.
+
+### The steps
+
+1. **Resend -> Domains -> Add** `notify.ballsohard.org`. Add the DKIM, SPF and bounce MX
+   records it shows you **wherever the DNS actually lives** - for this project that is
+   **Cloudflare**, not the registrar's panel. Section 1's `dig +short NS` check applies
+   here unchanged.
+2. **Check the root domain has a DMARC record.** Gmail and Yahoo expect one from anybody
+   sending bulk mail, and league mail is bulk mail as far as they are concerned:
+
+   ```
+   dig +short TXT _dmarc.ballsohard.org @8.8.8.8
+   ```
+
+   If that prints nothing, add a TXT record at `_dmarc` with `v=DMARC1; p=none;`.
+   `p=none` monitors without rejecting anything, which is the right place to start.
+3. **Resend -> API Keys -> Create**, with **sending access only**, scoped to
+   `notify.ballsohard.org`. This is a different key from anything in section 2: that one
+   is an SMTP password held by Supabase, this one is held by our own functions.
+4. **Netlify -> Site configuration -> Environment variables.** All three are server-side;
+   **none may be prefixed `VITE_`**, and `tests/bundle.test.js` fails if one ever reaches
+   the browser bundle.
+
+   | Variable | Value |
+   |---|---|
+   | `RESEND_API_KEY` | the key from step 3 |
+   | `NOTIFY_FROM` | `Pigskin Poker <league@notify.ballsohard.org>` |
+   | `NOTIFY_SIGNING_SECRET` | `openssl rand -hex 32` |
+
+   There is no inbox behind that address and **replies go nowhere**, which is the
+   decision recorded in issue #57. The footer of every message says where to go instead.
+
+   `NOTIFY_SIGNING_SECRET` signs the unsubscribe links. **Rotating it invalidates every
+   unsubscribe link already sitting in somebody's inbox**, which turns "stop these emails"
+   into "report spam" - so rotate it only if it leaks.
+5. **Apply the migration**: `npm run db:push`. It adds `notifications`,
+   `notification_prefs` and `leagues.notify_members`, and the push runs `verify:grants`
+   afterwards, which is what checks the hosted project did not hand `anon` a copy of the
+   send log.
+6. **Prove it:**
+
+   ```bash
+   npm run verify:notify -- you@your-address.com
+   ```
+
+   Sends all three messages, for real, to the address you name, and says what Resend
+   said. `npm run verify:notify -- --preview` renders them to files and sends nothing -
+   which is how Scott reads a draft without a league being emailed.
+
+### Two things that will bite
+
+**The free plan's 100-a-day is shared with magic links.** A twelve-team league uses about
+a dozen on deal day, which is fine; several leagues on the same Tuesday morning is not.
+Running out means **sign-in emails stop too**, which is a site-wide outage caused by a
+convenience feature. The sender treats a 429 as retryable rather than dropping the
+message, but the real fix at that size is Resend's $20 Pro plan.
+
+**Nothing sends from a development machine.** `server/email/resend.js` refuses to send
+when the database it is talking to is local - key or no key - and prints the message to
+the console instead. That is the same gate `PIGSKIN_FEED` has, for a worse failure: a
+replayed season on a laptop emailing twelve real people.
+
+---
+
 ## Afterwards
 
 Magic links work in production - which, since 2026-08-20, is the ONLY way anybody signs

@@ -8,6 +8,15 @@
 #   VITE_SUPABASE_PUBLISHABLE_KEY  public by design - ships to the browser
 #   SUPABASE_URL                   same URL, for the function
 #   SUPABASE_SECRET_KEY            SERVER ONLY. Bypasses RLS. Never prefix with VITE_.
+#
+#   Issue #57, league email. Without these, notifications are rendered and recorded but
+#   nothing is sent - which is exactly what a development machine should do.
+#   RESEND_API_KEY                 SERVER ONLY. Sending-only key, scoped to the sending domain.
+#   NOTIFY_FROM                    e.g. "Pigskin Poker <league@notify.ballsohard.org>".
+#                                  A DIFFERENT subdomain from the magic-link sender on
+#                                  purpose - see docs/EMAIL-SETUP.md.
+#   NOTIFY_SIGNING_SECRET          SERVER ONLY. Signs unsubscribe links. openssl rand -hex 32.
+#   SITE_URL                       optional; Netlify's own URL is used when it is unset.
 
 [build]
   command = "npm run build"
@@ -96,6 +105,20 @@
   to = "https://pigskin.ballsohard.org/:splat"
   status = 301
   force = true
+
+# Issue #57. The unsubscribe link that rides in every league email.
+#
+# A REAL PATH RATHER THAN /.netlify/functions/unsubscribe, because this URL is printed in
+# people's inboxes and lives there for years. It has to look like part of the site, and it
+# must keep working if the function is ever renamed or moved.
+#
+# Left out of the SPA fallback below by being above it: the fallback matches /* and would
+# otherwise hand this path to index.html, where there is nothing to answer it with - the
+# person clicking has no session, which is the whole point of the endpoint.
+[[redirects]]
+  from = "/unsubscribe"
+  to = "/.netlify/functions/unsubscribe"
+  status = 200
 
 # Friendlier path than /.netlify/functions/api
 [[redirects]]
