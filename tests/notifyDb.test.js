@@ -17,9 +17,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { drain, enqueue, prefsFor, recipientsFor, setPrefs } from "../server/notify.js";
+import { drain, enqueue, notifyLeague, prefsFor, recipientsFor, setPrefs } from "../server/notify.js";
+import * as ops from "../server/operations.js";
+import { fetchLeagueRows, hydrate } from "../server/league.js";
 
 const ENV = {
   /* No RESEND_API_KEY on purpose: the transport captures, so this suite exercises every
@@ -95,6 +100,12 @@ if (!available) {
   console.warn("\n[notifyDb.test.js] SKIPPED: " + skipReason + "\n  Run: npx supabase start && npm run db:reset\n");
 }
 const gate = () => (available ? describe : describe.skip);
+
+/* The lifecycle reads `process.env` rather than the ENV object above - it is called
+ * from deep inside an operation, not handed a config - so this file gives the process a
+ * signing secret. There is still no RESEND_API_KEY, so the transport captures and
+ * nothing leaves the machine. */
+process.env.NOTIFY_SIGNING_SECRET = process.env.NOTIFY_SIGNING_SECRET || ENV.NOTIFY_SIGNING_SECRET;
 
 /* Cached by address, and it has to be: `createUser` on an address that already exists
  * returns an ERROR rather than the existing user, so a second test asking for the same
@@ -259,6 +270,169 @@ gate()("draining it", () => {
     /* And a second drain finds nothing owed, which is what stops the hourly job from
      * re-examining every message ever sent. */
     expect((await drain(db, { env: ENV })).why).toBe("nothing owed");
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * The hook, driven through the commissioner's own button.
+ *
+ * THE POINT IS THAT NOBODY WIRED IT TWICE. `runLifecycle` is the single path both the
+ * button and the scheduled cycle take, so proving the button sends is proving the clock
+ * sends - and a regression here is silent, because a deal that quietly tells nobody
+ * still looks like a perfectly successful deal.
+ *
+ * EACH TEST STARTS FROM THE SEED and then does what a commissioner does: finalize the
+ * week that is in `stats`, which opens the next one in `pre-deal`, then deal it. Forcing
+ * a phase backwards instead looks like it works and is not the same thing - the week
+ * keeps its activity log, and re-dealing it collides on the deal's own log entry.
+ * --------------------------------------------------------------------------- */
+const SEED_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)), "..", "supabase", "seed.sql"
+);
+
+let dbContainer = null;
+async function resetDemo() {
+  /* The demo seed refuses to run where other leagues exist - a deliberate safety on a
+   * file that deletes and rebuilds. */
+  if (leagueId) await db.from("leagues").delete().neq("id", leagueId);
+  if (!dbContainer) {
+    dbContainer = spawnSync("docker", ["ps", "--filter", "name=supabase_db_", "--format", "{{.Names}}"], {
+      encoding: "utf8",
+    }).stdout.trim().split("\n")[0];
+  }
+  const r = spawnSync(
+    "docker",
+    ["exec", "-i", dbContainer, "psql", "-U", "postgres", "-d", "postgres", "-q", "-v", "ON_ERROR_STOP=1"],
+    { input: readFileSync(SEED_PATH), stdio: ["pipe", "ignore", "pipe"], encoding: "utf8" }
+  );
+  if (r.status !== 0) throw new Error("resetDemo: seeding failed - " + (r.stderr || r.error));
+}
+
+async function setNotify(on) {
+  await db.from("leagues").update({ notify_members: on }).eq("id", leagueId);
+}
+
+/* Memberships are minted after every reset, because the seed rebuilds the league row
+ * and league_members cascades away with it. */
+async function commissionerToken() {
+  const userId = await accountFor("notify-commish@example.test");
+  await db.from("league_members").upsert(
+    { league_id: leagueId, user_id: userId, role: "commissioner", team_id: null },
+    { onConflict: "league_id,user_id" }
+  );
+  const browser = createClient(dbUrl, dbPublishable, { auth: { persistSession: false } });
+  const { data, error } = await browser.auth.signInWithPassword({
+    email: "notify-commish@example.test", password: "test-password-123",
+  });
+  if (error) throw new Error("could not sign in the test commissioner: " + error.message);
+  return data.session.access_token;
+}
+
+/** Finalize the seeded week and deal the next one, the way a commissioner would. */
+async function finalizeAndDeal(token) {
+  const fin = await ops.finalizePeriod(db, { leagueId, token });
+  expect(fin.status).toBe(200);
+  const dealt = await ops.dealPeriod(db, { leagueId, token, refresh: false });
+  expect(dealt.status).toBe(200);
+  return dealt;
+}
+
+const outboxCount = async () => {
+  const { count } = await db
+    .from("notifications").select("id", { count: "exact", head: true }).eq("league_id", leagueId);
+  return count;
+};
+
+gate()("dealing a week tells the league", () => {
+  beforeEach(async () => {
+    await resetDemo();
+    await clearOutbox();
+  });
+
+  it("queues a rendered message for each manager when the switch is on", async () => {
+    await setNotify(true);
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+
+    await finalizeAndDeal(token);
+
+    const { data } = await db
+      .from("notifications").select("kind, payload").eq("league_id", leagueId);
+    expect(data.length).toBeGreaterThan(0);
+    expect(data.every((n) => n.kind === "week_dealt")).toBe(true);
+    /* The real roster, rendered - the join between the facts builder, the templates and
+     * the lifecycle actually holding, rather than a placeholder. */
+    expect(data[0].payload.text).toMatch(/QB - /);
+    /* And last week's result rode along with it, which is why there is one email here
+     * and not two. */
+    expect(data[0].payload.text).toMatch(/Week 2 is final/);
+  });
+
+  /* DEFAULT OFF IS THE WHOLE SAFETY STORY. A league that never asked for email must not
+   * start receiving it because we deployed something. */
+  it("queues nothing at all when the switch is off", async () => {
+    await setNotify(false);
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+
+    await finalizeAndDeal(token);
+    expect(await outboxCount()).toBe(0);
+  });
+
+  /* A replayed hourly cycle, or a commissioner pressing twice: the second pass must
+   * write nothing. The unique key is what guarantees it; this is the path that actually
+   * exercises it. */
+  it("does not tell anybody twice about the same week", async () => {
+    await setNotify(true);
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+
+    await finalizeAndDeal(token);
+    const first = await outboxCount();
+    expect(first).toBeGreaterThan(0);
+
+    const rows = await fetchLeagueRows(db, leagueId);
+    const again = await notifyLeague(db, { rows, view: hydrate(rows), kind: "week_dealt", env: ENV });
+    expect(again.status).toBe("skipped");
+    expect(await outboxCount()).toBe(first);
+  });
+
+  /* A mail problem must never undo a week. By the time anything is sent the rosters are
+   * dealt and the standings have moved. */
+  it("leaves the week dealt even when the message cannot be built", async () => {
+    await setNotify(true);
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+
+    /* No signing secret: nothing can carry an unsubscribe link, so nothing is sent -
+     * and the week still has to happen. */
+    const secret = process.env.NOTIFY_SIGNING_SECRET;
+    delete process.env.NOTIFY_SIGNING_SECRET;
+    try {
+      const dealt = await finalizeAndDeal(token);
+      expect(dealt.body.view.currentPeriod.phase).toBe("dealt");
+      expect(await outboxCount()).toBe(0);
+    } finally {
+      if (secret) process.env.NOTIFY_SIGNING_SECRET = secret;
+    }
+  });
+
+  it("tells everybody again when the schemes have run", async () => {
+    await setNotify(true);
+    const token = await commissionerToken();
+    await managerOf("demo_team_1", "notify-one@example.test");
+
+    await finalizeAndDeal(token);
+    await clearOutbox();
+
+    const processed = await ops.processSchemes(db, { leagueId, token });
+    expect(processed.status).toBe(200);
+
+    const { data } = await db
+      .from("notifications").select("kind, payload").eq("league_id", leagueId);
+    expect(data.length).toBeGreaterThan(0);
+    expect(data.every((n) => n.kind === "schemes_processed")).toBe(true);
+    expect(data[0].payload.subject).toContain("set your lineup");
   });
 });
 

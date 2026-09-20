@@ -57,6 +57,18 @@ function secretOf(env) {
   return String(secret);
 }
 
+/**
+ * Can this deployment sign an unsubscribe link at all?
+ *
+ * Asked BEFORE a batch of messages is rendered, so a missing secret is one clear line
+ * in a log rather than one exception per manager with nothing written down. Same test
+ * `secretOf` applies; it just answers instead of throwing.
+ */
+export function isSigningConfigured(env = process.env) {
+  const secret = env.NOTIFY_SIGNING_SECRET;
+  return typeof secret === "string" && secret.length >= 16;
+}
+
 function sign(payload, env) {
   return crypto.createHmac("sha256", secretOf(env)).update(payload).digest("base64url");
 }
