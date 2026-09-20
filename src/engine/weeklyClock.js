@@ -59,6 +59,19 @@ export function autoAdvanceWeek(state) {
   return Boolean(state && state._meta && state._meta.autoAdvanceWeek);
 }
 
+/**
+ * Does this league email its managers when the week moves? Issue #57 / OQ-6.
+ *
+ * Not a clock, and it sits here anyway: this file is where the operational `_meta`
+ * switches are read from, so a component asks a named question instead of reaching into
+ * `state._meta` itself. It belongs beside the two above for a second reason - what the
+ * app can promise somebody about what happens next depends on both. "Schemes close at
+ * 3am" reads differently to a league that will be emailed about it.
+ */
+export function leagueEmailOn(state) {
+  return Boolean(state && state._meta && state._meta.notifyMembers);
+}
+
 /** Is anything at all running on a clock? Decides whether to mention it. */
 export function anyAutomation(state) {
   return autoProcessSchemes(state) || autoAdvanceWeek(state);

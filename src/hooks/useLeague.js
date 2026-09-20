@@ -471,6 +471,15 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* Issue #57 / OQ-6: whether this league emails its managers when the week moves.
+   * Off by default - switching it on starts mail landing in twelve inboxes, so it is a
+   * decision rather than a setting that drifts on. Each member can still turn off any
+   * message from its own footer. */
+  const setNotifyMembers = useCallback(
+    (enabled) => immediate("setNotifyMembers", () => store.setNotifyMembers(enabled)),
+    [store, immediate]
+  );
+
   /** Commissioner admin: low-frequency, genuinely league-wide. */
   const mutate = useCallback(
     (key, fn) => immediate(key, () => store.mutateLeague(fn)),
@@ -528,6 +537,7 @@ export function useLeague(store) {
       refreshKickoffs,
       setAutoPullStats,
       setAutoCycle,
+      setNotifyMembers,
       processSchemes,
       finalizePeriod,
         mutate,

@@ -66,6 +66,7 @@ import {
   verifySiteAdmin,
 } from "./auth.js";
 import { planCoachUpdate, summarizeCoaches, NFL_TEAM_NAMES } from "./coaches.js";
+import { notifyLeague } from "./notify.js";
 
 const PHASE_RULES = {
   dealPeriod: ["pre-deal"],
@@ -1029,7 +1030,27 @@ async function runLifecycle(db, leagueId, ctx, apply) {
     year: ctx.rows.seasons[0].year,
   });
   if (outcome.afterPersist) await outcome.afterPersist(db, leagueId);
-  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+
+  const rows = await fetchLeagueRows(db, leagueId);
+  const view = hydrate(rows);
+
+  /* Issue #57. THE EMAIL IS SENT FROM HERE, which is the whole point of this function
+   * existing: it is the one path both the commissioner's button and the scheduled cycle
+   * take, so the clock cannot tell a league something the button would not, and neither
+   * of them holds a second copy of the wording.
+   *
+   * AFTER THE WRITE, DELIBERATELY, AND NEVER ALLOWED TO UNDO IT. By this line the week
+   * has happened: rosters are dealt, standings have moved, and the commissioner is
+   * waiting on a response. `notifyLeague` swallows everything - an outage, a rate limit,
+   * a league with no addresses - into a row the hourly drain retries and a line in the
+   * log. A deal that 500s because a mail provider is having a bad morning would be a
+   * far worse bug than a late email. */
+  if (outcome.notify) {
+    const told = await notifyLeague(db, { rows, view, kind: outcome.notify });
+    if (told.status !== "skipped") console.log("[notify]", outcome.notify, "-", told.status, told.why);
+  }
+
+  return good({ view });
 }
 
 /**
@@ -1187,6 +1208,12 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
 
     return {
       blob,
+      /* Issue #57. The week's roster is the one thing every manager has to act on, so
+       * this is the message that matters most - and it carries last week's result with
+       * it rather than arriving a second after a separate recap. Whether anybody
+       * receives it is the league's switch and each member's own, both checked in
+       * server/notify.js. */
+      notify: "week_dealt",
       afterPersist: async (client) => {
         await client
           .from("periods")
@@ -1256,6 +1283,10 @@ function applyProcessSchemes({ by = "commissioner" } = {}) {
     }
     return {
       blob,
+      /* Issue #57. Sent whether the commissioner pressed the button or the 3am clock
+       * did, because the thing worth knowing is the same either way: the schemes have
+       * run, your roster may have changed hands, and your lineup is now yours to set. */
+      notify: "schemes_processed",
       afterPersist: async (client) => {
         await client.from("periods").update({ scheme_seed: seed }).eq("id", ctx.period.id);
         // Schemes are retained, not deleted (OQ-9): mark them resolved so the RLS
@@ -1909,6 +1940,38 @@ export async function setAutoCycle(db, { leagueId, token, processSchemes, advanc
   if (!Object.keys(patch).length) return fail(400, "Nothing to change.");
 
   const { error } = await db.from("leagues").update(patch).eq("id", leagueId);
+  if (error) return fail(500, error.message);
+
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Issue #57 / OQ-6: does this league tell its managers anything by email?
+ *
+ * OFF UNTIL THE COMMISSIONER SAYS OTHERWISE, like every other switch on `leagues`, and
+ * here the default carries more weight than usual: turning it on means twelve people
+ * who never asked for email start receiving it. That is his call to make for his own
+ * league, not ours to make for everybody by deploying.
+ *
+ * ONE SWITCH, NOT THREE. A commissioner decides whether his league is emailed at all;
+ * WHICH messages any individual gets is that person's own business, stored per account
+ * in `notification_prefs` and reachable from the footer of every message without
+ * signing in. Splitting the league switch by kind would put three checkboxes on a nav
+ * OQ-8 already calls crowded, to answer a question nobody has asked.
+ *
+ * It does not reach into anybody's preferences, and turning it off does not clear them:
+ * a league that goes quiet for a season and comes back finds everyone's own choices
+ * where they left them.
+ */
+export async function setNotifyMembers(db, { leagueId, token, enabled }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (typeof enabled !== "boolean") return fail(400, "That switch must be true or false.");
+
+  const { error } = await db.from("leagues").update({ notify_members: enabled }).eq("id", leagueId);
   if (error) return fail(500, error.message);
 
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });

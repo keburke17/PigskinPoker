@@ -29,9 +29,10 @@
  * that does not exist.
  */
 
+import { factsFor } from "./notifyFacts.js";
 import { render } from "./email/templates.js";
 import { sendEmail, siteUrl, transportChoice } from "./email/resend.js";
-import { ALL, listUnsubscribeHeaders, unsubscribeUrl } from "./email/unsubscribe.js";
+import { ALL, isSigningConfigured, listUnsubscribeHeaders, unsubscribeUrl } from "./email/unsubscribe.js";
 
 /** The three kinds, and the `notification_prefs` column each one is switched by. */
 export const KINDS = ["week_dealt", "scheme_reminder", "schemes_processed"];
@@ -291,6 +292,92 @@ async function addressOf(db, userId) {
     return email ? { email, why: "" } : { email: null, why: "this account has no email address" };
   } catch (e) {
     return { email: null, why: "could not read the account: " + (e?.message ?? String(e)) };
+  }
+}
+
+/* ------------------------------------------------- what the lifecycle calls -- */
+
+/**
+ * Tell this league's managers that something happened to their week.
+ *
+ * THE ONE ENTRY POINT FROM `runLifecycle`, which is the single path both the
+ * commissioner's buttons and the scheduled cycle take. That is the whole design: the
+ * clock cannot send a message the button does not, because neither of them sends
+ * anything - the step they share does.
+ *
+ * NEVER THROWS, AND NEVER FAILS THE WEEK. By the time this runs the deal has happened,
+ * the rows are written and the standings have moved; an email provider having a bad
+ * morning must not turn that into a 500 on the commissioner's screen. Everything that
+ * goes wrong is logged and left in a row for the hourly drain to retry.
+ *
+ * @param {object} rows  the freshly-read league rows, for the league row and the teams
+ * @param {object} view  the freshly-hydrated view - the same one the caller returns
+ * @returns {Promise<{status: string, why: string, queued?: number}>} for a log line
+ */
+export async function notifyLeague(db, { rows, view, kind, env = process.env, now = Date.now() }) {
+  try {
+    const league = rows?.leagues?.[0];
+    if (!league) return { status: "skipped", why: "no league row" };
+    /* Default false, and this is where that default does its work: a league that never
+     * asked for email is one query away from finding out, and no rows are written. */
+    if (!notifyEnabled(league)) return { status: "skipped", why: "league email is off" };
+
+    const periodId = view?._meta?.periodId;
+    if (!periodId) return { status: "skipped", why: "no current week" };
+
+    /* CHECKED UP FRONT, because every message's footer carries a signed unsubscribe
+     * link and minting one without the secret throws. Left to fail per recipient it
+     * surfaced as a stack trace in a function log, once per manager, with no row
+     * written and nothing retried - a misconfiguration that silently loses league mail
+     * is precisely the failure mode docs/EMAIL-SETUP.md exists to prevent. This is a
+     * FAILURE rather than a skip so it shows up in the caller's log line: a league with
+     * email switched on and no way to let anybody turn it off must be fixed, not
+     * quietly tolerated. */
+    if (!isSigningConfigured(env)) {
+      return { status: "failed", why: "NOTIFY_SIGNING_SECRET is not set - no message can carry an unsubscribe link" };
+    }
+
+    const { recipients, error } = await recipientsFor(db, league.id, kind);
+    if (error) return { status: "failed", why: error };
+    if (!recipients.length) return { status: "skipped", why: "nobody to tell" };
+
+    /* league_members holds team UUIDs; the whole view is written against legacy ids. */
+    const legacyOf = new Map((rows.teams ?? []).map((t) => [t.id, t.legacy_id]));
+
+    const withFacts = [];
+    for (const r of recipients) {
+      const teamId = legacyOf.get(r.teamId);
+      if (!teamId) continue;
+      const facts = factsFor(kind, view, teamId, now);
+      /* Null means this team has nothing to be told - not dealt into this period, which
+       * in the playoffs means knocked out. Issue #57: they hear nothing further. */
+      if (!facts) continue;
+      withFacts.push({ userId: r.userId, teamId: r.teamId, facts });
+    }
+    if (!withFacts.length) return { status: "skipped", why: "no team in this week has a manager to tell" };
+
+    const queued = await enqueue(db, {
+      leagueId: league.id,
+      periodId,
+      kind,
+      leagueName: view.leagueName || league.name,
+      recipients: withFacts,
+      env,
+    });
+    if (queued.error) return { status: "failed", why: queued.error };
+    if (!queued.queued) return { status: "skipped", why: "already sent for this week" };
+
+    /* Sent now so a Tuesday morning deal reaches people on Tuesday morning; anything
+     * that does not go out is picked up by the hourly cycle. The result is logged
+     * rather than returned as a failure - see the note at the top. */
+    const sent = await drain(db, { ids: queued.ids, env });
+    if (!sent.ok) console.error("[notify]", kind, "for", league.name, "-", sent.failed, "failed:", sent.why);
+
+    return { status: "queued", why: sent.why, queued: queued.queued };
+  } catch (e) {
+    /* A crash here would roll a successful deal back into a 500. */
+    console.error("[notify] unexpected while telling the league about", kind, "-", e?.stack || e);
+    return { status: "failed", why: "unexpected: " + (e?.message ?? String(e)) };
   }
 }
 

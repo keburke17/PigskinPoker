@@ -343,6 +343,12 @@ export function hydrateLeague(db, opts = {}) {
        * losing a week. See src/components/guidance.js. */
       autoProcessSchemes: league.auto_process_schemes === true,
       autoAdvanceWeek: league.auto_advance_week === true,
+      /* Issue #57: whether this league emails its managers when the week moves. Same
+       * family again - operational, server-owned, not in the artifact's state shape, so
+       * decompose must not carry it. The browser needs it for one checkbox on the
+       * commissioner's screen and for saying, where the app tells somebody what happens
+       * next, whether they will be told by email or have to come and look. */
+      notifyMembers: league.notify_members === true,
       tz: league.tz || "America/New_York",
       versions: buildVersionMap(db, season, current, slotsForCurrent, teamLegacy),
     },
