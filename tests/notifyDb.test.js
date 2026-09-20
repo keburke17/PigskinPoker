@@ -74,10 +74,17 @@ async function setup() {
     return;
   }
 
-  const { data: period } = await db
-    .from("periods").select("id").eq("league_id", leagueId).order("number").limit(1).maybeSingle();
+  /* A period belongs to a SEASON, not to a league - `periods.season_id` is the only
+   * link, and asking for a league_id here silently returns nothing rather than an
+   * error, which reads as "the seed is broken". */
+  const { data: season } = await db
+    .from("seasons").select("id").eq("league_id", leagueId).order("year", { ascending: false })
+    .limit(1).maybeSingle();
+  const { data: period } = season
+    ? await db.from("periods").select("id").eq("season_id", season.id).order("number").limit(1).maybeSingle()
+    : { data: null };
   if (!period) {
-    skipReason = "the demo league has no periods - run `npm run db:reset`";
+    skipReason = "the demo league has no season or periods - run `npm run db:reset`";
     return;
   }
   periodId = period.id;
@@ -89,12 +96,28 @@ if (!available) {
 }
 const gate = () => (available ? describe : describe.skip);
 
+/* Cached by address, and it has to be: `createUser` on an address that already exists
+ * returns an ERROR rather than the existing user, so a second test asking for the same
+ * manager used to get `undefined` back and then write a membership with no user on it.
+ * The symptom was four unrelated assertions failing with empty results. */
+const accountCache = new Map();
 async function accountFor(email) {
-  const { data: created } = await db.auth.admin.createUser({
+  if (accountCache.has(email)) return accountCache.get(email);
+
+  const { data: created, error } = await db.auth.admin.createUser({
     email, password: "test-password-123", email_confirm: true,
   });
-  const userId = created?.user?.id;
-  if (userId) createdUserIds.push(userId);
+  let userId = created?.user?.id;
+  if (!userId) {
+    /* Left behind by an earlier run that failed before its cleanup. Adopt it rather
+     * than failing - it is deleted with the others at the end. */
+    const { data: list } = await db.auth.admin.listUsers({ page: 1, perPage: 200 });
+    userId = (list?.users ?? []).find((u) => u.email === email)?.id;
+  }
+  if (!userId) throw new Error("no test account for " + email + (error ? ": " + error.message : ""));
+
+  createdUserIds.push(userId);
+  accountCache.set(email, userId);
   return userId;
 }
 
