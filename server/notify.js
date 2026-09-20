@@ -314,7 +314,20 @@ async function addressOf(db, userId) {
  * @param {object} view  the freshly-hydrated view - the same one the caller returns
  * @returns {Promise<{status: string, why: string, queued?: number}>} for a log line
  */
-export async function notifyLeague(db, { rows, view, kind, env = process.env, now = Date.now() }) {
+export async function notifyLeague(db, {
+  rows,
+  view,
+  kind,
+  env = process.env,
+  now = Date.now(),
+  /* Team UUIDs to leave out. Issue #57's reminder is the only caller: it goes ONLY to
+   * managers with nothing on file, because a reminder to somebody who has already
+   * picked is noise, and noise is how a league starts filtering the sender. */
+  skipTeamIds = null,
+  /* Anything the facts builder needs that the view cannot know - today just how many
+   * hours are left before the deadline. */
+  extra = {},
+}) {
   try {
     const league = rows?.leagues?.[0];
     if (!league) return { status: "skipped", why: "no league row" };
@@ -344,11 +357,14 @@ export async function notifyLeague(db, { rows, view, kind, env = process.env, no
     /* league_members holds team UUIDs; the whole view is written against legacy ids. */
     const legacyOf = new Map((rows.teams ?? []).map((t) => [t.id, t.legacy_id]));
 
+    const skip = skipTeamIds ? new Set(skipTeamIds) : null;
+
     const withFacts = [];
     for (const r of recipients) {
+      if (skip?.has(r.teamId)) continue;
       const teamId = legacyOf.get(r.teamId);
       if (!teamId) continue;
-      const facts = factsFor(kind, view, teamId, now);
+      const facts = factsFor(kind, view, teamId, now, extra);
       /* Null means this team has nothing to be told - not dealt into this period, which
        * in the playoffs means knocked out. Issue #57: they hear nothing further. */
       if (!facts) continue;

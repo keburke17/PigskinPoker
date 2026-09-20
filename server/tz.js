@@ -156,6 +156,41 @@ export function lastLocalDeadline(now, tz, { weekday, hour }) {
   );
 }
 
+/**
+ * The FIRST occurrence of a recurring local deadline strictly after some instant.
+ *
+ * The mirror of `lastLocalDeadline`, and issue #57's reminder needs it: "has the
+ * deadline passed" is a question about the past, but "when does this week's deadline
+ * fall" is a question about the future, anchored to the moment the week was dealt. A
+ * week dealt on Friday closes on the FOLLOWING Thursday, and a reminder that assumed
+ * "the next Thursday from now" would fire against the wrong deadline for exactly the
+ * weeks that are already running late.
+ *
+ * Built out of `lastLocalDeadline` on purpose rather than repeating the calendar
+ * arithmetic: step forward a week from the last one at or before `from`, which keeps
+ * the DST handling in one place. The result is always strictly after `from`.
+ *
+ * @param {number} from  epoch milliseconds
+ * @returns {number} epoch milliseconds, always > from
+ */
+export function nextLocalDeadline(from, tz, deadline) {
+  const last = lastLocalDeadline(from, tz, deadline);
+  if (last > from) return last;
+  /* A week later in CALENDAR days, for the same reason lastLocalDeadline steps in
+   * them: seven local days across 1 November is 169 hours, not 168. */
+  const here = wallClock(last, tz);
+  const cal = new Date(Date.UTC(here.year, here.month - 1, here.day) + 7 * DAY_MS);
+  return instantOf(
+    {
+      year: cal.getUTCFullYear(),
+      month: cal.getUTCMonth() + 1,
+      day: cal.getUTCDate(),
+      hour: deadline.hour,
+    },
+    tz
+  );
+}
+
 /** "Thu 3:00 am" in a league's own zone, for a sentence a human reads. */
 export function describeDeadline({ weekday, hour }) {
   const day = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][weekday];

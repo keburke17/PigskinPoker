@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **787 passed, 34 files**. If the output says
+2. `npm test` before committing: **806 passed, 35 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -267,7 +267,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          32 suites
+tests/          35 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -372,7 +372,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-787 tests. Three groups worth knowing about:
+806 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -381,7 +381,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`, `notifyDb.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 207 of the 787
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 212 of the 806
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -470,7 +470,8 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 |---|---|
 | **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
 | **Lineup lock** | **Done.** Per-league: each player at his own kickoff, or every lineup at the week's first one (`seasons.lineup_lock`). Times come from the schedule and are re-readable, because flex scheduling moves games. |
-| **The week on a clock** | **Done, opt-in.** Two per-league switches (`leagues.auto_process_schemes`, `leagues.auto_advance_week`, both default off) let the scheme deadline and the Tuesday finalize-and-deal run themselves - Scott's request, recorded as OQ-14 and built 2026-09-07. `server/autoCycle.js` holds the rules, `netlify/functions/run-cycle-scheduled.mjs` runs hourly so the deadlines survive the daylight-saving change mid-season. **Not built: telling anyone** - a manager finds out a deadline exists by opening the app. OQ-6. |
+| **The week on a clock** | **Done, opt-in.** Two per-league switches (`leagues.auto_process_schemes`, `leagues.auto_advance_week`, both default off) let the scheme deadline and the Tuesday finalize-and-deal run themselves - Scott's request, recorded as OQ-14 and built 2026-09-07. `server/autoCycle.js` holds the rules, `netlify/functions/run-cycle-scheduled.mjs` runs hourly so the deadlines survive the daylight-saving change mid-season. Managers are now told by email, if their commissioner switched it on - OQ-6, below. |
+| **League email** | **Done, opt-in.** Three messages - a week dealt (carrying last week's result), a 12-hour scheme-deadline reminder, and schemes processed - answering OQ-6 as issue #57, built 2026-09-20. One switch per league (`leagues.notify_members`, **default false**); each member turns off each kind for themselves from any message's footer, with no sign-in. `server/notify.js` is the outbox, `notifications` is the send log that keeps a retried hourly run from mailing anybody twice, and nothing sends from a machine whose database is local. League mail has its own sending subdomain so a spam complaint cannot reach the magic links - `docs/EMAIL-SETUP.md` section 6. **Not built: a digest, anything for the commissioner, and any notification that is not email.** |
 | **Live stats feed** | **Mostly done.** The pool refreshes from nflverse depth charts, scoring splits into passing / rushing / receiving (stages 1 and 4, live since 2026-08-29), each period carries the NFL week it plays (stage 3, `server/schedule.js`), the weekly stats pull is built (stage 5, `server/stats.js`), and **it now runs on a schedule** - every three hours, for leagues that opt in (stage 7, `server/autoPull.js`, `leagues.auto_pull_stats`). **Not built: the persistent disagreement view beside each box** - stage 6 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice, and carries nflverse's real publish cadence. |
 | **Backup import** | **Dropped 2026-09-07.** The commissioner's Backup tab - JSON export and restore - was removed, along with `src/storage/backup.js`. It existed to carry the Artifact league's history across, and that league was a worked example rather than real history, so there was nothing to carry. `npm run db:backup` is the only backup now, and it is Kyle's. OQ-7 records the decision and what a commissioner lost. **Since 2026-09-08 a commissioner can also DELETE a league outright** (OQ-18), which makes that the only copy of a league there is - and it is not on a schedule. |
 | **A phone-first shell** | The Scoreboard, roster and standings screens were rebuilt around the week in progress (issues #29, #30, OQ-G). What was NOT done: the sticky header is 217px of an 812px phone - title, role badge, save bar, account bar and a now two-row nav - and OQ-8's finding stands that every touch target is under the 44px minimum. Both are look-and-feel calls for the designer. |
