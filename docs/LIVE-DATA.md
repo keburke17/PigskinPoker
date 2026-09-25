@@ -354,3 +354,117 @@ the live database holds a season people are playing.
 | - | Does "automatic" mean live during games, or ready by Sunday night? | Scott; decides the provider |
 | - | Should a pull fill the numbers in, or propose them for approval? | Scott; stage 1 vs. a heavier stage 2 |
 | - | Is a missing player a zero or a blank? | Scott; part of OQ-4c |
+
+---
+
+## 9. Parked for after the inaugural season: a rankings pool, and going public
+
+**Notes only, recorded 2026-09-25 from a conversation with Scott. Nothing here is built,
+and nothing here changes the game this season.** Scott's call: the inaugural season stays
+on nflverse as it is, and his attention goes to the gameplay list his league is feeding
+him. This section exists so the thinking is not lost, and so Kyle sees it. The decision on
+the pool itself is OQ-26 in `docs/OPEN-QUESTIONS.md`.
+
+### 9.1 Why the depth-chart pool lags
+
+Three separate reasons, only one of them ESPN's:
+
+1. **nflverse republishes on a schedule** - roughly daily - so the pool is a snapshot up to
+   a day old.
+2. **ESPN's depth charts are edited by hand** and trail the news by a day or two.
+3. **A depth chart is not an injury report.** An injured starter usually stays #1 on the
+   chart, because the chart describes the roster, not who plays on Sunday. So "injured
+   players are not taken out" is the chart doing its job, and a fresher chart would not fix
+   it.
+
+### 9.2 The idea: a pool built from weekly positional rankings
+
+Weekly expert rankings (FantasyPros' weekly consensus is the one Scott trusts) already
+answer "who is actually starting this week": when a QB is ruled out, his backup moves up.
+
+**The shape Scott wants keeps today's per-team structure.** No provider sells "each team's
+top two WRs, ranked", but it does not need to be sold: take the full weekly ranking at
+each position (FantasyPros goes well past 100 WRs), group by NFL team, keep the top N per
+team, keep the ranking order.
+
+| Position | Per team | Pool |
+|---|---|---|
+| QB | 1 | 32 |
+| RB | 2 | 64 |
+| WR | 2 | 64 |
+| TE | 1 | 32 |
+| Coach | unchanged - from the schedule, not a ranking | 32 |
+
+Same counts as the depth-chart pool, chosen by who is ranked to start this week rather than
+where the chart lists him. Two things to decide when it is picked up, both rules calls:
+
+- **Byes.** Rankings usually omit players on bye, so a bye team contributes nobody - which
+  already matches OQ-25 (bye players are not dealt).
+- **When the snapshot is taken.** Rankings move until Sunday morning; the pool would be
+  frozen at a fixed moment, most likely deal time on Tuesday.
+
+### 9.3 Where weekly rankings can come from
+
+Prices as found 2026-09-25; check before relying on any of them.
+
+| Source | What | Cost | Commercial use |
+|---|---|---|---|
+| **DynastyProcess `fp_latest_weekly`** (read by nflverse's `load_ff_rankings`) | FantasyPros' weekly consensus, republished as a plain file, with a player-id crosswalk to gsis | Free, no key | **No** - it is FantasyPros' editorial product |
+| **FantasyPros API** | Rankings, projections, injuries, news | Free for non-production testing; personal production keys with the HOF membership (from ~$8.99/mo annual) | Separate commercial license, by quote |
+| **Sleeper API** | Every player with injury status and depth-chart order; no expert rankings | Free, no key | Check their terms |
+| **SportsDataIO** | Projections, injuries, depth charts, live stats | Self-serve ~$99-149/mo with next-day data; real-time is enterprise, by quote | Yes, by contract |
+| **MySportsFeeds** | Stats, injuries, lineups | Free non-commercial | Paid tier |
+
+The DynastyProcess file was not opened from here (the session's network blocked it), so its
+exact columns and publish day want confirming against a live week first. It is the obvious
+first experiment: same community as the current feed, and it carries ids that match the
+stats file.
+
+### 9.4 If the game goes public: what a paid feed actually buys
+
+Scott's stated goal (2026-09-25) is a public, paid product with thousands of players, not
+only his league. He already knows that means a live data feed, and that the live roster
+comes with it. For this game specifically, the paid feed is buying:
+
+- **Live in-game scoring**, seconds behind the play - most of the cost.
+- **In-game injury flags** - the one piece of injury news that matters when rosters are
+  redealt weekly.
+- **Automatic stat corrections.**
+- **Reliability with a contract** behind it, and support.
+- **The right to use it commercially** (9.5).
+
+It is NOT buying better facts - ESPN's chart is as accurate as anyone's - and this game has
+little use for projections, odds or news. Cost does not scale with players either: the
+server pulls once and serves everyone, and commercial pricing is set by the kind of business
+more than the number of users.
+
+### 9.5 Licensing - the lay of the land, not legal advice
+
+Take this to a lawyer before charging anyone.
+
+- **Names and stats are facts, and free to use in a fantasy game, including a paid one.**
+  *C.B.C. Distribution v. MLB Advanced Media* (8th Cir. 2007) held a fantasy company needed
+  no license to use player names and stats. This is how the whole industry works.
+- **What needs a license is everything around the facts:**
+  - **NFL marks** - logos, the shield, uniforms. Writing a team's name as a fact is fine;
+    showing its logo is not.
+  - **Player photos and likenesses** - copyrighted images, and group licensing through the
+    players' union's licensing arm.
+  - **The source's own terms.** This is the one that touches this repo today. nflverse's
+    depth charts come from ESPN, whose terms do not permit commercial use, and FantasyPros
+    rankings are FantasyPros' product. Both are fine for a private league; neither is a
+    foundation for a business. A paid provider collects its own data and hands over the
+    right to use it in writing.
+- **Bigger than any of that: entry fees and prizes.** Paid fantasy is legal in most states
+  only as a game of skill, a few states forbid it, and Pigskin Poker deals rosters at
+  random. Subscription, ads, or free-to-play are simpler; money-in-prizes-out needs a
+  gaming lawyer first.
+
+### 9.6 Order of work, when it is picked up
+
+1. **This season:** nothing. nflverse stays.
+2. **After the season:** try the rankings pool (9.2) from the free file, as an experiment
+   against the current one - a new feed module beside `server/feed/nflverse.js`, not a
+   replacement, so the running league is never on it by accident.
+3. **Before charging anyone:** a commercially licensed feed with live scoring, no logos or
+   headshots unless licensed, and legal advice on the prize model.

@@ -1372,6 +1372,8 @@ answered:
   mockups, and answered by him the same day: a player whose NFL team has no game is not
   dealt, stolen or redrawn, and comes back by himself the week his team plays. The dealable
   pool is about a sixth smaller in peak bye weeks. **Nothing is left open on it.**
+- **OQ-26**, a player pool built from weekly rankings instead of depth charts. **Parked
+  2026-09-25 until after the inaugural season**, by Scott's choice - nothing to decide now.
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
   kind of like that? but maybe we table that one for now until we hash out all the other
   small issues we need to clean up first." Raise it again when the Phase 4 stage list is
@@ -2009,3 +2011,28 @@ and the artifact happily handing them out.
 *Numbered OQ-24 and OQ-25 rather than OQ-23: written on 2026-09-08 against a main that ended
 at the repeat-block ruling, while OQ-23 (all of league setup on one page) was open on
 `scott/one-screen-league-setup` the same evening. Keep both when they merge.*
+
+---
+
+### OQ-26. Should the pool come from weekly rankings instead of depth charts? **[PARKED 2026-09-25 - after the inaugural season]**
+
+**Raised by Scott on 2026-09-25.** The depth-chart pool is slow to move and does not take
+injured starters out, because a depth chart is not an injury report. Weekly positional
+rankings (FantasyPros' weekly consensus is his reference) already answer "who is starting
+this week", and are "fairly close to who I would want starting".
+
+**The shape he wants keeps today's per-team structure**: each NFL team's top QB, top two
+RBs, top two WRs and top TE by that week's ranking - 32 / 64 / 64 / 32 - rather than the
+top 64 WRs league-wide, which could put three from one team and none from another. The
+Coach is unaffected.
+
+**Nothing is built and nothing changes this season.** Scott's words: the inaugural season
+stays as it is, and his focus is the gameplay list his league is giving him; he already
+knows a public version needs a live, paid, commercially licensed feed, and the roster fix
+comes with it.
+
+**If picked up, two rules calls come with it:** whether a bye team simply contributes
+nobody (consistent with OQ-25), and when the pool is frozen (deal time is the obvious
+answer). The sources, prices, and the licensing picture for a public version are in
+`docs/LIVE-DATA.md` section 9.
+
