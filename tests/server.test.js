@@ -1550,6 +1550,52 @@ gate()("the deal refreshes the pool first", () => {
     const { data: periods } = await db.from("periods").select("phase, number, type");
     expect(periods.find((x) => x.number === 2 && x.type === "week").phase).toBe("pre-deal");
   });
+
+  /* OQ-25, Scott 2026-09-08: nobody whose NFL team has no game is dealt.
+   *
+   * THIS IS THE TEST FOR THE ORDERING, not for the rule - the rule itself is unit-tested in
+   * tests/availability.test.js. The week's kickoffs used to be read in `afterPersist`, AFTER
+   * the deal, which was harmless while they were only for the lineup lock. Left there, the
+   * deal would have filtered against LAST week's schedule and this rule would silently never
+   * have fired on the first deal of a new week - which is every deal. Nothing in the engine
+   * could catch that; only this can. */
+  it("does not deal a player whose NFL team is on a bye", async () => {
+    const token = await asCommissioner();
+    await preDeal();
+    const feed = await import("../server/feed/fixture.js");
+
+    /* NFL week 11 is the fixture's thinnest: 13 games, so six teams are sitting out. The
+     * demo league's own week 2 is a full 16-game week and would prove nothing. */
+    const { data: season } = await db
+      .from("seasons").select("id, year").eq("league_id", leagueId).single();
+    await db.from("periods").update({ nfl_week: 11 })
+      .eq("season_id", season.id).eq("number", 2);
+
+    const { kickoffs } = await feed.fetchKickoffs({ season: season.year, week: 11 });
+    const playing = new Set(Object.keys(kickoffs));
+    expect(playing.size).toBe(26);
+
+    const r = await ops.dealPeriod(db, { leagueId, token, feed });
+    expect(r.status).toBe(200);
+
+    const byId = new Map(r.body.view.playerPool.map((p) => [p.id, p]));
+    const dealt = [];
+    for (const t of r.body.view.teams) {
+      if (!t.roster) continue;
+      dealt.push(...Object.values(t.roster.starters).filter(Boolean));
+      dealt.push(...t.roster.bench.filter(Boolean));
+    }
+    expect(dealt.length).toBe(r.body.view.teams.length * 12);
+
+    const satOut = dealt.map((id) => byId.get(id)).filter((p) => p && !playing.has(p.team));
+    expect(satOut.map((p) => p.name + " (" + p.team + ")")).toEqual([]);
+
+    /* And the times the deal filtered against are the ones it stored - one reading, not two,
+     * so a roster and the lock that freezes it cannot disagree about a flexed game. */
+    const { data: period } = await db
+      .from("periods").select("kickoffs").eq("season_id", season.id).eq("number", 2).single();
+    expect(Object.keys(period.kickoffs)).toHaveLength(26);
+  });
 });
 
 /* ------------------------------------------------------------------------ *

@@ -398,7 +398,7 @@ accepted, and code-as-login is switched off only at a season boundary. Full mode
 > exactly as written - accounts authenticate, a code invites - it just arrived directly
 > rather than through a cutover. See `docs/AUTH.md`.
 
-### OQ-6. Do you want to be able to notify people? *(out of scope this pass)*
+### OQ-6. Do you want to be able to notify people? **[ANSWERED 2026-09-20: yes, three emails, per league, off by default]**
 
 There was no email, no push, nothing. So "rosters are dealt - submit your scheme before
 Sunday" could not exist. For a commissioner chasing 12 managers, this is plausibly the
@@ -407,6 +407,63 @@ single biggest quality-of-life feature in the app.
 **Recommendation: out of scope now, but say if you want it**, because it slightly affects
 whether Phase 3 collects email addresses. Collecting them later is a chore; collecting them
 while building the members table is free.
+
+---
+
+**ANSWERED 2026-09-20 by Kyle, as issue #57.** It stopped being a quality-of-life
+feature when OQ-14 shipped. With the clock on, rosters are dealt at 6am Tuesday and
+schemes close at 3am Thursday, and **the step the automation removed is the commissioner
+posting in the group chat**. A manager was left to find out by remembering to open the
+app, which OQ-14 recorded at the time as the honest gap rather than pretending otherwise.
+
+**Three messages, and no more.** Each is a thing that happened to your team and that you
+may have to act on:
+
+| Kind | Sent when | To |
+|---|---|---|
+| `week_dealt` | a week is dealt - button or clock | every manager dealt in |
+| `scheme_reminder` | 12 hours before the scheme deadline | only managers with nothing on file, only where the deadline is a clock |
+| `schemes_processed` | schemes are resolved - button or clock | every manager dealt in |
+
+The first carries last week's result, so a recap is not a second email. The third carries
+what the schemes did to your roster and when your lineup locks.
+
+**How it is switched on.** One switch per league (`leagues.notify_members`,
+**default false**, Commish -> Weeks), and each member can turn off each kind for
+themselves from the footer of any message, without signing in. A league email nobody can
+stop is a spam complaint against the sending domain - and that domain also carries the
+magic links that are the only way into this app.
+
+#### Decisions taken as provisional defaults, for Scott
+
+**The wording is a first draft and it is his.** These were settled so the plumbing could
+be built; every one is a sentence to change, not a rebuild:
+
+1. **Off by default per league**, because switching it on starts mail landing in twelve
+   inboxes.
+2. **Each manager opts out per kind**, not all-or-nothing.
+3. **Reminder 12 hours out** - about 3pm Wednesday in the league's own time.
+4. **A league with no clock still gets the dealt and processed emails** when the
+   commissioner presses the buttons; the reminder needs a real deadline, so it stays off
+   there. A "nudge" button for those leagues is unbuilt.
+5. **The processed email sends when it happens, 3am included.** No quiet hours.
+6. **A knocked-out playoff team hears nothing further.**
+7. **Replies go nowhere.** There is no inbox behind the sending address; the footer says
+   so, and anything a manager needs to say still goes to the commissioner.
+
+#### What it cost, and what is guarded
+
+- **A send log** (`notifications`), unique on (period, kind, person), whose row id is the
+  provider's idempotency key. The hourly cycle is built so a retried run is harmless, and
+  that property does not survive an email sender without this.
+- **A mail failure never fails a week.** The send happens after the write and everything
+  it can go wrong with lands in a row the hourly drain retries.
+- **Nothing sends from a development machine**, key or no key.
+- **League mail sends from its own subdomain** so a complaint cannot reach the sign-in
+  mail's reputation.
+
+Still unbuilt, and deliberately: a digest, anything at all for the commissioner (he is the
+one pressing the buttons), and any notification that is not email.
 
 ### OQ-7. Backup/restore is now a convenience, not a lifeline. **[ANSWERED 2026-09-07: removed]**
 
@@ -433,7 +490,7 @@ himself, with no tools and nobody's help. **Scott: if you want that back, say so
 honest version would be a server-side export that reads the database rather than the
 browser's view of it, and it is a different feature from the one that was removed.
 
-### OQ-8. Phone check. **[DONE in Phase 1 - one finding for you]**
+### OQ-8. Phone check. **[DONE in Phase 1; the touch-target finding TABLED 2026-09-08]**
 
 Measured at 375x812 with the demo league loaded, not assumed:
 
@@ -447,6 +504,32 @@ The layout holds up. The touch targets are the finding: usable, but fiddly for p
 checking scores one-thumbed on a Sunday. It is a CSS-only fix (padding plus `min-height`)
 but it changes the proportions of every screen, so it is a design call rather than a port
 call. **Want me to raise the touch targets, or leave the look exactly as he designed it?**
+
+**Answered 2026-09-08 - tabled, with a preference on the record.** Scott was shown four
+phone mockups at true size (today; 44px targets alone; a quiet header folding the
+housekeeping behind one button; and the nav moved to a bottom bar), with every control
+outlined and measured. His read: **"the buttons dont seem to be that big a deal honestly"**
+- so this is NOT being built now. **If it is ever built, he picked the quiet header**: 44px
+targets, with Log Out and Save Now folded into a single button rather than sitting in the
+header. He did not choose the bottom nav.
+
+**Part of it has since happened by another route.** Kyle removed the Save Now button
+altogether on 2026-09-08 (OQ-19, issue #69) because it did nothing in the port, which took
+16px off the header on its own. What is left of the fold-away idea is Log Out and the
+signed-in-as line.
+
+So the three pieces, in the order he would take them:
+
+1. **Raise the targets to 44px** - one stylesheet, no game logic. On its own it makes the
+   header TALLER, which is why it was never worth doing alone.
+2. **Fold Log Out, Save Now and the signed-in-as line behind one button** - the part he
+   actually liked, and the only one that buys screen back. The cost he accepted in
+   principle: the save status shrinks to a dot, so you trust the auto-save rather than
+   watch it.
+3. **The bottom nav** - not chosen. Leave it here as the option that was declined, not as
+   the next step.
+
+The header's height (OQ-8's other half) was not separately answered and is still open.
 
 ### OQ-9. Should resolved schemes become public? **[ANSWERED: yes, once resolved]**
 
@@ -1285,6 +1368,10 @@ answered:
   two lines if you want it back.
 - **OQ-13**, whether "Standings Point Values by Rank" earns its place. Keep it, hide the
   button and leave the engine field, or take the rule off the board. Recommendation: hide.
+- **OQ-25 is answered and built** - raised by Scott on 2026-09-08 while looking at the OQ-24
+  mockups, and answered by him the same day: a player whose NFL team has no game is not
+  dealt, stolen or redrawn, and comes back by himself the week his team plays. The dealable
+  pool is about a sixth smaller in peak bye weeks. **Nothing is left open on it.**
 - **The season archive**, held rather than built. **Tabled 2026-09-06, not declined** - "i do
   kind of like that? but maybe we table that one for now until we hash out all the other
   small issues we need to clean up first." Raise it again when the Phase 4 stage list is
@@ -1560,7 +1647,7 @@ rather than repoint it at Delete, and that is the honest answer: those settings 
 for the season precisely so a bracket cannot be re-cut around teams already playing in it,
 and Reset was never a good escape from that.
 
-### OQ-19. The Save Now button did nothing. **[BUILT 2026-09-08 - one call for Scott]**
+### OQ-19. The Save Now button did nothing. **[ANSWERED 2026-09-08: it stays gone]**
 
 **Raised as issue #69 by Kyle, built the same day, and the decision is still Scott's** - it
 takes a control off the header, which is a look-and-feel call rather than a port cleanup.
@@ -1606,6 +1693,322 @@ among what was kept.
 
 **The question for Scott:** the bar now reads "Saved at 3:42" with no button beside it. Is
 that the header you want, or would you rather have the button back?
+
+**Answered by Scott on 2026-09-08: "yeah im fine with save now being gone."** So the
+removal stands and this is closed - no two-line change needed, and nothing is waiting on
+him here.
+
+One knock-on, recorded because it lands somewhere else: the button was 16px of the sticky
+header, so its removal is also a small down-payment on OQ-8, which is about that header
+being 217px of an 812px phone. Measured after the merge, the header is 236px for a manager
+with the league name in it - the name arrived with OQ-18.
+
+### OQ-20. The week's action was three taps down. **[ANSWERED 2026-09-08: it moves onto the week screen, and the tab is renamed]**
+
+**Scott raised this himself on 2026-09-08**, and it is the sharpest statement of what the
+game is that this file has:
+
+> I think "activity" is a big part of the game. I believe one of the few things of this
+> game is picking a play scheme and then getting to see who you stole or drew at random.
+> It is also fun to see who else got stolen and blocked and redrew.
+
+**What it cost to find.** Opening the app cold landed on the Scoreboard, which said nothing
+had happened; the log was League, then Activity, the third sub-tab behind a standings table
+nobody came for. What arrived was every week ever in one list, newest first, in 13px
+`--text-dim` prose with no separation between three hours ago and last month.
+
+**The decision, out of five placements and three treatments drawn at phone size:**
+
+1. **The current week's events sit on the week screen**, in a card between your own team
+   card and the league table. One list, everyone's events together, with the rows naming
+   your team tinted and railed in gold. Not split into "yours" and "theirs" - the fun is
+   partly that the whole league watched the same thing happen to you.
+2. **The scheme becomes a coloured chip** - Block blue, Steal red, Redraw purple, reusing
+   the suit colours a roster row already wears. Everything that is not a manager's action
+   (a finalized week, the clock, a warning) takes a quiet chip so every row keeps one shape.
+3. **The tab is called "Week"**, not "Scoreboard". The old name stopped being true when the
+   screen stopped being a scoreboard; "Week" is also the shortest label in the nav, where
+   "Scoreboard" was the longest, which buys back a little of the header room OQ-8 is about.
+   **Only the label changed - the route key is still `results`, so no saved link breaks.**
+
+**What was considered and not taken**, recorded so it is not re-proposed as new: its own
+nav tab (a seventh pill, and still somewhere you must decide to go - it works better later
+as the "All weeks" destination, which is what the link now does); a one-line ticker under
+the week banner (one event at a time, and another line of header); rearranging the whole
+screen into a single "everything" feed (the same idea with far more work); and putting the
+action ABOVE your own score (right on Thursday, wrong on Sunday, and nothing on the screen
+knows which day it is).
+
+**The honest limit, and the question it leaves open.** An activity entry is
+`{ id, period, periodLabel, ts, type, text }` - prose and nothing else. There is no acting
+team on it, no player ids, no structured anything. So:
+
+- The chip comes from `type`, which is solid.
+- **The sentence is the engine's own words, verbatim.** The mockups Scott approved showed
+  shorter, punchier lines ("You took Ja'Marr Chase from Full House Flyers, and gave up Tank
+  Dell") - those are NOT what shipped, because rewording them means changing what
+  `processSchemes` writes, and `tests/parity.test.js` compares whole states against the
+  artifact after that call. That is a rules-adjacent change and it is his to ask for.
+- **"Is this row mine" is a name match** against the text. A miss leaves a row untinted; a
+  false positive tints a row that only mentions you. Both are better than the flat list this
+  replaces, and neither can corrupt anything.
+
+**So OQ-21 is the follow-up**: should the activity log carry real fields - the acting team,
+the players, the position - instead of only a sentence? That would buy the punchier wording,
+reliable "your row" marking, and a feed that could be filtered. It costs an engine change, a
+parity update, and a migration, because `decompose.js` writes `payload` empty today and a new
+field would not survive a save. Not started; waiting on him.
+
+**REFINED the same day, after measuring the built screen.** The arrangement was chosen from
+mockups in which "Your week" was drawn as a small card - team name, rank, big score, about
+110px. **The real card was 599px**, because it also carried your six starters with their
+stat lines, and that pushed the action card to 940px on an 812px phone. So the
+commissioner, who has no team card at all, saw the action immediately, and a MANAGER - the
+person it was built for - never saw it without scrolling a full screen. Measured, not
+estimated, in the running app.
+
+Scott's call: **the lineup comes off the week card entirely.**
+
+> so i like having your own score displayed, but you dont need to see your roster under
+> that tab. you would see your roster under "my team" and then everyone elses rosters and
+> player pools on the "rosters" tab, right?
+
+Right, and checked before acting: **My Team** carries your starters WITH their points, your
+bench, your swaps and your scheme; **Rosters** carries every team's roster and the
+free-agent pool. The block on the week card was duplication rather than the only copy - both
+it and My Team's points arrived together in issue #29, when My Team showed a lineup with no
+points on it at all. That is long fixed.
+
+So the week card is now the part that answers "how am I doing" in one glance - week, team,
+rank, gap to the leader, top scorer - plus a **"My lineup" link** to where the lineup lives.
+That link was not asked for; it is one line and exists so a manager used to finding his
+starters here is told where they went. **Scott kept it on 2026-09-08** - "keep the my
+lineup link, looks good."
+
+Measured after the change, same phone: the card is **121px**, the action card starts at
+**462px** and all but its last 23px is on the first screen, and the league table follows at
+848. The commissioner's view is unchanged.
+
+### OQ-21. Should an activity entry carry real fields, or just a sentence? **[ASKED 2026-09-08 - ANSWERED: not now]**
+
+Opened by the build of OQ-20, and **answered by Scott the same day: "for now the sentence
+looks fine."** Not declined - deferred, and worth leaving written down because the reason it
+is hard is not obvious.
+
+**What an entry is today.** `{ id, period, periodLabel, ts, type, text }`. The prose is
+written by the engine at the moment the scheme resolves, and it is the only record of what
+happened - there is no acting team on it, no player ids, no position.
+
+**What that costs the week card.** Two things, both visible:
+
+- The sentence is the engine's own words and cannot be shortened or restructured by the UI.
+  The mockups showed "You took Ja'Marr Chase from Full House Flyers, and gave up Tank Dell";
+  what renders is "Pocket Aces stole WR Ja'Marr Chase from Full House Flyers (dropped Tank
+  Dell). Full House Flyers received Rome Odunze (free agent) in return."
+- "Is this row mine" is a **name match** against the text, so the gold rail is a good guess
+  rather than a fact. A false positive tints a row that merely mentions you.
+
+**Why it is not a small change.** Three things have to move together:
+
+1. `processSchemes` and `finalizeCurrentPeriod` would have to write the extra fields, which
+   is an engine change - and `tests/parity.test.js` compares whole states field for field
+   against the artifact after those calls, so it fails by design until it is updated.
+2. `decompose.js` writes `payload: {}` for every event, so a new field would not survive a
+   save and reload. That means a migration and a change to both decompose and hydrate.
+3. **Every event already recorded would still be prose only.** Whatever reads the new fields
+   has to keep working without them, forever, or the log's own history stops rendering.
+
+**What it would buy**, when it is worth doing: the shorter wording, a gold rail that is
+correct rather than probable, and a feed that could be filtered - "just my team", "just
+steals" - which is not possible against a sentence.
+
+### OQ-22. Can a team block the same player two weeks running? **[ANSWERED 2026-09-08: yes - no cooldown]**
+
+Scott raised it and answered it in the same breath on 2026-09-08: **"sure. why not. thats what
+they were dealt they can do whatever they want."**
+
+**This is a confirmation, not a change.** Nothing in the game remembers last week's scheme.
+`processSchemes` clears the board when it is done (`next.schemes = {}`,
+`src/engine/schemes.js:182`), so a new week opens with no record of who protected whom, and the
+Block picker offers a manager all six of his current starters with nothing filtered out
+(`src/components/scheme.jsx:58`). No code moved for this answer. It is written down so that a
+later session reading "can you block the same guy every week?" as a loophole does not add a
+cooldown to close it.
+
+**What makes it rarer than it sounds, and it is worth knowing.** Rosters are re-dealt from the
+whole active pool every week (`src/engine/deal.js`) - a manager does not carry a player forward
+by choice. So blocking the same player two weeks running only comes up when the deal hands him
+back, which is luck rather than strategy. The one case where it is a genuine repeated decision
+is a star who keeps being dealt to the same team.
+
+**And Block only stops a steal.** A protected player is skipped when another team's Steal looks
+for a victim (`src/engine/schemes.js:86`); he is not protected from anything else, and blocking
+does not hold him on the roster into next week. So the cost of repeating it is the same as it
+ever was: the manager spent his one action for the week.
+
+*Numbered OQ-22 rather than OQ-19: this was written on 2026-09-08 against a main that did
+not yet have Kyle's OQ-19 (the Save Now removal, issue #69), and OQ-20 and OQ-21 went to the
+week screen the same afternoon.*
+
+---
+
+### OQ-24. The roster row never said who a player was up against. **[ANSWERED 2026-09-08: it does now - option B of four]**
+
+Scott: **"each player has their roster position, the team they play for, and their game time
+and date. it also needs their opponent next to the date and time of the game. So maybe next
+to each players name it has the abreviation of the players team next to their name, then
+underneath the name it says the players game date, time, and opponent."**
+
+**What the row was missing, and what it was wasting.** It already carried the kickoff - that
+went in with the playing-card row (OQ-J, issue #33) - but it spelled the NFL team out in full
+to do it: "Philadelphia Eagles - Sun 9/14 8:20 PM". On a 375px phone that is most of a line
+spent on a fact you have already read off the player's name, and the fact a manager actually
+wants before choosing a block - who the man is playing - was not on the screen anywhere.
+
+**Four mockups were drawn and Scott picked B.** The others were A (kickoff first, opponent
+trailing), C (the matchup on its own line above the time), and D (the game right-aligned in
+its own column, the way ESPN does it).
+
+What B is:
+
+| | |
+|---|---|
+| Name line | the player, then his team as a small gold chip - `Jordan Love` `GB` |
+| Under it | `at NYJ - Sun, 9/20 1:00 PM` - the matchup FIRST, the time trailing |
+
+**The matchup leading the line is the whole of what made B different.** Every row starts with
+the same kind of fact, so the matchups line up down the left edge of the card and read in one
+pass, instead of being hunted for at the end of six sentences of different lengths.
+
+**Three calls inside it, all reversible, all worth knowing:**
+
+- **`vs` at home, `at` on the road.** Free: the schedule names both teams in a game, so
+  knowing the opponent is knowing which side he is on. A road game at 8:20pm is a different
+  proposition from the same time at home. **Reverse:** drop the preposition in
+  `slotMetaLine`.
+- **A bye says "No game this week" out loud** - but ONLY once the week's kickoff times have
+  actually been read. Before that every player looks identical to a bye, and the row would
+  announce thirty-two of them. `weekScheduleKnown` is what tells the two apart.
+- **The commissioner's stat-entry row got the chip too.** It shares `slotMetaLine`, so
+  without it that screen would have been the one place showing a player with no team on him
+  at all. It earns its place there: for a Coach that row is where Win/Tie/Loss gets typed,
+  and the opponent beside it is the game being recorded.
+
+**Where the opponent came from: nowhere new.** `kickoffsFromGames` has always read
+`home_team` and `away_team` to know which team to file a kickoff under, and then dropped both
+names on the floor. Each entry in `periods.kickoffs` grew from a bare timestamp into
+`{ at, opp, home }`. **No migration** - the column is jsonb - and **no rules moved**;
+`src/engine/` changed only to read the new field.
+
+**The compatibility half matters more than the feature.** Every period already finalized
+holds bare timestamps, and so does a current week until its schedule is next read, so both
+shapes are live at once and will be all season. `kickoffAt` reads either, and
+`tests/lineupLock.test.js` keeps its whole suite on the OLD shape deliberately - so every
+lock assertion in it is the compatibility test - then runs the interesting ones twice.
+
+`src/engine/nflTeams.js` is new: the 32 teams and the three letters each is written as. The
+feed's own team table is now derived from it, because two hand-written team tables in one
+repository is one rename away from the screens and the schedule reader disagreeing.
+
+---
+
+### OQ-25. Should a player on a bye be dealt at all? **[ANSWERED 2026-09-08: no - not dealt, not stolen, not redrawn]**
+
+Raised by Scott the moment he saw the mockups: **"kittle should not be rostered with no game
+being played. he should be in the 'bye' pool of players right?"**
+
+**Half of that is already true, and the half that is missing is the half that matters.**
+
+- `dealRosters` deals only players whose status is `Active` (`src/engine/deal.js`). A player
+  marked **BYE** is genuinely out of the deal, out of the free-agent lists, and unstealable.
+  The status exists, the pool screen has a tab for it, and the engine honours it.
+- **Nothing ever sets it.** The only way a player becomes BYE is the commissioner choosing it
+  from the dropdown on the Player Pool screen, one player at a time. The weekly pool refresh
+  reads the depth charts, which say who is fit - Active, OUT, IR - and know nothing about
+  what week it is, so they never set BYE.
+
+**So in a real week, six teams are on bye and their forty-odd players are dealt exactly like
+everyone else**, unless somebody marked them all by hand on the Tuesday. A manager dealt one
+holds a card that is guaranteed to score nothing, and nothing on the screen said so until
+this change - which is how Scott came to notice.
+
+**What makes this newly answerable:** the same schedule read that put the opponent on the row
+knows precisely who is not playing. A team absent from a week's kickoffs is on bye. The
+information is now sitting in `periods.kickoffs` at the moment a week is dealt.
+
+**What it would do to the league, if the answer is yes - say it before changing anything:**
+
+- **The dealable pool shrinks in bye weeks**, by roughly a sixth once byes are in full swing
+  (six teams of the 32). Thinnest at Coach and QB, where each NFL team contributes exactly
+  one: 32 becomes 26. Still more than a six-team league needs, but it is a real reduction in
+  variety, and in the weeks with the most byes it is the difference between a deep pool and a
+  shallow one.
+- **Nobody is ever dealt a dead card again**, which is the point. Today a bye player is pure
+  bad luck - not a decision anyone made, and not something a scheme can fix, because the free
+  agents he could be swapped for are just as likely to be on a bye themselves.
+- **It changes steals and redraws too**, not just the deal: a bye player would not be in the
+  pool to be redrawn INTO, which is where most of the value is.
+- **It must never fire on a guess.** If the schedule cannot be read at deal time, the deal has
+  to go ahead exactly as it does today rather than exclude everybody - the same rule the
+  lineup lock already follows. A deal that silently refuses forty players because a CSV was
+  slow is worse than the problem.
+- **It is a genuine rules change**, so it needs the parity test updated to record the
+  difference, and `LegacyProject/` will disagree with it forever.
+
+**ANSWERED THE SAME DAY IT WAS RAISED.** Scott: **"yes the deal should skip a player who has
+no game scheduled. they cannot be redrawn, stolen, or dealt to teams at all. once they have
+a game scheduled they will resume being placed in the deal."**
+
+So it is all three doors, not just the Tuesday deal - which is the wider of the two answers
+the question offered, and the right one: shutting only the deal would have left a redraw
+free to hand somebody a guaranteed zero, and that is where the sting was worst. A redraw is
+a manager's one action for the week, spent on purpose.
+
+**Built 2026-09-08, and the consequence was stated before it was built:** in the thick of
+the bye season the dealable pool is about a sixth smaller, thinnest at Coach and QB where
+each NFL team contributes exactly one - 32 becomes 26. Every team still gets a full hand of
+12; there is simply less variety in those weeks. Scott heard that and said go.
+
+**Derived, never stored, which is what makes the second half of his sentence free.** The
+alternative was to write BYE onto forty players' status rows every Tuesday and clear them
+again the week after. Instead the schedule is asked each time the question comes up
+(`src/engine/availability.js`), so a player is back in the deal the moment his team has a
+game, with nothing to remember to undo and no way to get stuck. It also leaves the BYE
+status as exactly what it always was - a commissioner's manual override - rather than
+turning it into something a robot writes.
+
+**The two ways of knowing nothing both deal the player, deliberately:**
+
+- **The week's schedule has not been read.** Every player then looks exactly like a player
+  on a bye, so filtering would deal nobody at all. The deal behaves as it did before this
+  rule existed. Same principle as the lineup lock: never act on a guess.
+- **The player is on a team the schedule cannot speak about.** A commissioner can type any
+  team he likes when he adds a rookie by hand, and a typo would otherwise remove that
+  player from every deal forever with nothing on screen saying why.
+
+**The subtle half was not the rule, it was the ORDER.** A week's kickoff times used to be
+read AFTER the deal, in `afterPersist` - harmless while they only fed the lineup lock, which
+does not start mattering until Thursday. Left there, the deal would have filtered against
+last week's schedule and this rule would have silently never fired on the first deal of a
+new week, which is every deal. `tests/server.test.js` has a test for that ordering against
+the real database, because nothing in the engine could have caught it.
+
+**What it changed on screen.** The Free Agents BYE tab fills itself now - it used to list
+only players a commissioner had flagged by hand, which meant it sat empty all season while
+forty players a week sat out. Bye players no longer appear under QB / WR / RB / TE / Coach,
+because no scheme can reach them and listing them would be the screen offering something the
+rules refuse.
+
+**Parity.** Every dealt roster still matches the artifact on every seed, because the parity
+fixture has no schedule and the rule does not fire without one. What DID diverge is the
+wording of five refusal messages ("Active" became "available", and the count now names the
+byes), and `tests/parity.test.js` records that plus an explicit test of the divergence
+itself - six teams on a bye, dealt against both engines, ours excluding them on every seed
+and the artifact happily handing them out.
+
+*Numbered OQ-24 and OQ-25 rather than OQ-23: written on 2026-09-08 against a main that ended
+at the repeat-block ruling, while OQ-23 (all of league setup on one page) was open on
+`scott/one-screen-league-setup` the same evening. Keep both when they merge.*
 
 ### OQ-23. The setup checklist's Open buttons. **[ANSWERED 2026-09-08: they are gone - one page, top to bottom]**
 

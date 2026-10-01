@@ -7,7 +7,7 @@
  * file.
  *
  * That scoreboard used to be the ONLY place in the app a team total appeared, buried under
- * the controls below. It is now the Scoreboard tab; the sum behind it moved into the
+ * the controls below. It is now the Week tab; the sum behind it moved into the
  * engine as `teamPeriodScore`, which is also what let roster.jsx show a total without
  * importing from this file (roster.jsx <- stats.jsx already, so the other direction was a
  * cycle). This screen keeps the number where the commissioner is actually typing: on each
@@ -18,6 +18,7 @@ import { useState } from "react";
 import {
   PRIMARY_CATEGORIES,
   STAT_CATEGORIES,
+  abbrFor,
   computeStarterPoints,
   getPlayer,
   hasSplitStats,
@@ -132,8 +133,17 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
     <div className="pp-roster-slot" style={{ flexWrap: "wrap" }}>
       <PositionCard slot={slot} position={player.position} />
       <div className="pp-roster-slot-body" style={{ minWidth: 120 }}>
+        {/* THE SAME NAME LINE AS A ROSTER ROW, chip included. It has to be: the meta line
+            under it is literally the same function, and since 2026-09-08 that function
+            names the opponent instead of the team - so a row without the chip would be the
+            one place in the app that shows a player with no team on him at all. Worth most
+            here, in fact: for a Coach this is where Win/Tie/Loss gets typed, and the
+            opponent beside it is the game being recorded. */}
         <div className="pp-roster-slot-top">
-          <span className="pp-roster-slot-name">{player.name}</span>
+          <span className="pp-roster-slot-who">
+            <span className="pp-roster-slot-name">{player.name}</span>
+            {player.team ? <span className="pp-team-chip">{abbrFor(player.team)}</span> : null}
+          </span>
           {player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
         </div>
         <div className="pp-roster-slot-meta">{slotMetaLine(state, slot, player)}</div>

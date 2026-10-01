@@ -8,31 +8,77 @@
 
 import {
   ICON,
+  abbrFor,
   computeStarterPoints,
   formatKickoffDay,
   getPlayer,
   isPlayerLocked,
-  playerKickoff,
+  playerGame,
   teamPeriodScore,
+  weekScheduleKnown,
 } from "../engine/index.js";
 import { EmptyState, PositionCard, statLineText } from "./atoms.jsx";
 
 const DOT = " " + ICON.dot + " ";
 
-/* The second line of a roster row: who he plays for, and when he plays.
+/* The second line of a roster row: WHO HE IS PLAYING, and when.
+ *
+ * SCOTT'S CALL, 2026-09-08, from four mockups - this is option B. It used to spell his
+ * NFL team out in full and stop there ("Philadelphia Eagles - Sun 9/14 8:20 PM"), which
+ * spent most of a phone's width on the one fact you already knew from the name above it,
+ * and never said the thing a manager actually wants before choosing a block: who the man
+ * is up against. So the team moved up to the name line as an abbreviation (see the chip in
+ * RosterSlotRow) and the opponent took its place down here.
+ *
+ * THE MATCHUP LEADS THE LINE, which is the whole of what made B different from the other
+ * three: every row starts with the same kind of fact, so the matchups line up down the
+ * left edge of the card and can be read in one pass instead of hunted for at the end of
+ * six sentences of different lengths.
+ *
+ * `vs` OR `at` IS REAL INFORMATION AND IT IS FREE. The schedule names both teams in a
+ * game, so knowing the opponent is knowing whether he is home - and a road game at 8:20pm
+ * is a different proposition from the same time at home.
  *
  * The position leads it ONLY when the slot is not already saying it - a FLEX or a bench
  * place. Shared with the commissioner's stat-entry row, which shows the same player above
  * a row of number inputs and should not describe him differently.
+ *
+ * Returns NODES, not a string, because the preposition is set apart from the opponent in
+ * gold - the row is read at a glance and `at` in the same weight as `DAL` reads as part of
+ * the team's name.
  */
 export function slotMetaLine(state, slot, player) {
-  if (!player) return "";
+  if (!player) return null;
+  const game = playerGame(state, player);
+  const when = formatKickoffDay(game ? game.at : null);
   const parts = [];
+
   if (player.position !== slot) parts.push(player.position);
-  parts.push(player.team);
-  const kickoff = formatKickoffDay(playerKickoff(state, player));
-  if (kickoff) parts.push(kickoff);
-  return parts.join(DOT);
+  if (game && game.opp) {
+    parts.push(
+      <>
+        {game.home === false ? <span className="pp-vs">at</span> : <span className="pp-vs">vs</span>}{" "}
+        {game.opp}
+      </>
+    );
+  }
+  if (when) parts.push(when);
+
+  /* NOTHING KNOWN IS TWO DIFFERENT FACTS AND THE ROW SAYS WHICH. Once the week's times
+   * are in, a player absent from them is genuinely not playing - a bye - and that is worth
+   * saying out loud, because a bye man on your card scores nothing and you want to notice
+   * before Sunday. Before they are in, every player looks the same way and the row keeps
+   * its mouth shut rather than announcing thirty-two byes. */
+  if (!parts.length) {
+    return weekScheduleKnown(state) ? <span className="pp-no-game">No game this week</span> : null;
+  }
+
+  return parts.map((part, i) => (
+    <span key={i}>
+      {i ? DOT : ""}
+      {part}
+    </span>
+  ));
 }
 
 /* ONE PLAYER, THREE LINES (issue #33, and Scott's screenshot of 2026-09-07).
@@ -64,7 +110,15 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
       <PositionCard slot={slot} position={player ? player.position : null} />
       <div className="pp-roster-slot-body">
         <div className="pp-roster-slot-top">
-          <span className="pp-roster-slot-name">{player ? player.name : "empty slot"}</span>
+          {/* NAME AND TEAM TRAVEL TOGETHER (2026-09-08). The name used to be the flexible
+              element on this line, which pushed everything after it hard right - so an
+              abbreviation added beside it would have drifted to the far side of the row and
+              read as a column of its own rather than as part of the player. The wrapper
+              takes the flexing instead, and the chip stays where a shirt number would. */}
+          <span className="pp-roster-slot-who">
+            <span className="pp-roster-slot-name">{player ? player.name : "empty slot"}</span>
+            {player && player.team ? <span className="pp-team-chip">{abbrFor(player.team)}</span> : null}
+          </span>
           {player && player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
           {locked ? <span className="pp-locked-pill">LOCKED</span> : null}
           {showStats ? <span className="pp-roster-slot-pts">{pts} pt{pts === 1 ? "" : "s"}</span> : null}

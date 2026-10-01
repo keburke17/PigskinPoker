@@ -464,6 +464,7 @@ export function createSupabaseStore(config) {
      * `tz` changes only the timezone - so the panel's three controls are three calls
      * rather than one that has to know the other two's current values. */
     setAutoCycle: (patch) => call("setAutoCycle", patch),
+    setNotifyMembers: (enabled) => call("setNotifyMembers", { enabled }),
 
     async mutateLeague(fn) {
       const view = await readView();

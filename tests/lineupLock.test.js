@@ -17,14 +17,19 @@ import {
   LINEUP_LOCK,
   firstKickoff,
   formatKickoffDay,
+  gameFor,
   isPlayerLocked,
+  kickoffAt,
   lineupLockMode,
   lockReason,
   lockTimeFor,
   lockedByClock,
   normalizeLineupLock,
+  playerGame,
   playerKickoff,
+  weekScheduleKnown,
 } from "../src/engine/lineupLock.js";
+import { NFL_TEAM_ABBR, abbrFor } from "../src/engine/nflTeams.js";
 import { kickoffIso, kickoffsFromGames } from "../server/feed/nflverse.js";
 
 /* One Sunday, three windows, and a team on a bye. */
@@ -32,10 +37,25 @@ const THU = "2026-09-10T00:20:00.000Z"; // Wed/Thu night opener
 const EARLY = "2026-09-13T17:00:00.000Z"; // 1:00 PM ET
 const LATE = "2026-09-13T20:05:00.000Z"; // 4:05 PM ET
 
+/* DELIBERATELY THE OLD SHAPE - team -> bare ISO string - and it stays that way.
+ *
+ * On 2026-09-08 a kickoff entry grew into `{ at, opp, home }` so a roster row could name a
+ * player's opponent. Every period finalized before that day still holds bare strings, and
+ * so does a current week until its schedule is next read, so the old shape is not history:
+ * it is a shape the lock must keep reaching the same verdict from. Leaving this whole
+ * suite on it means every lock assertion below IS the compatibility test, and
+ * "the same week in either shape" further down runs the interesting ones twice. */
 const KICKOFFS = {
   "Buffalo Bills": THU,
   "Chicago Bears": EARLY,
   "Los Angeles Rams": LATE,
+};
+
+/* The same three games, as the feed writes them now. */
+const KICKOFFS_NEW = {
+  "Buffalo Bills": { at: THU, opp: "MIA", home: true },
+  "Chicago Bears": { at: EARLY, opp: "GB", home: false },
+  "Los Angeles Rams": { at: LATE, opp: "SEA", home: true },
 };
 
 const state = (over = {}) => ({
@@ -180,6 +200,103 @@ describe("the kickoff a roster row shows", () => {
   });
 });
 
+/* ================================================================= the two shapes == */
+
+describe("the same week in either shape", () => {
+  /* THE ONE THAT WOULD COST A LEAGUE ITS LOCKS. A period written before 2026-09-08 holds
+   * bare timestamps and one written after holds objects, and both are live at once - so
+   * every verdict below is asserted twice, once from each. If these ever disagree, a
+   * league mid-season is locking on nothing. */
+  it("reaches identical lock verdicts from a string and from an object", () => {
+    [KICKOFFS, KICKOFFS_NEW].forEach((kickoffs) => {
+      expect(lockTimeFor(LINEUP_LOCK.GAMETIME, kickoffs, "Chicago Bears")).toBe(EARLY);
+      expect(lockTimeFor(LINEUP_LOCK.WEEKLY, kickoffs, "Chicago Bears")).toBe(THU);
+      expect(firstKickoff(kickoffs)).toBe(THU);
+      expect(lockedByClock(LINEUP_LOCK.GAMETIME, kickoffs, "Chicago Bears", at(LATE))).toBe(true);
+      expect(lockedByClock(LINEUP_LOCK.GAMETIME, kickoffs, "Chicago Bears", at(THU))).toBe(false);
+      /* A team with no game locks on nothing, in either shape. */
+      expect(lockTimeFor(LINEUP_LOCK.GAMETIME, kickoffs, "New York Jets")).toBe(null);
+    });
+  });
+
+  it("takes the time out of either one, and nothing out of junk", () => {
+    expect(kickoffAt(EARLY)).toBe(EARLY);
+    expect(kickoffAt({ at: EARLY, opp: "GB", home: false })).toBe(EARLY);
+    expect(kickoffAt(null)).toBe(null);
+    expect(kickoffAt(undefined)).toBe(null);
+    expect(kickoffAt("not a date")).toBe(null);
+    expect(kickoffAt({})).toBe(null);
+    expect(kickoffAt({ at: "not a date" })).toBe(null);
+    expect(kickoffAt({ opp: "GB" })).toBe(null);
+  });
+
+  /* The opponent is the half the old shape cannot answer, and "we do not know" has to
+   * come back as null rather than as a guess or a crash. */
+  it("has no opponent to give for a week stored the old way", () => {
+    expect(gameFor(KICKOFFS, "Chicago Bears")).toEqual({ at: EARLY, opp: null, home: null });
+    expect(gameFor(KICKOFFS_NEW, "Chicago Bears")).toEqual({ at: EARLY, opp: "GB", home: false });
+    expect(gameFor(KICKOFFS_NEW, "New York Jets")).toBe(null);
+    expect(gameFor(KICKOFFS_NEW, null)).toBe(null);
+    expect(gameFor({}, "Chicago Bears")).toBe(null);
+  });
+
+  it("reads a player's game off the state the row is rendered from", () => {
+    const s = state({ _meta: { lineupLock: LINEUP_LOCK.GAMETIME, kickoffs: KICKOFFS_NEW } });
+    expect(playerGame(s, s.playerPool[1])).toEqual({ at: EARLY, opp: "GB", home: false });
+    expect(playerGame(s, s.playerPool[3])).toBe(null); // the bye
+    expect(playerGame(s, null)).toBe(null);
+    /* The time still comes back through the old accessor, which the lock screens use. */
+    expect(playerKickoff(s, s.playerPool[1])).toBe(EARLY);
+  });
+
+  /* WHY THIS EXISTS: a row can only say "No game this week" once it knows the difference
+   * between a bye and a Monday. Both look like a missing entry from one player's point of
+   * view; the difference is whether anyone at all has a game. */
+  it("knows whether the week's schedule has been read at all", () => {
+    expect(weekScheduleKnown(state())).toBe(true);
+    expect(weekScheduleKnown(state({ _meta: { kickoffs: KICKOFFS_NEW } }))).toBe(true);
+    expect(weekScheduleKnown(state({ _meta: { kickoffs: {} } }))).toBe(false);
+    expect(weekScheduleKnown(state({ _meta: {} }))).toBe(false);
+    expect(weekScheduleKnown({})).toBe(false);
+    /* Entries that carry no usable time are not a schedule. */
+    expect(weekScheduleKnown(state({ _meta: { kickoffs: { "Buffalo Bills": { opp: "MIA" } } } }))).toBe(false);
+  });
+});
+
+/* ============================================================= writing a team short == */
+
+describe("how a team is written on a roster row", () => {
+  it("has one abbreviation per team, and no two teams sharing one", () => {
+    const names = Object.keys(NFL_TEAM_ABBR);
+    const abbrs = Object.values(NFL_TEAM_ABBR);
+    expect(names).toHaveLength(32);
+    expect(new Set(abbrs).size).toBe(32);
+  });
+
+  /* A commissioner can type any team he likes when he adds a player by hand. Showing what
+   * he typed is the only honest answer - an empty chip hides the team, and a guess puts the
+   * player on the wrong one. */
+  it("falls back to what was typed, and says nothing for nothing", () => {
+    expect(abbrFor("Detroit Lions")).toBe("DET");
+    expect(abbrFor("Practice Squad")).toBe("Practice Squad");
+    expect(abbrFor("")).toBe("");
+    expect(abbrFor(null)).toBe("");
+    expect(abbrFor(undefined)).toBe("");
+  });
+
+  /* The feed's table is the flip of this one plus two alternate spellings, so a rename
+   * cannot leave the screens and the schedule reader disagreeing about a team. */
+  it("agrees with the feed's own table, both directions", async () => {
+    const { NFL_TEAMS } = await import("../server/feed/nflverse.js");
+    Object.entries(NFL_TEAM_ABBR).forEach(([name, abbr]) => {
+      expect(NFL_TEAMS[abbr]).toBe(name);
+    });
+    expect(NFL_TEAMS.JAC).toBe("Jacksonville Jaguars");
+    expect(NFL_TEAMS.LA).toBe("Los Angeles Rams");
+    expect(Object.keys(NFL_TEAMS)).toHaveLength(34);
+  });
+});
+
 describe("reading kickoff times out of games.csv", () => {
   const rows = [
     { season: "2026", week: "2", gameday: "2026-09-17", gametime: "20:15", home_team: "BUF", away_team: "MIA" },
@@ -188,11 +305,35 @@ describe("reading kickoff times out of games.csv", () => {
     { season: "2025", week: "2", gameday: "2025-09-18", gametime: "20:15", home_team: "SEA", away_team: "SF" },
   ];
 
+  /* CHANGED 2026-09-08, and this is the deliberate difference: an entry used to BE the
+   * timestamp and is now `{ at, opp, home }`. The roster row names a player's opponent
+   * now (Scott's call, option B of four), and the two team names were being read here and
+   * thrown away. `at` does what the bare string did, which is what keeps every lock
+   * verdict identical. */
   it("gives both teams in a game the same kickoff, keyed by the pool's team names", () => {
     const k = kickoffsFromGames(rows, { season: 2026, week: 2 });
-    expect(k["Buffalo Bills"]).toBe("2026-09-18T00:15:00.000Z");
-    expect(k["Miami Dolphins"]).toBe(k["Buffalo Bills"]);
+    expect(k["Buffalo Bills"].at).toBe("2026-09-18T00:15:00.000Z");
+    expect(k["Miami Dolphins"].at).toBe(k["Buffalo Bills"].at);
     expect(Object.keys(k)).toHaveLength(4);
+  });
+
+  it("names each team's opponent, and which side of it is at home", () => {
+    const k = kickoffsFromGames(rows, { season: 2026, week: 2 });
+    expect(k["Buffalo Bills"]).toEqual({ at: "2026-09-18T00:15:00.000Z", opp: "MIA", home: true });
+    expect(k["Miami Dolphins"]).toEqual({ at: "2026-09-18T00:15:00.000Z", opp: "BUF", home: false });
+  });
+
+  /* THE REASON THE OPPONENT GOES abbr -> full name -> abbr RATHER THAN STRAIGHT THROUGH.
+   * nflverse spells Jacksonville JAX in one file and JAC in another, and the Rams LA or
+   * LAR, so a row passing the file's own letters along would show "at JAC" one week and
+   * "at JAX" the next and look like two different teams. */
+  it("normalises the opponent's abbreviation, whichever one the file used", () => {
+    const k = kickoffsFromGames(
+      [{ season: "2026", week: "7", gameday: "2026-10-18", gametime: "13:00", home_team: "JAC", away_team: "LA" }],
+      { season: 2026, week: 7 }
+    );
+    expect(k["Jacksonville Jaguars"].opp).toBe("LAR");
+    expect(k["Los Angeles Rams"].opp).toBe("JAX");
   });
 
   it("takes only the season and week asked for", () => {
@@ -237,7 +378,22 @@ describe("the recorded schedule", () => {
     expect(first).toBeTruthy();
     /* The week's first game is its Thursday night one - which is exactly what a
      * `weekly` league locks on. */
-    expect(new Date(first).getTime()).toBeLessThan(new Date(kickoffs["Buffalo Bills"]).getTime() + 1);
+    expect(new Date(first).getTime()).toBeLessThan(new Date(kickoffs["Buffalo Bills"].at).getTime() + 1);
+  });
+
+  it("names an opponent for every team it recorded, so the row is exercised locally too", async () => {
+    const fixture = await import("../server/feed/fixture.js");
+    const { kickoffs } = await fixture.fetchKickoffs({ season: 2026, week: 2 });
+    const missing = Object.entries(kickoffs).filter(([, game]) => !game.opp);
+    expect(missing).toEqual([]);
+    /* And the two halves of a game agree about each other. */
+    Object.entries(kickoffs).forEach(([team, game]) => {
+      const other = Object.entries(kickoffs).find(([name]) => abbrFor(name) === game.opp);
+      expect(other).toBeTruthy();
+      expect(other[1].at).toBe(game.at);
+      expect(other[1].opp).toBe(abbrFor(team));
+      expect(other[1].home).toBe(!game.home);
+    });
   });
 
   it("comes back empty for a week it never recorded, exactly as the live feed does", async () => {

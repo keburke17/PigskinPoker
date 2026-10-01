@@ -183,8 +183,21 @@ describe("parity with the original artifact", () => {
       });
     }
 
+    /* DELIBERATE DIFFERENCE, 2026-09-08 (OQ-25): the word "Active" in these five refusals
+     * became "available", and the count can now carry ", with N more on a bye this week".
+     *
+     * WHY THE WORDING HAD TO MOVE. Dealing no longer takes every Active player - it skips
+     * anyone whose NFL team has no game (Scott's ruling; see src/engine/deal.js). "Not
+     * enough Active QBs (26)" printed in front of a pool screen showing 32 active
+     * quarterbacks would be a true sentence that reads as a bug, so the message names the
+     * byes instead.
+     *
+     * WHAT IS STILL ASSERTED EXACTLY, and it is the part that matters: both engines refuse
+     * the same deals, at the same positions, with the same counts. Only the sentence
+     * differs. Every dealt ROSTER is still compared byte for byte on all the seeds above,
+     * and those still match - which is the real safety net here. */
     for (const pos of ["Coach", "QB", "TE", "WR", "RB"]) {
-      it("matches the pool-exhaustion error for " + pos, () => {
+      it("refuses the same exhausted pool as the artifact, in newer words, for " + pos, () => {
         const s = legacyState(6);
         s.playerPool.forEach((p) => {
           if (p.position === pos) p.status = "OUT";
@@ -193,10 +206,73 @@ describe("parity with the original artifact", () => {
         Math.random = N.seededRng(5);
         const legacy = L.dealRosters(s, ids);
         const next = N.dealRosters(s, ids, N.seededRng(5));
-        expect(next).toEqual(legacy);
-        expect(next.error).toBe(legacy.error); // exact string, not just shape
+
+        expect(legacy.error).toBeTruthy();
+        expect(next.error).toBeTruthy();
+        expect(next.rosters).toBeUndefined(); // refused, not dealt - same as the artifact
+        /* Same position and same count, in both sentences. */
+        expect(next.error).toBe(legacy.error.replace("Active", "available"));
       });
     }
+
+    /* THE RULE ITSELF, and the reason every seed above still matches: with no schedule read,
+     * NOTHING is filtered. The artifact had no concept of a bye week and the parity fixture
+     * has no kickoffs, so `weekScheduleKnown` is false and the deal behaves exactly as it
+     * did - which is what makes the difference above a wording change and not a rules
+     * divergence hiding in the same commit. */
+    it("deals identically to the artifact while no schedule has been read", () => {
+      const s = legacyState(6);
+      const ids = s.teams.map((t) => t.id);
+      Math.random = N.seededRng(11);
+      const legacy = L.dealRosters(s, ids);
+      const next = N.dealRosters({ ...s, _meta: { kickoffs: {} } }, ids, N.seededRng(11));
+      expect(next).toEqual(legacy);
+    });
+
+    /* And the divergence, stated once and on purpose: give the same fixture a schedule in
+     * which one team is not playing, and that team's players stop being dealt. This is the
+     * assertion that would fail if somebody "restored" the old behaviour. */
+    it("DIVERGES from the artifact once a schedule says who is playing (OQ-25)", () => {
+      const s = legacyState(6);
+      const ids = s.teams.map((t) => t.id);
+
+      /* Six teams on a bye - a real week's worth, not one, which is also what makes the
+       * artifact's behaviour visible rather than a coin flip. Six teams of twelve players
+       * each is far too small a draw to be sure of hitting any ONE sitting-out team. */
+      const sittingOut = new Set([
+        "Kansas City Chiefs",
+        "Buffalo Bills",
+        "Detroit Lions",
+        "Philadelphia Eagles",
+        "San Francisco 49ers",
+        "Miami Dolphins",
+      ]);
+      const kickoffs = {};
+      s.playerPool.forEach((p) => {
+        if (!sittingOut.has(p.team)) kickoffs[p.team] = { at: "2026-09-13T17:00:00.000Z", opp: null, home: true };
+      });
+      const benched = new Set(s.playerPool.filter((p) => sittingOut.has(p.team)).map((p) => p.id));
+      expect(benched.size).toBeGreaterThan(30);
+
+      const dealtIds = (result) =>
+        Object.values(result.rosters).flatMap((r) => Object.values(r.starters).concat(r.bench));
+
+      let legacyDealtABenchedPlayer = false;
+      for (const seed of SEEDS) {
+        const next = N.dealRosters({ ...s, _meta: { kickoffs } }, ids, N.seededRng(seed));
+        expect(next.error).toBeUndefined();
+        /* OURS: never, on any seed. This is the assertion that fails if the old behaviour
+         * is ever "restored". */
+        expect(dealtIds(next).filter((id) => benched.has(id))).toEqual([]);
+
+        Math.random = N.seededRng(seed);
+        const legacy = L.dealRosters(s, ids);
+        if (dealtIds(legacy).some((id) => benched.has(id))) legacyDealtABenchedPlayer = true;
+      }
+      /* THEIRS: the artifact has no notion of a bye at all, so across a handful of seeds it
+       * hands out guaranteed-zero cards. That is the bug Scott was fixing. */
+      expect(legacyDealtABenchedPlayer).toBe(true);
+    });
   });
 
   describe("processSchemes", () => {

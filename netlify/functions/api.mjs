@@ -77,6 +77,7 @@ const ROUTES = {
   refreshKickoffs: (db, p) => ops.refreshKickoffs(db, p),
   setAutoPullStats: (db, p) => ops.setAutoPullStats(db, p),
   setAutoCycle: (db, p) => ops.setAutoCycle(db, p),
+  setNotifyMembers: (db, p) => ops.setNotifyMembers(db, p),
 };
 
 export async function handler(event) {

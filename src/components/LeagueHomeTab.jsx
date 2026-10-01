@@ -1,15 +1,21 @@
-/* Pigskin Poker UI - extracted verbatim from
+/* Pigskin Poker UI - extracted from
  * LegacyProject/PigskinPokerCode.jsx lines 1246-1272.
- * Only module boundaries were added: imports at the top, `export` on each
- * declaration. No component body was edited.
+ *
+ * Extracted verbatim, with only module boundaries added. Since then it takes two props
+ * it did not have (2026-09-08, OQ-20): `initialSub`, so the week screen's "All weeks"
+ * link can open the Activity panel directly, and `myTeam`, which that panel uses only to
+ * tint the rows naming your team. The three sub-tabs and what they show are unchanged.
  */
 
 import { useState } from "react";
 import { emptyCumulative, periodLabel, rankTeamsWithTiebreak, seasonStandingsRows } from "../engine/index.js";
 import { ActivityPanel, PlayoffsPanel, StandingsTable } from "./standings.jsx";
 
-export function LeagueHomeTab({ state }) {
-  const [sub, setSub] = useState("regular");
+/* `initialSub` lets the week card's "All weeks" link land on the activity log rather
+ * than on the standings (OQ-20). Read once, at mount, which is all it needs to be:
+ * App keys this component on the same value, so arriving again re-mounts it. */
+export function LeagueHomeTab({ state, myTeam, initialSub }) {
+  const [sub, setSub] = useState(initialSub || "regular");
   const standings = seasonStandingsRows(state);
   const ranked = rankTeamsWithTiebreak(standings.map((r) => ({ teamId: r.teamId, rawScore: r.rawScore, tb: r.tb })))
     .map((r) => Object.assign({}, r, { teamName: (state.teams.find(t => t.id === r.teamId) || {}).name, cum: (state.teams.find(t => t.id === r.teamId) || {}).cumulative || emptyCumulative() }));
@@ -27,7 +33,7 @@ export function LeagueHomeTab({ state }) {
           ? <><p className="pp-sub" style={{ marginBottom: 10 }}>Regular-season standings are frozen - playoffs are underway.</p><StandingsTable rows={ranked} teams={state.teams} /></>
           : <StandingsTable rows={ranked} teams={state.teams} />)}
         {sub === "playoffs" && <PlayoffsPanel state={state} />}
-        {sub === "activity" && <ActivityPanel state={state} />}
+        {sub === "activity" && <ActivityPanel state={state} myTeam={myTeam} />}
       </div>
     </div>
   );

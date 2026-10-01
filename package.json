@@ -24,6 +24,7 @@
     "db:backup": "node scripts/backup-hosted.mjs",
     "verify:grants": "node scripts/verify-grants.mjs",
     "verify:email": "node scripts/verify-email.mjs",
+    "verify:notify": "node scripts/verify-notify.mjs",
     "verify:redirects": "node scripts/verify-redirects.mjs"
   },
   "dependencies": {

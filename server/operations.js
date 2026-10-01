@@ -32,6 +32,7 @@ import {
   schemesEligibility,
   summarize as summarizeCycle,
   zoneOf,
+  reminderEligibility,
 } from "./autoCycle.js";
 import { isValidTimeZone } from "./tz.js";
 import { isValidNflWeek, nextNflWeek } from "./schedule.js";
@@ -66,6 +67,7 @@ import {
   verifySiteAdmin,
 } from "./auth.js";
 import { planCoachUpdate, summarizeCoaches, NFL_TEAM_NAMES } from "./coaches.js";
+import { notifyLeague } from "./notify.js";
 
 const PHASE_RULES = {
   dealPeriod: ["pre-deal"],
@@ -249,6 +251,29 @@ async function mapNewPeriod(client, seasonId, current, { season, feed } = {}) {
  * @returns {{ ok: boolean, count: number, error?: string }}
  */
 async function readKickoffs(client, periodRow, season, feed) {
+  const fetched = await fetchKickoffsFor(periodRow, season, feed);
+  if (!fetched.ok) return { ok: false, count: 0, error: fetched.error };
+
+  const { error } = await client
+    .from("periods")
+    .update({ kickoffs: fetched.kickoffs, kickoffs_read_at: new Date().toISOString() })
+    .eq("id", periodRow.id);
+  if (error) return { ok: false, count: 0, error: error.message };
+  return { ok: true, count: fetched.count };
+}
+
+/**
+ * The fetch half of the above, WITHOUT the write.
+ *
+ * SPLIT OUT FOR THE DEAL (OQ-25, 2026-09-08). Dealing has to know which teams are playing
+ * before it deals, because a player whose team has no game is no longer dealt - and the
+ * write half needs a database client that the operation body does not have (it only reaches
+ * one in `afterPersist`, which runs after the deal has already happened). So `applyDeal`
+ * fetches here, deals against the answer, and lets `afterPersist` do the storing.
+ *
+ * @returns {{ ok: boolean, count: number, kickoffs?: object, error?: string }}
+ */
+async function fetchKickoffsFor(periodRow, season, feed) {
   if (!periodRow) return { ok: false, count: 0, error: "no current week" };
   if (!isValidNflWeek(periodRow.nfl_week)) {
     return { ok: false, count: 0, error: "this week is not mapped to an NFL week yet" };
@@ -265,13 +290,7 @@ async function readKickoffs(client, periodRow, season, feed) {
    * published the feed genuinely returns nothing, and replacing a good week's times
    * with {} would silently unlock a league mid-Sunday. */
   if (count === 0) return { ok: false, count: 0, error: "the schedule has no times for that week yet" };
-
-  const { error } = await client
-    .from("periods")
-    .update({ kickoffs, kickoffs_read_at: new Date().toISOString() })
-    .eq("id", periodRow.id);
-  if (error) return { ok: false, count: 0, error: error.message };
-  return { ok: true, count };
+  return { ok: true, count, kickoffs };
 }
 
 /* ----------------------------- accounts ---------------------------------- */
@@ -1012,7 +1031,27 @@ async function runLifecycle(db, leagueId, ctx, apply) {
     year: ctx.rows.seasons[0].year,
   });
   if (outcome.afterPersist) await outcome.afterPersist(db, leagueId);
-  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+
+  const rows = await fetchLeagueRows(db, leagueId);
+  const view = hydrate(rows);
+
+  /* Issue #57. THE EMAIL IS SENT FROM HERE, which is the whole point of this function
+   * existing: it is the one path both the commissioner's button and the scheduled cycle
+   * take, so the clock cannot tell a league something the button would not, and neither
+   * of them holds a second copy of the wording.
+   *
+   * AFTER THE WRITE, DELIBERATELY, AND NEVER ALLOWED TO UNDO IT. By this line the week
+   * has happened: rosters are dealt, standings have moved, and the commissioner is
+   * waiting on a response. `notifyLeague` swallows everything - an outage, a rate limit,
+   * a league with no addresses - into a row the hourly drain retries and a line in the
+   * log. A deal that 500s because a mail provider is having a bad morning would be a
+   * far worse bug than a late email. */
+  if (outcome.notify) {
+    const told = await notifyLeague(db, { rows, view, kind: outcome.notify });
+    if (told.status !== "skipped") console.log("[notify]", outcome.notify, "-", told.status, told.why);
+  }
+
+  return good({ view });
 }
 
 /**
@@ -1120,10 +1159,28 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
       v.currentPeriod.type === "playoff" ? v.playoffConfig.activeTeamIds : v.teams.map((t) => t.id);
     if (teamIds.length === 0) return { error: "Add at least one team before dealing rosters." };
 
+    /* THE SCHEDULE IS READ BEFORE THE DEAL, NOT AFTER (OQ-25, 2026-09-08). It used to be
+     * read only in `afterPersist` below, which was fine when nothing about the deal
+     * depended on it - the times were for the lineup lock, and the lock does not start
+     * mattering until Thursday. Now a player whose NFL team has no game is not dealt, and a
+     * week's own kickoffs are the only thing that knows who those players are. Left where
+     * it was, the rule would have read LAST week's schedule and quietly never fired on the
+     * first deal of a new week, which is every deal.
+     *
+     * BEST EFFORT, EXACTLY AS BEFORE. A schedule that is slow, unpublished or unreadable
+     * leaves `_meta.kickoffs` as it was and the deal goes ahead dealing everybody, which is
+     * the behaviour that shipped before this rule. A deal that refused forty players
+     * because a CSV timed out would be far worse than the problem it solves - see the
+     * "two ways to know nothing" note in src/engine/availability.js. */
+    const schedule = await fetchKickoffsFor(ctx.period, ctx.rows.seasons[0]?.year, feed);
+    const dealView = schedule.ok
+      ? { ...v, _meta: { ...(v._meta || {}), kickoffs: schedule.kickoffs } }
+      : v;
+
     // Minted HERE, server-side, and stored on the period: the deal can be replayed and
     // audited, and a client cannot re-roll one it did not like (P5).
     const seed = newSeed();
-    const result = dealRosters(v, teamIds, seededRng(seedFromString(seed)));
+    const result = dealRosters(dealView, teamIds, seededRng(seedFromString(seed)));
     if (result.error) return { error: result.error };
 
     const blob = JSON.parse(JSON.stringify(v));
@@ -1152,6 +1209,12 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
 
     return {
       blob,
+      /* Issue #57. The week's roster is the one thing every manager has to act on, so
+       * this is the message that matters most - and it carries last week's result with
+       * it rather than arriving a second after a separate recap. Whether anybody
+       * receives it is the league's switch and each member's own, both checked in
+       * server/notify.js. */
+      notify: "week_dealt",
       afterPersist: async (client) => {
         await client
           .from("periods")
@@ -1163,12 +1226,19 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
            * and a week dealt "now" must not immediately look overdue. */
           .update({ deal_seed: seed, dealt_at: new Date(now ?? Date.now()).toISOString() })
           .eq("id", ctx.period.id);
-        /* Read the week's kickoff times here, because dealing is when the week starts
-         * and the lock needs a clock from that moment on. Best effort by design: a
-         * schedule file that is slow or not yet published must not fail a deal, and a
-         * league with no times simply locks nothing until the commissioner refreshes
-         * them - see readKickoffs. */
-        await readKickoffs(client, ctx.period, ctx.rows.seasons[0]?.year, feed);
+        /* Store the week's kickoff times, because dealing is when the week starts and the
+         * lock needs a clock from that moment on. These are the SAME times the deal just
+         * dealt against, kept from the fetch above rather than fetched a second time - so
+         * the schedule a roster was built from and the schedule its lock fires on cannot
+         * be two different readings of a flexed game. Best effort by design: a file that
+         * was slow or not yet published leaves the period's existing times alone, and the
+         * league locks nothing until the commissioner refreshes them. */
+        if (schedule.ok) {
+          await client
+            .from("periods")
+            .update({ kickoffs: schedule.kickoffs, kickoffs_read_at: new Date().toISOString() })
+            .eq("id", ctx.period.id);
+        }
       },
     };
   };
@@ -1214,6 +1284,10 @@ function applyProcessSchemes({ by = "commissioner" } = {}) {
     }
     return {
       blob,
+      /* Issue #57. Sent whether the commissioner pressed the button or the 3am clock
+       * did, because the thing worth knowing is the same either way: the schemes have
+       * run, your roster may have changed hands, and your lineup is now yours to set. */
+      notify: "schemes_processed",
       afterPersist: async (client) => {
         await client.from("periods").update({ scheme_seed: seed }).eq("id", ctx.period.id);
         // Schemes are retained, not deleted (OQ-9): mark them resolved so the RLS
@@ -1873,6 +1947,38 @@ export async function setAutoCycle(db, { leagueId, token, processSchemes, advanc
 }
 
 /**
+ * Issue #57 / OQ-6: does this league tell its managers anything by email?
+ *
+ * OFF UNTIL THE COMMISSIONER SAYS OTHERWISE, like every other switch on `leagues`, and
+ * here the default carries more weight than usual: turning it on means twelve people
+ * who never asked for email start receiving it. That is his call to make for his own
+ * league, not ours to make for everybody by deploying.
+ *
+ * ONE SWITCH, NOT THREE. A commissioner decides whether his league is emailed at all;
+ * WHICH messages any individual gets is that person's own business, stored per account
+ * in `notification_prefs` and reachable from the footer of every message without
+ * signing in. Splitting the league switch by kind would put three checkboxes on a nav
+ * OQ-8 already calls crowded, to answer a question nobody has asked.
+ *
+ * It does not reach into anybody's preferences, and turning it off does not clear them:
+ * a league that goes quiet for a season and comes back finds everyone's own choices
+ * where they left them.
+ */
+export async function setNotifyMembers(db, { leagueId, token, enabled }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (typeof enabled !== "boolean") return fail(400, "That switch must be true or false.");
+
+  const { error } = await db.from("leagues").update({ notify_members: enabled }).eq("id", leagueId);
+  if (error) return fail(500, error.message);
+
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
  * Issue #52: run the weekly cycle on a clock, for the leagues that asked for it.
  *
  * Scott's request in his own words, recorded as OQ-14: rosters dealt automatically on
@@ -1905,7 +2011,7 @@ export async function setAutoCycle(db, { leagueId, token, processSchemes, advanc
 export async function scheduledWeeklyCycle(db, { now = Date.now(), feed } = {}) {
   const { data: leagues, error } = await db
     .from("leagues")
-    .select("id, name, tz, auto_process_schemes, auto_advance_week, auto_pull_stats")
+    .select("id, name, tz, auto_process_schemes, auto_advance_week, auto_pull_stats, notify_members")
     .or("auto_process_schemes.eq.true,auto_advance_week.eq.true");
   if (error) return fail(500, "Could not list leagues: " + error.message);
 
@@ -1924,6 +2030,15 @@ export async function scheduledWeeklyCycle(db, { now = Date.now(), feed } = {}) 
         const processed = await processOneLeague(db, { league, now });
         steps.push(...processed.steps);
         if (processed.failure) failure = processed.failure;
+      }
+
+      /* Issue #57. LAST, and after the scheme step on purpose: if this tick is the one
+       * that closes the week, the phase has already moved by now and the reminder
+       * correctly finds nothing to do rather than emailing people about a deadline that
+       * passed thirty seconds ago. */
+      if (!failure) {
+        const reminded = await remindOneLeague(db, { league, now });
+        steps.push(...reminded.steps);
       }
     } catch (err) {
       failure = "unexpected: " + (err?.message ?? String(err));
@@ -2099,7 +2214,56 @@ async function processOneLeague(db, { league, now }) {
   return { steps: [{ step: "schemes", did: true, why: verdict.why }] };
 }
 
-/** Teams eligible for the period in front of us - all of them, or the survivors. */
+/**
+ * Wednesday afternoon: tell whoever has not picked that the week is about to close.
+ *
+ * Issue #57. THE ONLY MESSAGE THAT NEEDS A SCHEDULE OF ITS OWN - the other two are sent
+ * by the step that caused them, from `runLifecycle`. Nothing happens twelve hours before
+ * a deadline, which is precisely why somebody has to be told.
+ *
+ * IT WRITES NOTHING TO THE LEAGUE. No phase moves, no blob is persisted, no version
+ * changes: this step reads two tables and may insert rows into `notifications`. That is
+ * what makes it safe to bolt onto an hourly job that otherwise only acts twice a week,
+ * and it is why a failure here is reported as a skipped step rather than failing the
+ * league's run - a missed reminder must never stop a week being finalized.
+ *
+ * WHO IS LEFT OUT is the whole point: anybody with a scheme row for this period, whether
+ * they picked a block or explicitly picked No Action. Both are decisions, and reminding
+ * somebody about a decision they have already made is how a sender gets filtered.
+ */
+async function remindOneLeague(db, { league, now }) {
+  const ctx = await systemContext(db, league.id);
+  if (ctx.error) return { steps: [{ step: "remind", did: false, why: "no such league" }] };
+
+  const verdict = reminderEligibility({ league, period: ctx.period, now });
+  if (!verdict.eligible) return { steps: [{ step: "remind", did: false, why: verdict.why }] };
+
+  /* Every team that has submitted anything for this week. At `dealt` nothing is
+   * resolved yet, so the presence of the row IS the submission. */
+  const { data: schemes, error } = await db
+    .from("schemes")
+    .select("team_id")
+    .eq("period_id", ctx.period.id);
+  if (error) return { steps: [{ step: "remind", did: false, why: "could not read schemes: " + error.message }] };
+
+  const told = await notifyLeague(db, {
+    rows: ctx.rows,
+    view: ctx.view,
+    kind: "scheme_reminder",
+    now,
+    skipTeamIds: (schemes ?? []).map((row) => row.team_id),
+    extra: { hoursLeft: verdict.hoursLeft },
+  });
+
+  /* `queued` is the only outcome that counts as having done something. "Everybody has
+   * already picked" and "already reminded this week" are both skips, and a Wednesday on
+   * which every manager is organised should read as a quiet hour. */
+  return {
+    steps: [{ step: "remind", did: told.status === "queued", why: told.why ?? verdict.why }],
+  };
+}
+
+/** Teams eligible for the period in front of us - all of them, or the survivors. *//** Teams eligible for the period in front of us - all of them, or the survivors. */
 function periodTeamCount(view) {
   if (!view) return 0;
   return view.currentPeriod?.type === "playoff"

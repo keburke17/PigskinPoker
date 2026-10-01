@@ -2115,3 +2115,114 @@ ten buttons to nine, which is the small half of OQ-8. The Rules tab's standings 
 the reverse ladder and says it is fixed, rather than printing a list of numbers with no
 account of where they came from. `docs/RULES.md` section 7 dropped its `[configurable]`
 marker in the same change.
+
+---
+
+## The roster row names the opponent (2026-09-08, OQ-24)
+
+Scott's request, built as option B of four mockups: each player's NFL team moved onto the
+name line as an abbreviation, and the line under it leads with the matchup - `at NYJ - Sun,
+9/20 1:00 PM` - instead of spelling the team out and stopping at the kickoff.
+
+**No rule moved.** Dealing, scheme resolution, scoring, ranking and finalizing are untouched;
+`tests/parity.test.js` needed no change. This is what a row says, not what a week does.
+
+**The opponent was already being read and thrown away.** `kickoffsFromGames` has always
+looked at `home_team` and `away_team` - that is how it knows which team to file a kickoff
+under - and then kept only the timestamp. Each entry in `periods.kickoffs` grew from a bare
+ISO string into `{ at, opp, home }`. **No migration:** the column is jsonb, and the two
+alternates below are the reason it did not need a backfill either.
+
+**Both shapes are live at once, and will be all season.** `periods.kickoffs` is only
+rewritten when a week's schedule is read, so every period already finalized holds bare
+strings and so does the current week until the next deal or Refresh Kickoff Times.
+`kickoffAt()` in `src/engine/lineupLock.js` reads either, and every function that used to
+index the map directly now goes through it. A lock verdict is the one thing here that must
+not change for a week already being played.
+
+`tests/lineupLock.test.js` keeps its whole suite on the OLD shape on purpose, so every lock
+assertion in it doubles as the compatibility test, and a new block runs the interesting ones
+against both.
+
+**A new file, and one fewer hand-written team table.** `src/engine/nflTeams.js` holds the 32
+teams and the three letters each is written as - one-to-one, which is what a display needs.
+`NFL_TEAMS` in `server/feed/nflverse.js` is now derived from it, plus the two alternate
+spellings nflverse actually uses (JAC for JAX, LA for LAR); that table is many-to-one and so
+could never have answered "how do I write this team short?". Deriving it means a rename
+cannot leave the screens and the schedule reader disagreeing about a team.
+
+**The opponent is normalised through our own names** - abbr to full name to abbr - rather
+than passed through from the file. Otherwise a row would read "at JAC" one week and "at JAX"
+the next and look like two different teams.
+
+**A bye is now said out loud, but only when it is knowable.** `weekScheduleKnown()` is the
+guard: before a week's times are read every player looks exactly like a player on a bye, and
+the row would have announced thirty-two of them. Once they are in, a player with no entry
+genuinely is not playing and the row says so.
+
+**Two screens, one function.** The commissioner's stat-entry row shares `slotMetaLine`, so it
+took the chip as well - without it, that screen would have been the only place in the app
+showing a player with no team on him at all. It reads best there, in fact: for a Coach that
+row is where Win/Tie/Loss is typed, and the opponent beside it is the game being recorded.
+
+**What it turned up.** Seeing a bye player on a mockup roster is what prompted OQ-25 - BYE
+keeps a player out of the deal, but nothing ever sets it, so bye-week players are dealt like
+everyone else. Recorded, not fixed.
+
+---
+
+## A player on a bye is no longer dealt (2026-09-08, OQ-25)
+
+Scott's ruling, the same day he raised it: "the deal should skip a player who has no game
+scheduled. they cannot be redrawn, stolen, or dealt to teams at all. once they have a game
+scheduled they will resume being placed in the deal."
+
+**This is a genuine rules change**, the second since the port (the first was OQ-A's sixth
+tiebreaker). Before it, a player whose NFL team was on a bye was dealt like anyone else and
+scored a guaranteed nothing - and no scheme could rescue the card, because the free agents he
+might be swapped for were just as likely to be sitting out too.
+
+**What was already there, and what was missing.** `dealRosters` has always taken only Active
+players, and BYE has always been one of the statuses that keeps a player out. What never
+existed was anything that SET it: the pool refresh reads depth charts, which say who is fit,
+and know nothing about what week it is. So the status was only ever set by a commissioner
+working down the pool screen by hand, and in practice never was.
+
+**Derived, not stored.** `src/engine/availability.js` asks the schedule each time the
+question is asked rather than writing BYE onto forty status rows every Tuesday and clearing
+them the week after. That is what makes "they will resume being placed in the deal" free -
+there is nothing to undo and no way for a player to get stuck sitting out. It also leaves the
+BYE status as the commissioner's manual override, rather than something a robot writes over.
+
+**Three doors, all shut**: the deal (`src/engine/deal.js`), the redraw and the steal (both in
+`src/engine/schemes.js`). Shutting only the deal would have left a redraw free to hand
+somebody a guaranteed zero, which is where the sting was worst - a redraw is a manager's one
+action for the week.
+
+**Two ways of knowing nothing, both of which deal the player:** a week whose schedule has not
+been read (every player then looks like a bye, and filtering would deal nobody), and a player
+on a team the schedule cannot speak about (a commissioner's hand-typed team, where a typo
+would otherwise remove him from every deal forever). Same principle as the lineup lock.
+
+**THE SUBTLE HALF WAS THE ORDERING, NOT THE RULE.** `readKickoffs` ran in `applyDeal`'s
+`afterPersist` - after the deal - which was fine while the times only fed the lineup lock,
+which does not matter until Thursday. Left there, the deal would have filtered against LAST
+week's schedule, so the rule would have silently never fired on the first deal of a new week,
+which is every deal. The fetch is now split from the write (`fetchKickoffsFor`), the deal
+runs against the answer, and `afterPersist` stores the same reading rather than fetching a
+second time - so a roster and the lock that freezes it cannot disagree about a flexed game.
+`tests/server.test.js` pins the ordering against the real database and the real feed, on NFL
+week 11 (13 games, six teams out); nothing in the engine could have caught it.
+
+**Parity holds where it matters.** Every dealt roster still matches the artifact on every
+seed, because the parity fixture has no schedule and the rule does not fire without one -
+which is the same guard that protects a real league on a bad feed day. What diverged is the
+wording of five refusal messages: "Not enough Active QBs" became "Not enough available QBs",
+and the count now carries ", with N more on a bye this week", because the old sentence in
+front of a pool screen showing 32 active quarterbacks reads as a bug.
+`tests/parity.test.js` records that, and adds an explicit test of the divergence itself.
+
+**On screen.** The Free Agents BYE tab fills itself now instead of sitting empty all season,
+and bye players no longer appear under the position tabs - listing them would be the screen
+offering something the rules refuse. The Rules tab and `docs/RULES.md` section 4 say the rule
+in the league's own words.

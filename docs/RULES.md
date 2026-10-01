@@ -122,8 +122,26 @@ Defined in `src/engine/constants.js`; dealt by `src/engine/deal.js`.
 Rosters are dealt at random from the league's player pool, and **only Active players are
 dealt** - anyone marked OUT, IR or BYE is skipped.
 
+**A player whose NFL team has no game that week is not dealt either** (Scott's ruling,
+2026-09-08). He cannot be dealt, stolen or redrawn into a roster, and he returns
+automatically the week his team plays again - nothing is written down and nothing has to be
+undone, because the question is asked of the schedule every time it is asked.
+
+Two things follow, and both are deliberate:
+
+- **The dealable pool is smaller in bye weeks** - about a sixth smaller at the peak, and
+  thinnest at Coach and QB where each NFL team contributes exactly one, so 32 becomes 26.
+  Every team still gets a full hand of 12.
+- **If the schedule cannot be read, everybody is dealt**, exactly as before the rule
+  existed. A week whose kickoff times are unknown looks identical to a week in which all
+  32 teams are on a bye, and a deal that refused forty players because a file was slow
+  would be far worse than the problem. Same principle as the lineup lock: never act on a
+  guess.
+
 If the pool cannot fill every team - too few Coaches, say - the deal is refused with a
-message saying so, rather than dealing partial rosters.
+message saying so, rather than dealing partial rosters. That message names the byes when
+byes are the reason, because "not enough available QBs (26)" in front of a pool screen
+showing 32 active quarterbacks reads as a bug.
 
 The deal is per-league. Two leagues dealing the same week get different rosters.
 
@@ -345,7 +363,14 @@ pool carrying IR - a pool that simply omitted him could not explain where he wen
 
 ### Player statuses
 
-`Active`, `OUT`, `IR`, `BYE`. **Only Active players are dealt.**
+`Active`, `OUT`, `IR`, `BYE`. **Only Active players are dealt**, and since 2026-09-08 an
+Active player whose NFL team has no game that week is not dealt either (section 4).
+
+**The BYE status and a bye week are two different things**, which is worth knowing because
+they sound identical. The status is a commissioner's manual override, set by hand on the
+Player Pool screen and left alone by every refresh. Being on a bye is derived from the
+schedule, changes by itself every week, and is never written to anybody's status row. The
+Free Agents screen's BYE tab shows both.
 
 A player dealt to a team **stays there for the week**, whatever happens in real life. If his
 coach is fired on Tuesday or he lands on IR on Wednesday, he finishes your week; the change

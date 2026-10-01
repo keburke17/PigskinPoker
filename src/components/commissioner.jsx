@@ -22,6 +22,7 @@ import {
   advanceDeadlineWords,
   autoAdvanceWeek,
   autoProcessSchemes,
+  leagueEmailOn,
   leagueTimeZone,
   schemeDeadlineWords,
   periodLabel,
@@ -374,6 +375,74 @@ export function CommAutomationPanel({ state, onSetAutoCycle }) {
   );
 }
 
+/* Issue #57 / OQ-6: does this league tell its managers anything, or do they find out by
+ * opening the app?
+ *
+ * WORDED AS WHAT ARRIVES IN SOMEBODY'S INBOX, not as "enable notifications", because
+ * that is the decision being made: three emails a week, to twelve people, from an
+ * address they have never seen. Off by default, and off is a perfectly good answer for
+ * a league that already has a group chat doing this job.
+ *
+ * IT MATTERS MOST FOR A LEAGUE ON THE CLOCK. With the automation above switched on, the
+ * step that disappeared is the commissioner posting "rosters are up" - so the copy says
+ * that where it is true, rather than leaving him to work out why this checkbox is next
+ * to those ones.
+ *
+ * WHAT IT DOES NOT DO is override anybody. Each manager can turn off any of the three
+ * from the footer of the message itself, without signing in, and this switch does not
+ * reach into those choices or clear them.
+ */
+export function CommNotifyPanel({ state, onSetNotifyMembers }) {
+  const [busy, setBusy] = useState(false);
+  const on = leagueEmailOn(state);
+  const clock = autoProcessSchemes(state) || autoAdvanceWeek(state);
+
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Email your managers</h3>
+      <p className="pp-sub">
+        {clock
+          ? "With the week running on a clock, this is the part that replaces you posting in the group chat."
+          : "Three emails a week, sent when you press the buttons - not on any schedule of their own."}
+      </p>
+
+      <label
+        className="pp-field"
+        style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: busy ? "wait" : "pointer" }}
+      >
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={busy}
+          style={{ marginTop: 4 }}
+          onChange={async (e) => {
+            setBusy(true);
+            try {
+              await onSetNotifyMembers(e.target.checked);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        <span>
+          <strong>Tell managers when their week moves</strong>
+          <span className="pp-sub" style={{ display: "block" }}>
+            A roster is dealt - with last week&apos;s result on it - and again when the
+            schemes have run and lineups are open. Each manager can stop either one from
+            the email itself; nobody has to ask you.
+          </span>
+        </span>
+      </label>
+
+      <p className="pp-sub" style={{ marginTop: 10 }}>
+        {on
+          ? "Sent from the league's own address. Replies to it go nowhere, so anything they need to say still comes to you."
+          : "Off: nothing is sent, and a manager finds out the week has moved by opening the app."}
+      </p>
+    </div>
+  );
+}
+
 /* Split out of CommWeeksPanel so the setup screen can end on the Deal button without
  * copying it (2026-09-08). Same component in both places - the Weeks tab renders it
  * first, above NFL week / lineup lock / automation; the setup screen renders it LAST, as
@@ -438,7 +507,7 @@ export function CommWeekActionsPanel({ state, onDeal, onProcessSchemes, dealErro
   );
 }
 
-export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport, onSetAutoCycle }) {
+export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport, onSetAutoCycle, onSetNotifyMembers }) {
   return (
     <>
       <CommWeekActionsPanel
@@ -456,6 +525,7 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
         kickoffReport={kickoffReport}
       />
       <CommAutomationPanel state={state} onSetAutoCycle={onSetAutoCycle} />
+      <CommNotifyPanel state={state} onSetNotifyMembers={onSetNotifyMembers} />
     </>
   );
 }
@@ -1280,6 +1350,7 @@ export function CommSetupScreen(props) {
         kickoffReport={props.kickoffReport}
       />
       <CommAutomationPanel state={props.state} onSetAutoCycle={props.onSetAutoCycle} />
+      <CommNotifyPanel state={props.state} onSetNotifyMembers={props.onSetNotifyMembers} />
       <CommWeekActionsPanel
         state={props.state}
         onDeal={props.onDeal}
@@ -1329,6 +1400,7 @@ export function CommissionerTab(props) {
           onRefreshKickoffs={props.onRefreshKickoffs}
           kickoffReport={props.kickoffReport}
           onSetAutoCycle={props.onSetAutoCycle}
+          onSetNotifyMembers={props.onSetNotifyMembers}
           onDeal={props.onDeal}
           onProcessSchemes={props.onProcessSchemes}
           dealError={props.dealError}
@@ -1348,7 +1420,7 @@ export function CommissionerTab(props) {
         />
       )}
       {openSub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
-      {openSub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onSetAutoCycle={props.onSetAutoCycle} />}
+      {openSub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onSetAutoCycle={props.onSetAutoCycle} onSetNotifyMembers={props.onSetNotifyMembers} />}
       {openSub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {openSub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {openSub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}

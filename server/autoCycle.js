@@ -46,7 +46,7 @@
  */
 
 import { isValidNflWeek } from "./schedule.js";
-import { isValidTimeZone, lastLocalDeadline, wallClock } from "./tz.js";
+import { isValidTimeZone, lastLocalDeadline, nextLocalDeadline, wallClock } from "./tz.js";
 import { CYCLE_DEADLINES, describeDeadline } from "../src/engine/weeklyClock.js";
 
 /** Fallback when a league's stored zone is one this runtime cannot use. */
@@ -304,6 +304,78 @@ export function dealEligibility({ league, next, teamCount, playoffsComplete, pre
   if (!window.open) return { eligible: false, why: window.why };
 
   return { eligible: true, why: "dealing " + next.type + " " + next.number };
+}
+
+/**
+ * How long before the scheme deadline the reminder goes out. Issue #57.
+ *
+ * TWELVE HOURS, which against a 3am Thursday deadline means about 3pm on Wednesday - a
+ * working afternoon, not the middle of the night, and late enough that most people who
+ * were going to submit already have. Proposed in issue #57 and taken as a provisional
+ * default; it is one constant to change if Scott wants it earlier.
+ */
+export const REMINDER_LEAD_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Should this league be reminded that its schemes are about to close?
+ *
+ * THE ONLY MESSAGE WITH A SCHEDULE OF ITS OWN. The other two ride on something that
+ * happened - a deal, a scheme resolution - so they are sent from the step that did it.
+ * Nothing happens at 3pm on a Wednesday, which is exactly why somebody needs telling.
+ *
+ * FOUR CONDITIONS, and every one of them is a reason NOT to send:
+ *
+ *   1. THE LEAGUE EMAILS ITS MANAGERS AT ALL (`notify_members`). Off by default.
+ *   2. THE DEADLINE IS REAL (`auto_process_schemes`). In a league where the
+ *      commissioner processes schemes himself there is no deadline to be reminded of,
+ *      and inventing one would be telling people a rule their league does not have.
+ *   3. THE WEEK IS STILL OPEN (`dealt`). Once schemes are processed there is nothing to
+ *      submit.
+ *   4. WE ARE INSIDE THE WINDOW, and the week was dealt BEFORE it opened. That last
+ *      clause is the one that is easy to miss: a week dealt at 8pm on Wednesday is
+ *      seven hours from its deadline, and its managers have just been emailed a roster
+ *      with that deadline printed on it. A second email five minutes later is noise,
+ *      and noise is how a sender ends up in a spam folder.
+ *
+ * ANCHORED TO `dealt_at`, NOT TO "the next Thursday from now", so a week dealt late
+ * waits for its OWN deadline - the same anchor `deadlinePassed` uses for the same
+ * reason. Firing at most once is not this function's job: the unique key on
+ * `notifications` is what makes an hourly re-ask harmless, and it is enforced by the
+ * database rather than by a comparison here.
+ *
+ * @returns {{eligible: boolean, why: string, at?: number, hoursLeft?: number}}
+ */
+export function reminderEligibility({ league, period, now }) {
+  if (!league) return { eligible: false, why: "no such league" };
+  if (!league.notify_members) return { eligible: false, why: "league email is off" };
+  if (!league.auto_process_schemes) {
+    return { eligible: false, why: "the scheme deadline is not on a clock, so there is nothing to remind anybody of" };
+  }
+  if (!period) return { eligible: false, why: "no current week" };
+  if (period.phase !== "dealt") return { eligible: false, why: "the week is in '" + period.phase + "'" };
+
+  const dealt = Date.parse(period.dealt_at ?? "");
+  if (!Number.isFinite(dealt)) return { eligible: false, why: "the week has no deal time" };
+
+  const at = nextLocalDeadline(dealt, zoneOf(league), DEADLINES.schemes);
+  const opens = at - REMINDER_LEAD_MS;
+
+  if (now < opens) return { eligible: false, why: "more than 12 hours until the deadline" };
+  if (now >= at) {
+    /* The deadline has passed and the week is still `dealt` - the processing step runs
+     * in the same tick and will move it. Nothing to remind anybody about either way. */
+    return { eligible: false, why: "the deadline has already passed" };
+  }
+  if (dealt > opens) {
+    return { eligible: false, why: "the week was dealt inside the last 12 hours, so the deal email already said so" };
+  }
+
+  return {
+    eligible: true,
+    at,
+    hoursLeft: Math.max(1, Math.round((at - now) / (60 * 60 * 1000))),
+    why: "schemes close at " + new Date(at).toISOString(),
+  };
 }
 
 /**

@@ -27,8 +27,13 @@ const READABLE = [
  * on purpose: it is the list of people who may edit every league's head coaches, and
  * nothing in the browser needs it - whether YOU are one is answered by `adminWhoami`,
  * for you alone. Its migration grants the browser roles nothing; this is what checks
- * that the hosted GRANT ALL default did not quietly hand it back. */
-const SECRETS = ["invites", "site_admins"];
+ * that the hosted GRANT ALL default did not quietly hand it back.
+ *
+ * `notifications` (issue #57) is here for the same reason and a sharper one: it is a
+ * record of who is in which league and what they have been told, keyed on auth.users
+ * ids, and NOTHING in the browser reads it. The send log is the server's alone. Your own
+ * opt-out switches are `notification_prefs`, which is an account table below. */
+const SECRETS = ["invites", "site_admins", "notifications"];
 /* Phase 3b. A THIRD category, because these fit neither of the other two: they are
  * about people rather than about the game, so a signed-in visitor may read their own
  * rows (SELECT to `authenticated`, narrowed further by an RLS policy scoped to
@@ -37,7 +42,7 @@ const SECRETS = ["invites", "site_admins"];
  * Filed separately on purpose. Putting them in READABLE would assert `anon` can read
  * them, which is exactly wrong; putting them in SECRETS would assert nobody can, which
  * would fail on the grant the app actually needs. */
-const ACCOUNT_TABLES = ["profiles", "league_members"];
+const ACCOUNT_TABLES = ["profiles", "league_members", "notification_prefs"];
 const BROWSER_ROLES = ["anon", "authenticated"];
 
 const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pigskin-grants-")), "schema.sql");
