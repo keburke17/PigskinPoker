@@ -26,6 +26,7 @@ import {
   leagueTimeZone,
   schemeDeadlineWords,
   periodLabel,
+  periodTeams,
   standingsPointsArray,
   ARROW,
 } from "../engine/index.js";
@@ -494,7 +495,7 @@ export function CommNotifyPanel({ state, onSetNotifyMembers }) {
 }
 
 export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport, onRefreshInjuries, injuryReport, onSetAutoCycle, onSetNotifyMembers }) {
-  const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
+  const teams = periodTeams(state);
   /* `state.schemes` only ever holds what THIS browser was told, and a manager's
    * pending scheme is hidden from every browser read by design - so on the
    * commissioner's screen it counted his own submissions and nobody else's.
@@ -563,7 +564,7 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
 }
 
 export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
-  const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
+  const teams = periodTeams(state);
   const [teamId, setTeamId] = useState(teams[0] ? teams[0].id : "");
   const team = state.teams.find((t) => t.id === teamId);
   return (

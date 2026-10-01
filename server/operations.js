@@ -46,6 +46,7 @@ import {
   lockedByClock,
   normalizeLineupLock,
   newSeed,
+  periodTeamIds,
   processSchemes as engineProcessSchemes,
   seedFromString,
   seededRng,
@@ -1156,8 +1157,7 @@ export async function dealPeriod(db, { leagueId, token, expect, feed, refresh })
 function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
   return async (ctx) => {
     const v = ctx.view;
-    const teamIds =
-      v.currentPeriod.type === "playoff" ? v.playoffConfig.activeTeamIds : v.teams.map((t) => t.id);
+    const teamIds = periodTeamIds(v);
     if (teamIds.length === 0) return { error: "Add at least one team before dealing rosters." };
 
     /* THE SCHEDULE IS READ BEFORE THE DEAL, NOT AFTER (OQ-25, 2026-09-08). It used to be
@@ -2485,12 +2485,10 @@ async function remindOneLeague(db, { league, now }) {
   };
 }
 
-/** Teams eligible for the period in front of us - all of them, or the survivors. *//** Teams eligible for the period in front of us - all of them, or the survivors. */
+/** Teams eligible for the period in front of us - all of them, or the survivors. */
 function periodTeamCount(view) {
-  if (!view) return 0;
-  return view.currentPeriod?.type === "playoff"
-    ? (view.playoffConfig?.activeTeamIds ?? []).length
-    : (view.teams ?? []).length;
+  if (!view || !view.currentPeriod) return 0;
+  return periodTeamIds(view).length;
 }
 
 /**

@@ -58,11 +58,26 @@ export function rankTeamsWithTiebreak(rows) {
  * everybody; a playoff round is only the teams still in the bracket.
  */
 export function periodTeams(state) {
-  const period = state.currentPeriod;
-  const activeIds = period.type === "playoff"
-    ? state.playoffConfig.activeTeamIds
-    : state.teams.map((t) => t.id);
+  const activeIds = periodTeamIds(state);
   return state.teams.filter((t) => activeIds.includes(t.id));
+}
+
+/**
+ * The same answer as ids, IN THE ORDER THE DEAL USES: the bracket's own order in a playoff
+ * round, the league's team order otherwise. `periodTeams` above always comes back in
+ * league order, and the two differ in a playoff round.
+ *
+ * THE ORDER IS LOAD-BEARING. `dealRosters` hands out cards in the order it is given the
+ * teams, from a seed stored on the period so a deal can be replayed. Feed it the same
+ * teams in a different order and the same seed deals different hands.
+ *
+ * It exists so "who is in this period" is asked in one place (issue #75). The server's
+ * deal and the clock's head count each used to work it out for themselves.
+ */
+export function periodTeamIds(state) {
+  return state.currentPeriod.type === "playoff"
+    ? (state.playoffConfig && state.playoffConfig.activeTeamIds) || []
+    : (state.teams || []).map((t) => t.id);
 }
 
 /** One team's score for the period that is currently open, from the stat lines entered
