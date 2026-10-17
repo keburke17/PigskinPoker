@@ -959,3 +959,71 @@ export function kickoffIso(gameday, gametime) {
  * implementation, for the same reason `runStatsPull` is shared: two would drift, and
  * the symptom would be an hour, twice a season, in the direction nobody checks. */
 const EASTERN = "America/New_York";
+
+/* ------------------------------------------------------- injury report -- */
+
+/* The NFL's weekly injury report, one file per season. OQ-29 (2026-10-17).
+ *
+ * ~200KB for six weeks of a season, so unlike the depth chart and the stats file it is
+ * simply read whole. One row per player per week, OVERWRITTEN as each day's report comes
+ * out - there is no date column - so the only clue to which day a reading is from is when
+ * nflverse published the file. That is why `fetchInjuries` returns the response's
+ * Last-Modified time alongside the rows. See reportDateOf in src/engine/injuries.js. */
+export const INJURIES_URL = (season) =>
+  "https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_" +
+  season +
+  ".csv";
+
+/**
+ * The report's rows for the skill positions the pool holds, optionally only some weeks.
+ *
+ * Shared with the fixture, so the recorded file goes through the same parse.
+ *
+ * @returns {Array<{ week, gsis, team, position, name, gameStatus, injury, practice }>}
+ *   `gameStatus` and `practice` are left in the report's own words; the decision layer
+ *   (server/injuries.js) turns them into the short forms.
+ */
+export function parseInjuries(text, { weeks = null } = {}) {
+  const wanted = weeks ? new Set(weeks.map(Number)) : null;
+  const out = [];
+  for (const r of parseCsv(text)) {
+    if (!POSITIONS_WANTED.has(r.position)) continue;
+    /* Regular season only. The playoffs reuse week numbers under another season_type,
+     * and this league's weeks are 1-18. */
+    if (r.season_type && r.season_type !== "REG") continue;
+    const week = Number(r.week);
+    if (!Number.isFinite(week) || (wanted && !wanted.has(week))) continue;
+    out.push({
+      week,
+      gsis: r.gsis_id || null,
+      team: r.team,
+      position: r.position,
+      name: r.full_name,
+      gameStatus: r.report_status || null,
+      injury: r.report_primary_injury || r.practice_primary_injury || null,
+      practice: r.practice_status || null,
+    });
+  }
+  return out;
+}
+
+/**
+ * This season's injury report, and when nflverse published it.
+ *
+ * A 404 before the season's first report is the ordinary state of affairs and comes back
+ * as an empty list, not an error: there is simply nobody on it yet.
+ *
+ * @returns {{ season, publishedAt: string|null, rows }}
+ */
+export async function fetchInjuries({ season, weeks = null, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(INJURIES_URL(season));
+  if (res.status === 404) return { season, publishedAt: null, rows: [] };
+  if (!res.ok) throw new Error("nflverse injury report returned HTTP " + res.status + " for " + season);
+  const modified = res.headers && typeof res.headers.get === "function" ? res.headers.get("last-modified") : null;
+  const ms = modified ? Date.parse(modified) : NaN;
+  return {
+    season,
+    publishedAt: Number.isFinite(ms) ? new Date(ms).toISOString() : null,
+    rows: parseInjuries(await res.text(), { weeks }),
+  };
+}

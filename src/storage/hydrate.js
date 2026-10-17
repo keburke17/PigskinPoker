@@ -96,6 +96,24 @@ function playerWeeksFrom(rows, seasonId, playerLegacy) {
   return out;
 }
 
+/* OQ-29. player_injuries rows -> { [legacyPlayerId]: { [nflWeek]: report } }. */
+function injuriesFrom(rows, seasonId, playerLegacy) {
+  const out = {};
+  for (const r of rows) {
+    if (r.season_id !== seasonId) continue;
+    const pid = playerLegacy.get(r.player_id);
+    if (!pid) continue;
+    (out[pid] || (out[pid] = {}))[r.nfl_week] = {
+      status: r.game_status || null,
+      injury: r.injury || null,
+      practice: r.practice && typeof r.practice === "object" ? r.practice : {},
+      reportDate: r.report_date || null,
+      updatedAt: r.updated_at || null,
+    };
+  }
+  return out;
+}
+
 export function hydrateLeague(db, opts = {}) {
   const league = db.leagues[0];
   const season = opts.seasonId
@@ -352,6 +370,11 @@ export function hydrateLeague(db, opts = {}) {
        * are the bench and free-agent points and the season averages, and no more.
        * `?? []` because a database without the table yet hands back nothing. */
       playerWeeks: playerWeeksFrom(db.player_week_lines ?? [], season.id, playerLegacy),
+      /* OQ-29: the NFL injury report - player id -> NFL week -> game status, injury and
+       * practice days. In _meta for the same reason as playerWeeks, and with the same
+       * promise: NOTHING DEALS, SCORES OR LOCKS FROM IT. It is the pill and the notepad on
+       * a roster row. See src/engine/injuries.js. */
+      injuries: injuriesFrom(db.player_injuries ?? [], season.id, playerLegacy),
       /* Whether a scheduled job may run the stats pull for this league. An operational
        * setting rather than a game rule - it says who presses the button, not what the
        * button does - so it lives on `leagues` and, like nflWeek, is deliberately not

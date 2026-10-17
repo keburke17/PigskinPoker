@@ -2357,6 +2357,93 @@ gate()("the stats pull", () => {
 });
 
 /* ======================================================================== */
+/*  OQ-29 - the NFL injury report                                           */
+/* ======================================================================== */
+/*
+ * The unit half - dating a reading, merging the days, what the screen draws - is in
+ * tests/injuries.test.js. What needs a real database is that the rows land, that a second
+ * pull merges rather than duplicates, that the browser can read them back, and that the
+ * report touches nothing the game is played from.
+ */
+gate()("the injury report", () => {
+  beforeEach(() => resetDemo());
+
+  const injuries = async () => {
+    const { data } = await db.from("player_injuries").select("*").eq("league_id", leagueId);
+    return data;
+  };
+  const playersSnapshot = async () => {
+    const { data } = await db.from("players").select("id, status, active").eq("league_id", leagueId).order("id");
+    return data;
+  };
+
+  it("reads the recorded report onto the league's players, for this week and the one before", async () => {
+    const token = await asCommissioner();
+    const fixture = await import("../server/feed/fixture.js");
+    const r = await ops.refreshInjuries(db, { leagueId, token, feed: fixture });
+    expect(r.status).toBe(200);
+    expect(r.body.report.matched).toBeGreaterThan(0);
+    expect(r.body.report.weeks).toEqual([1, 2]);
+
+    const rows = await injuries();
+    expect(rows.length).toBe(r.body.report.matched);
+    expect(new Set(rows.map((x) => x.nfl_week))).toEqual(new Set([1, 2]));
+    expect(rows.some((x) => x.game_status)).toBe(true);
+    expect(Object.keys(r.body.view._meta.injuries).length).toBeGreaterThan(0);
+  });
+
+  it("merges on a second read rather than duplicating, and says nothing changed", async () => {
+    const token = await asCommissioner();
+    const fixture = await import("../server/feed/fixture.js");
+    await ops.refreshInjuries(db, { leagueId, token, feed: fixture });
+    const first = await injuries();
+    const again = await ops.refreshInjuries(db, { leagueId, token, feed: fixture });
+    expect(again.body.report.changed).toBe(0);
+    const second = await injuries();
+    expect(second.length).toBe(first.length);
+    const stamp = (rs) => rs.map((x) => x.player_id + x.nfl_week + x.updated_at).sort();
+    expect(stamp(second)).toEqual(stamp(first));
+  });
+
+  it("does not touch a single player's status - the field the deal reads", async () => {
+    const token = await asCommissioner();
+    const fixture = await import("../server/feed/fixture.js");
+    const before = await playersSnapshot();
+    await ops.refreshInjuries(db, { leagueId, token, feed: fixture });
+    expect(await playersSnapshot()).toEqual(before);
+  });
+
+  it("is commissioner-only", async () => {
+    const token = await asManager(T1);
+    const fixture = await import("../server/feed/fixture.js");
+    const r = await ops.refreshInjuries(db, { leagueId, token, feed: fixture });
+    expect(r.status).toBe(403);
+  });
+
+  it("changes nothing when the feed is down", async () => {
+    const token = await asCommissioner();
+    const r = await ops.refreshInjuries(db, {
+      leagueId, token, feed: { fetchInjuries: async () => { throw new Error("HTTP 503"); } },
+    });
+    expect(r.status).toBe(502);
+    expect(await injuries()).toEqual([]);
+  });
+
+  it("runs on the schedule for every league, opted in or not, and downloads once", async () => {
+    const fixture = await import("../server/feed/fixture.js");
+    let downloads = 0;
+    const feed = { ...fixture, fetchInjuries: async (a) => { downloads += 1; return fixture.fetchInjuries(a); } };
+    await db.from("leagues").update({ auto_pull_stats: false }).eq("id", leagueId);
+    const r = await ops.scheduledInjuryPull(db, { feed });
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.pulled).toBeGreaterThan(0);
+    expect(downloads).toBe(1);
+    expect((await injuries()).length).toBeGreaterThan(0);
+  });
+});
+
+/* ======================================================================== */
 /*  SITE ADMIN - the head-coach list (issue #40)                            */
 /* ======================================================================== */
 /*

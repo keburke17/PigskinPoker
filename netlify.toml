@@ -83,6 +83,16 @@
 [functions."run-cycle-scheduled"]
   schedule = "0 * * * *"
 
+# OQ-29: the NFL injury report, onto every league's players. Display only.
+#
+# EVERY THREE HOURS, on the half hour so it does not land on top of the stats pull. The
+# file is ~200KB and changes about once a day (nflverse republished it at 7:33am Eastern on
+# 2026-10-17), so this is roughly one run after each new report and well inside the hours
+# a manager has before a Sunday kickoff to see a Saturday downgrade. It is downloaded ONCE
+# per run whatever the number of leagues - see scheduledInjuryPull.
+[functions."pull-injuries-scheduled"]
+  schedule = "30 */3 * * *"
+
 # The old address, sent to the new one.
 #
 # This is FIRST on purpose. Rules are evaluated top to bottom, and the SPA fallback

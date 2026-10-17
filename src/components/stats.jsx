@@ -28,6 +28,7 @@ import {
 } from "../engine/index.js";
 import { ConfirmButton, EmptyState, ErrorBanner, PositionCard } from "./atoms.jsx";
 import { RosterSlotRow, slotMetaLine } from "./roster.jsx";
+import { useInjuryNotes } from "./injury.jsx";
 
 /* What a stat box will accept, and the reason it is not `type="number"`.
  *
@@ -123,6 +124,8 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
    * football game. */
   const locked = !!pid && isPlayerLocked(state, pid);
   const manualLocked = !!pid && !!(state.lockedPlayerIds || {})[pid];
+  /* Called before the early returns below, as every hook must be. */
+  const injury = useInjuryNotes(state, player);
   if (!player) return <RosterSlotRow slot={slot} player={null} state={state} showStats={false} />;
 
   if (!isCommissioner) {
@@ -143,10 +146,12 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
           <span className="pp-roster-slot-who">
             <span className="pp-roster-slot-name">{player.name}</span>
             {player.team ? <span className="pp-team-chip">{abbrFor(player.team)}</span> : null}
+            {injury.tag}
           </span>
           {player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
         </div>
         <div className="pp-roster-slot-meta">{slotMetaLine(state, slot, player)}</div>
+        {injury.report}
       </div>
       {player.position === "Coach" ? (
         <select className="pp-select" style={{ width: 120 }} value={stats.result || ""} onChange={(e) => onChange(team.id, slot, { result: e.target.value || null })}>

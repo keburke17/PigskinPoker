@@ -115,6 +115,8 @@ gate()("RLS: what a browser holding the publishable key can READ", () => {
     "player_pool",
     // OQ-28: every pool player's feed line, every week. Display only.
     "player_week_lines",
+    // OQ-29: the NFL injury report on every pool player. Display only.
+    "player_injuries",
   ];
   for (const table of readable) {
     it("can select from " + table, async () => {
@@ -197,6 +199,11 @@ gate()("RLS: what it can NOT write - the whole write-security model", () => {
      * browser, it would let anyone put numbers on every manager's bench. */
     ["player_week_lines", () => ({
       season_id: ids.season, player_id: ids.player, league_id: ids.league, nfl_week: 1, pass_yards: 9999,
+    })],
+    /* OQ-29. Writable from a browser, it would let anyone mark another league's quarterback
+     * Out on every manager's screen. */
+    ["player_injuries", () => ({
+      season_id: ids.season, player_id: ids.player, league_id: ids.league, nfl_week: 1, game_status: "Out",
     })],
   ];
 
@@ -359,6 +366,10 @@ gate()("RLS: a PRIVATE league is invisible from outside", () => {
       season_id: season.id, player_id: privPlayer.id, league_id: league.id, nfl_week: 1, pass_yards: 4242,
     });
     if (privLine.error) throw new Error("player_week_lines fixture failed: " + privLine.error.message);
+    const privInjury = await secret.from("player_injuries").insert({
+      season_id: season.id, player_id: privPlayer.id, league_id: league.id, nfl_week: 1, game_status: "Questionable",
+    });
+    if (privInjury.error) throw new Error("player_injuries fixture failed: " + privInjury.error.message);
     await secret.from("roster_slots")
       .insert({ period_id: period.id, team_id: team.id, area: "starter", slot: "QB" });
     await secret.from("stat_lines")
@@ -435,6 +446,7 @@ gate()("RLS: a PRIVATE league is invisible from outside", () => {
     ["stat_lines", () => ({ col: "period_id", val: priv.period })],
     ["period_results", () => ({ col: "period_id", val: priv.period })],
     ["player_week_lines", () => ({ col: "league_id", val: priv.league })],
+    ["player_injuries", () => ({ col: "league_id", val: priv.league })],
   ];
 
   for (const [table, where] of hidden) {

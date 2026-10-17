@@ -2063,3 +2063,71 @@ pull runs (the button, or the automatic pull every three hours).
 *Numbered OQ-28 rather than OQ-26: on 2026-10-16 two unmerged branches -
 `kyle/manager-rename-own-team` and `claude/fantasy-roster-apis-go06zn` - each already claimed
 OQ-26, so they will land as 26 and 27. Keep all three when they merge.*
+
+### OQ-29. Can managers see who is hurt? **[ANSWERED 2026-10-17: yes - a pill and a notepad, display only]**
+
+Scott: **"players are being dealt to rosters with questionable injury tags. And then as the
+week progresses, they may be listed as out. But managers don't have any way to see whether
+or not these players are hurt for themselves unless they look at an actual depth chart on the
+internet"** - and he wanted the tags "updated throughout the week as it's updated".
+
+**Where it comes from.** nflverse publishes the NFL's official injury report as
+`injuries_<season>.csv` - free, no key, the same source the pool and the stats already use,
+and matched on the same `gsis` id. On 2026-10-17 it held weeks 1-6 and had been republished
+that morning at 7:33am Eastern with Friday's final report. One row per player per week,
+OVERWRITTEN as each day's report comes out; there is no date column.
+
+**What was built.**
+
+| | |
+|---|---|
+| Name line | a pill - **QUES**, **DOUBT** or **OUT** - once the NFL gives a game status |
+| Beside it | a notepad, whenever he is on the report at all; a gold dot when it changed since you last opened it |
+| Opened | the injury, his three practice days (DNP / LP / FP), and a key behind an asterisk saying what those mean |
+| Where | every roster row (starters and bench), the free-agent list, and the commissioner's Enter Stats rows |
+| When | read every three hours on a schedule, for EVERY league, plus a Refresh Injury Report button on the commissioner's Weeks tab |
+
+Four rounds of mockups: A/B/C for the look (he liked B's pill and C's practice report), then
+B1/B2 for where the practice days go, then N1/N2/N3 to make it quieter ("eventually this is
+going to become too crowded on one card") - he picked **N1, the pill plus a notepad** - and
+finally the key, which he asked for by name.
+
+**It is display only, and he asked twice.** "This has nothing to do with the deal, correct?"
+and then "Don't touch the deal quite yet. Don't do anything with the deal." The report lives
+in its own table, `player_injuries`, and NOTHING deals, schemes, scores, locks or finalizes
+from it. In particular it never touches `players.status`, which is what the deal reads: a
+player listed Questionable or Out on the injury report is still dealt exactly as before.
+`tests/injuries.test.js` and `tests/server.test.js` both assert it.
+
+**Parked, not decided: keeping injured players out of the deal.** Scott asked whether a
+player already Out or Doubtful would be kept off rosters. Today he is not - the deal only
+skips players off the active roster (IR, practice squad, cut). Doing it would be a rules
+change, and it has a timing problem worth knowing before anyone builds it: rosters are
+dealt Tuesday and the new week's first report is Wednesday, so the deal could only use LAST
+week's final report. That catches most of them, misses anyone hurt in Sunday's or Monday's
+game, and wrongly skips anyone returning this week. If he wants it, it is its own question.
+
+**Three calls inside it, all reversible:**
+
+- **How a reading gets its day.** The file has no date, so a reading is dated by when
+  nflverse PUBLISHED the file (its Last-Modified time): before 4pm Eastern it holds
+  yesterday's report, after 4pm today's. Each day is saved as it arrives, because the file
+  will have overwritten it by tomorrow. Only a player's three practice days count - Wed/Thu/Fri
+  for a Sunday game, Thu/Fri/Sat for Monday, Mon/Tue/Wed for Thursday - so a republish on a
+  Saturday or Sunday does not grow a fourth box. `reportDateOf` and `practiceDays` in
+  `src/engine/injuries.js`.
+- **Last week's final report stands in on Tuesday and Wednesday**, labelled as last week's,
+  until the new week's first report exists - otherwise a player Out last Sunday looks healthy
+  for the two days managers are setting schemes. The moment anyone is on the new week's
+  report, last week's stops showing.
+- **Every league, no switch.** The stats pull and the weekly clock are opt-in because they do
+  something a commissioner would otherwise do. This is a label beside a name.
+
+**What it can't see.** Sunday-morning inactives are not in this file, so a late scratch does
+not flip to OUT on its own. And the first week it runs, any practice day before it was
+switched on stays a dash.
+
+**What it needs to go live.** `20261017000000_player_injuries.sql` applied with
+`npm run db:push` - Kyle's step. Until then the site loads exactly as before (a missing table
+reads as nobody hurt, never as an error), and the scheduled job logs a failure every three
+hours until the table exists.

@@ -239,6 +239,59 @@ export function CommLineupLockPanel({ state, onSetLineupLock, onRefreshKickoffs,
   );
 }
 
+/* OQ-29: the NFL injury report. Read on its own every few hours; this is the "now" button,
+ * and the one place a commissioner can see when it was last read.
+ *
+ * Display only, and the panel says so - Scott asked twice that it have nothing to do with
+ * the deal, and a commissioner reading "injury report" next to the deal button would be
+ * right to wonder. */
+export function CommInjuryPanel({ state, onRefreshInjuries, injuryReport }) {
+  const [busy, setBusy] = useState(false);
+  const all = (state._meta && state._meta.injuries) || {};
+  const nflWeek = (state._meta && state._meta.nflWeek) ?? null;
+  let listed = 0;
+  for (const weeks of Object.values(all)) if (weeks && nflWeek != null && weeks[nflWeek]) listed += 1;
+
+  return (
+    <div className="pp-card">
+      <h3 className="pp-h3">Injury report</h3>
+      <p className="pp-sub">
+        The NFL's injury report shows on every player - QUES, DOUBT or OUT beside the name,
+        and a notepad with the week's practice days. It is read automatically every few
+        hours. It is for managers to look at only: it does not change who gets dealt, or
+        anything else about the game.
+      </p>
+      <p className="pp-sub">
+        {nflWeek == null
+          ? "This week is not mapped to an NFL week yet, so there is no report to read."
+          : listed
+            ? listed + " of your league's players " + (listed === 1 ? "is" : "are") + " on the NFL week " + nflWeek + " report."
+            : "Nobody in your league's pool is on the NFL week " + nflWeek + " report yet. The first one comes out Wednesday afternoon."}
+      </p>
+      <button
+        className="pp-btn"
+        disabled={busy || nflWeek == null}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onRefreshInjuries();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Reading..." : "Refresh Injury Report"}
+      </button>
+      {injuryReport ? (
+        <p className="pp-sub" style={{ marginTop: 6 }}>
+          Read {injuryReport.matched} player{injuryReport.matched === 1 ? "" : "s"}
+          {injuryReport.changed ? ", " + injuryReport.changed + " with something new" : ", nothing new"}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function LockChoice({ checked, onChoose, title, body }) {
   return (
     <label className="pp-field" style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
@@ -440,7 +493,7 @@ export function CommNotifyPanel({ state, onSetNotifyMembers }) {
   );
 }
 
-export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport, onSetAutoCycle, onSetNotifyMembers }) {
+export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, submittedTeamIds, onSetNflWeek, onSetLineupLock, onRefreshKickoffs, kickoffReport, onRefreshInjuries, injuryReport, onSetAutoCycle, onSetNotifyMembers }) {
   const teams = state.currentPeriod.type === "playoff" ? state.teams.filter((t) => state.playoffConfig.activeTeamIds.includes(t.id)) : state.teams;
   /* `state.schemes` only ever holds what THIS browser was told, and a manager's
    * pending scheme is hidden from every browser read by design - so on the
@@ -502,6 +555,7 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
         onRefreshKickoffs={onRefreshKickoffs}
         kickoffReport={kickoffReport}
       />
+      <CommInjuryPanel state={state} onRefreshInjuries={onRefreshInjuries} injuryReport={injuryReport} />
       <CommAutomationPanel state={state} onSetAutoCycle={onSetAutoCycle} />
       <CommNotifyPanel state={state} onSetNotifyMembers={onSetNotifyMembers} />
     </>
@@ -1328,7 +1382,7 @@ export function CommissionerTab(props) {
         />
       )}
       {sub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
-      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onSetAutoCycle={props.onSetAutoCycle} onSetNotifyMembers={props.onSetNotifyMembers} />}
+      {sub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onRefreshInjuries={props.onRefreshInjuries} injuryReport={props.injuryReport} onSetAutoCycle={props.onSetAutoCycle} onSetNotifyMembers={props.onSetNotifyMembers} />}
       {sub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {sub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {sub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}

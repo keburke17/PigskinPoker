@@ -20,6 +20,7 @@ import {
 } from "../engine/index.js";
 import { EmptyState, SuitBadge, Tag } from "./atoms.jsx";
 import { PointsColumn, TeamRosterBlock } from "./roster.jsx";
+import { useInjuryNotes } from "./injury.jsx";
 
 /* One team's card: the headline everybody wants, and the twelve rows only some people do.
  *
@@ -126,25 +127,38 @@ export function FreeAgentsTab({ state }) {
                 : "No " + tab + " free agents right now."}
           </EmptyState>
         ) : (
-          list.map((p) => (
-            <div key={p.id} className="pp-roster-slot">
-              <SuitBadge position={p.position} />
-              <div style={{ flex: 1 }}>
-                <div className="pp-roster-slot-name">{p.name}</div>
-                <div className="pp-roster-slot-meta">{p.position} - {p.team}</div>
-              </div>
-              {/* A player the SCHEDULE has sitting out is still "Active" - nothing wrote a
-                  status on him - so he would otherwise appear in the BYE list with no tag,
-                  looking like an ordinary free agent who had wandered in. */}
-              {p.status !== "Active" ? <Tag>{p.status}</Tag> : isOnByeThisWeek(state, p) ? <Tag>BYE</Tag> : null}
-              {/* OQ-28: what he is scoring for nobody this week, and his season average -
-                  the same column a rostered player carries, greyed because it counts for
-                  no team. */}
-              <PointsColumn pts={playerWeekPoints(state, p)} average={playerSeasonAverage(state, p)} notCounting />
-            </div>
-          ))
+          list.map((p) => <FreeAgentRow key={p.id} state={state} p={p} />)
         )}
       </div>
+    </div>
+  );
+}
+
+/* One free agent. Its own component since OQ-29, because the injury notepad remembers
+ * whether it is open - and a hook cannot live inside the list's .map(). */
+function FreeAgentRow({ state, p }) {
+  const injury = useInjuryNotes(state, p);
+  return (
+    <div className="pp-roster-slot">
+      <SuitBadge position={p.position} />
+      <div className="pp-roster-slot-body">
+        <div className="pp-roster-slot-top">
+          <span className="pp-roster-slot-who">
+            <span className="pp-roster-slot-name">{p.name}</span>
+            {injury.tag}
+          </span>
+        </div>
+        <div className="pp-roster-slot-meta">{p.position} - {p.team}</div>
+        {injury.report}
+      </div>
+      {/* A player the SCHEDULE has sitting out is still "Active" - nothing wrote a
+          status on him - so he would otherwise appear in the BYE list with no tag,
+          looking like an ordinary free agent who had wandered in. */}
+      {p.status !== "Active" ? <Tag>{p.status}</Tag> : isOnByeThisWeek(state, p) ? <Tag>BYE</Tag> : null}
+      {/* OQ-28: what he is scoring for nobody this week, and his season average -
+          the same column a rostered player carries, greyed because it counts for
+          no team. */}
+      <PointsColumn pts={playerWeekPoints(state, p)} average={playerSeasonAverage(state, p)} notCounting />
     </div>
   );
 }

@@ -75,6 +75,7 @@ const ROUTES = {
   setNflWeek: (db, p) => ops.setNflWeek(db, p),
   setLineupLock: (db, p) => ops.setLineupLock(db, p),
   refreshKickoffs: (db, p) => ops.refreshKickoffs(db, p),
+  refreshInjuries: (db, p) => ops.refreshInjuries(db, p),
   setAutoPullStats: (db, p) => ops.setAutoPullStats(db, p),
   setAutoCycle: (db, p) => ops.setAutoCycle(db, p),
   setNotifyMembers: (db, p) => ops.setNotifyMembers(db, p),

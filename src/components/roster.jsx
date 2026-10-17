@@ -20,6 +20,7 @@ import {
   weekScheduleKnown,
 } from "../engine/index.js";
 import { EmptyState, PositionCard, statLineText } from "./atoms.jsx";
+import { useInjuryNotes } from "./injury.jsx";
 
 const DOT = " " + ICON.dot + " ";
 
@@ -116,6 +117,9 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
   const pts = withStats ? computeStarterPoints(state, line, player ? player.position : slot) : null;
   const meta = slotMetaLine(state, slot, player);
   const average = playerSeasonAverage(state, player);
+  /* OQ-29: the injury pill and notepad ride on the name line, and the report opens under
+   * the opponent and kickoff - so a healthy player's row is exactly what it was. */
+  const injury = useInjuryNotes(state, player);
   return (
     <div className="pp-roster-slot">
       <PositionCard slot={slot} position={player ? player.position : null} />
@@ -129,12 +133,14 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
           <span className="pp-roster-slot-who">
             <span className="pp-roster-slot-name">{player ? player.name : "empty slot"}</span>
             {player && player.team ? <span className="pp-team-chip">{abbrFor(player.team)}</span> : null}
+            {injury.tag}
           </span>
           {player && player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
           {locked ? <span className="pp-locked-pill">LOCKED</span> : null}
         </div>
         {meta ? <div className="pp-roster-slot-meta">{meta}</div> : null}
         {withStats && player ? <div className="pp-roster-slot-stats">{statLineText(state, player, line)}</div> : null}
+        {injury.report}
       </div>
       <PointsColumn pts={pts} average={average} notCounting={bench} />
     </div>

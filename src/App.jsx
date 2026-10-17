@@ -63,6 +63,7 @@ export default function App() {
     poolReport,
     statsReport,
     kickoffReport,
+    injuryReport,
     identity,
     setIdentity,
     loading,
@@ -343,6 +344,7 @@ export default function App() {
   const onSetNflWeek = (week) => ops.setNflWeek(week);
   const onSetLineupLock = (mode) => ops.setLineupLock(mode);
   const onRefreshKickoffs = () => ops.refreshKickoffs();
+  const onRefreshInjuries = () => ops.refreshInjuries();
   const onSetAutoPullStats = (enabled) => ops.setAutoPullStats(enabled);
   const onSetAutoCycle = (patch) => ops.setAutoCycle(patch);
   const onSetNotifyMembers = (enabled) => ops.setNotifyMembers(enabled);
@@ -799,6 +801,7 @@ export default function App() {
               onSetNflWeek={onSetNflWeek}
               onSetLineupLock={onSetLineupLock} onRefreshKickoffs={onRefreshKickoffs}
               kickoffReport={kickoffReport}
+              onRefreshInjuries={onRefreshInjuries} injuryReport={injuryReport}
               onSaveScoring={onSaveScoring}
               onSavePlayoffSettings={onSavePlayoffSettings}
               onDeleteLeague={onDeleteLeague}
