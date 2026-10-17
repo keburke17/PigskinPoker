@@ -32,46 +32,11 @@ const ordinal = (n) => {
   return n + suffix;
 };
 
-/** The league table for the open period. Sorted by the engine, not here - see the note
- *  on projectCurrentPeriod about why re-sorting would be wrong. */
-export function WeekScoreTable({ state, rows, myTeamId, showProjection }) {
-  if (rows.length === 0) return null;
-  const roundWord = state.currentPeriod.type === "playoff" ? "Round" : "Week";
-  return (
-    <div className="pp-table-scroll">
-      <table className="pp-table">
-        <thead>
-          <tr>
-            <th style={{ width: 30 }}>#</th>
-            <th>Team</th>
-            <th style={{ textAlign: "right" }}>Score</th>
-            {showProjection ? <th style={{ textAlign: "right" }}>Std Pts</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.teamId} className={r.teamId === myTeamId ? "pp-my-row" : ""}>
-              <td>{r.rank}</td>
-              <td style={{ fontWeight: 700 }}>
-                {r.teamName}
-                {r.teamId === myTeamId ? <span className="pp-you-tag">You</span> : null}
-              </td>
-              <td className="pp-num pp-num-gold">{r.rawScore}</td>
-              {showProjection ? <td className="pp-num">{r.standingsPoints}</td> : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="pp-sub" style={{ marginTop: 8, marginBottom: 0 }}>
-        Updates as stats are entered - a starter with no line yet counts as zero.
-        {showProjection
-          ? " Std Pts is what this " + roundWord.toLowerCase() +
-            " would award if it finalized right now; nothing is banked until the commissioner finalizes it."
-          : ""}
-      </p>
-    </div>
-  );
-}
+/* The live league table that used to sit here (WeekScoreTable) is now the first page of
+ * the one scoreboard on this screen - the current week is the last button on the
+ * week-by-week card, drawn in exactly the same columns as a finished week (Scott,
+ * 2026-10-17). See src/components/weekByWeek.jsx; its numbers still come from
+ * projectCurrentPeriod, so nothing about how the week is scored or ranked moved. */
 
 /** Your team, at the top, where a fantasy app puts it.
  *
@@ -157,30 +122,17 @@ export function WeekScoreboard({ state, myTeam, onSeeAllActivity, onGoTo }) {
     );
   }
 
-  /* Before schemes are processed the rosters can still change, so a rank has nothing
-   * behind it yet and a projected standings-points column would only be noise. */
-  const showProjection = period.phase !== "dealt";
-
   return (
     <div>
       <PeriodBanner state={state} extra={state.rosterLocked ? "Rosters locked" : null} />
       {myTeam ? <MyWeekCard state={state} team={myTeam} rows={rows} onGoTo={onGoTo} /> : null}
-      {/* Week and score, then the action, then the table - Scott's arrangement, chosen on
+      {/* Week and score, then the action, then the scoreboard - Scott's arrangement, chosen on
         * 2026-09-08 out of four (OQ-20). Dropping the lineup from the card above is what
         * makes the order work on a phone: the action now starts around 480px of an 812px
         * screen rather than 940. The table sits below the fold, which is the accepted
         * cost - your own score and rank are in the card above, so the table answers "and
         * everyone else?", and that is worth a scroll. */}
       <WeekActivityCard state={state} myTeam={myTeam} onSeeAll={onSeeAllActivity} />
-      <div className="pp-card">
-        <h3 className="pp-h3">{periodLabel(period)} Scoreboard</h3>
-        <WeekScoreTable
-          state={state}
-          rows={rows}
-          myTeamId={myTeam ? myTeam.id : null}
-          showProjection={showProjection}
-        />
-      </div>
     </div>
   );
 }

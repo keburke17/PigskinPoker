@@ -1,4 +1,4 @@
-/* Finished weeks, one at a time.
+/* The Week screen's one scoreboard: the week being played, then every finished week.
  *
  * WHY THIS EXISTS. The Week screen used to end with one table per finished week, every
  * week stacked down the page (WeeklyResultsTab, the artifact's own screen) - by week 12
@@ -7,7 +7,7 @@
  * standings - score, standings points, week win, coach result, TDs, yards, best player -
  * so a manager can go back to any finished week and see how they did.
  *
- * IT ONLY READS WHAT FINALIZE SAVED. Every column here is a field on a weeklyResults
+ * A FINISHED WEEK ONLY READS WHAT FINALIZE SAVED. Every column there is a field on a weeklyResults
  * entry (finalizeCurrentPeriod in src/engine/standings.js writes them; hydrate.js reads
  * them back from period_results). Nothing is recalculated, so a finished week cannot
  * show anything other than what it finalized as.
@@ -19,7 +19,7 @@
  */
 
 import { useState } from "react";
-import { emptyCumulative, periodLabel, rankTeamsWithTiebreak } from "../engine/index.js";
+import { emptyCumulative, periodLabel, projectCurrentPeriod, rankTeamsWithTiebreak } from "../engine/index.js";
 import { EmptyState } from "./atoms.jsx";
 import { StandingsTable } from "./standings.jsx";
 
@@ -81,42 +81,95 @@ const ordinal = (n) => {
   return n + ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
 };
 
+
+/* THE WEEK BEING PLAYED IS THE LAST PAGE (Scott, 2026-10-17). There used to be two
+ * scoreboards on the Week screen - the live table and this card - and he asked for one:
+ * this card, exactly as it looks, with the current week added. So the current week is
+ * drawn in the same columns, from projectCurrentPeriod - the same three engine calls
+ * finalize makes, and exactly what the old live table showed. It reads; only the
+ * commissioner's finalize writes anything.
+ *
+ * Three columns cannot mean the same thing before a week is over, and each says so
+ * rather than guessing: Wk Win is "-" for everyone (nobody has won yet); Std Pts is what
+ * the week would award right now, and "-" before schemes process, because rosters can
+ * still change (the old live table hid the column then, for the same reason); and
+ * "Season through this week" stops at the last FINISHED week, so a projection is never
+ * added into the standings. */
+const LIVE_PHASES = { dealt: true, "schemes-processed": true, stats: true };
+
+/** The current week as scoreboard rows, or null when there is no week being played. */
+export function liveRows(state) {
+  const period = state && state.currentPeriod;
+  if (!period || !LIVE_PHASES[period.phase]) return null;
+  if (finishedPeriods(state.weeklyResults).some((p) => samePeriod(p, period))) return null;
+  const { rows } = projectCurrentPeriod(state);
+  if (!rows || rows.length === 0) return null;
+  const projected = period.phase !== "dealt";
+  return rows.map((r) => ({
+    id: "live-" + r.teamId,
+    teamId: r.teamId,
+    teamName: r.teamName,
+    rank: r.rank,
+    rawScore: r.rawScore,
+    standingsPoints: projected ? r.standingsPoints : null,
+    coachResult: r.coachResult,
+    tds: r.tds,
+    yards: r.yards,
+    bestPlayer: r.bestThisPeriod,
+  }));
+}
+
+/** Every page of the card: finished periods in order, then the week being played. */
+export function scoreboardPages(state) {
+  const pages = finishedPeriods(state.weeklyResults).map((p) => ({ type: p.type, number: p.number, live: false }));
+  if (liveRows(state)) pages.push({ type: state.currentPeriod.type, number: state.currentPeriod.number, live: true });
+  return pages;
+}
+
 const stripLabel = (p) => (p.type === "playoff" ? "R" + p.number : String(p.number));
 
 export function WeekByWeekScoreboard({ state, myTeam }) {
-  const periods = finishedPeriods(state.weeklyResults);
-  /* null means "the latest", so a week finalized while the screen is open moves the card
-   * on to it rather than leaving it parked on the old one. */
+  const pages = scoreboardPages(state);
+  /* null means "the latest", so the card opens on the week being played, and moves on by
+   * itself when a new week is dealt or finalized. */
   const [picked, setPicked] = useState(null);
   const [mode, setMode] = useState("week");
-  if (periods.length === 0) return null;
+  if (pages.length === 0) return null;
 
-  const at = picked !== null && picked < periods.length ? picked : periods.length - 1;
-  const period = periods[at];
-  const seasonView = mode === "season" && period.type === "week";
-  const rows = resultsFor(state.weeklyResults, period);
-  const standings = seasonView ? standingsThrough(state.weeklyResults, period) : null;
+  const at = picked !== null && picked < pages.length ? picked : pages.length - 1;
+  const page = pages[at];
+  /* The finished week "Season through this week" counts up to: the page itself, or for
+   * the week being played, the last finished regular week before it. */
+  const seasonTo = page.type !== "week"
+    ? null
+    : page.live
+      ? pages.slice(0, at).filter((p) => p.type === "week").pop() || null
+      : page;
+  const seasonView = mode === "season" && !!seasonTo;
+  const rows = page.live ? liveRows(state) : resultsFor(state.weeklyResults, page);
+  const standings = seasonView ? standingsThrough(state.weeklyResults, seasonTo) : null;
   const myId = myTeam ? myTeam.id : null;
   const mineWeek = rows.find((r) => r.teamId === myId);
   const mineSeason = standings ? standings.find((r) => r.teamId === myId) : null;
+  const sp = (v) => (v == null ? "-" : v);
 
   return (
     <div className="pp-card">
-      <div className="pp-eyebrow" style={{ marginBottom: 8 }}>Finished Weeks</div>
+      <div className="pp-eyebrow" style={{ marginBottom: 8 }}>Scoreboard</div>
       <div className="pp-wk-head">
         <button type="button" className="pp-wk-btn" onClick={() => setPicked(at - 1)} disabled={at === 0} aria-label="Previous week">{"<"}</button>
         <div className="pp-wk-title">
-          <b>{periodLabel(period)}</b>
-          <small>{seasonView ? "Standings after " + periodLabel(period) : "Final"}</small>
+          <b>{periodLabel(page)}</b>
+          <small>{seasonView ? "Standings after " + periodLabel(seasonTo) : page.live ? "In progress" : "Final"}</small>
         </div>
-        <button type="button" className="pp-wk-btn" onClick={() => setPicked(at + 1)} disabled={at === periods.length - 1} aria-label="Next week">{">"}</button>
+        <button type="button" className="pp-wk-btn" onClick={() => setPicked(at + 1)} disabled={at === pages.length - 1} aria-label="Next week">{">"}</button>
       </div>
       <div className="pp-wk-strip">
-        {periods.map((p, i) => (
+        {pages.map((p, i) => (
           <button key={p.type + p.number} type="button" aria-pressed={i === at} className={"pp-wk-pick" + (i === at ? " active" : "")} onClick={() => setPicked(i)}>{stripLabel(p)}</button>
         ))}
       </div>
-      {period.type === "week" ? (
+      {seasonTo ? (
         <div className="pp-wk-mode">
           <button type="button" className={mode === "week" ? "active" : ""} onClick={() => setMode("week")}>This week only</button>
           <button type="button" className={mode === "season" ? "active" : ""} onClick={() => setMode("season")}>Season through this week</button>
@@ -135,7 +188,7 @@ export function WeekByWeekScoreboard({ state, myTeam }) {
         <div className="pp-wk-mine">
           <div><b>{ordinal(mineWeek.rank)}</b><span>Finish</span></div>
           <div><b>{mineWeek.rawScore}</b><span>Score</span></div>
-          <div><b>+{mineWeek.standingsPoints}</b><span>Std Pts</span></div>
+          <div><b>{mineWeek.standingsPoints == null ? "-" : "+" + mineWeek.standingsPoints}</b><span>Std Pts</span></div>
           <div><b>{mineWeek.tds}</b><span>TDs</span></div>
         </div>
       ) : null}
@@ -143,7 +196,7 @@ export function WeekByWeekScoreboard({ state, myTeam }) {
       {seasonView ? (
         <StandingsTable rows={standings} teams={state.teams} />
       ) : rows.length === 0 ? (
-        <EmptyState>No results recorded for {periodLabel(period)}.</EmptyState>
+        <EmptyState>No results recorded for {periodLabel(page)}.</EmptyState>
       ) : (
         <div className="pp-table-scroll">
           <table className="pp-table pp-table-wide pp-wk-table">
@@ -166,8 +219,8 @@ export function WeekByWeekScoreboard({ state, myTeam }) {
                   <td className="pp-wk-stick1">{r.rank}</td>
                   <td className="pp-wk-stick2" style={{ fontWeight: 700 }}>{r.teamName}</td>
                   <td className="pp-wk-num" style={{ fontWeight: 700 }}>{r.rawScore}</td>
-                  <td className="pp-wk-num" style={{ color: "var(--gold-bright)", fontWeight: 700 }}>{r.standingsPoints}</td>
-                  <td className="pp-wk-num">{r.rank === 1 ? <span className="pp-wk-win">Won</span> : "-"}</td>
+                  <td className="pp-wk-num" style={{ color: "var(--gold-bright)", fontWeight: 700 }}>{sp(r.standingsPoints)}</td>
+                  <td className="pp-wk-num">{r.rank === 1 && !page.live ? <span className="pp-wk-win">Won</span> : "-"}</td>
                   <td className={"pp-wk-num pp-wk-coach-" + (COACH[r.coachResult] || "none")}>{COACH[r.coachResult] || "-"}</td>
                   <td className="pp-wk-num">{r.tds}</td>
                   <td className="pp-wk-num">{r.yards}</td>
