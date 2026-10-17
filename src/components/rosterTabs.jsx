@@ -8,9 +8,18 @@
  *     See the comment on that filter. */
 
 import { useState } from "react";
-import { FA_TABS, ICON, allRosteredPlayerIds, isOnByeThisWeek, isPlayerAvailable, teamPeriodScore } from "../engine/index.js";
+import {
+  FA_TABS,
+  ICON,
+  allRosteredPlayerIds,
+  isOnByeThisWeek,
+  isPlayerAvailable,
+  playerSeasonAverage,
+  playerWeekPoints,
+  teamPeriodScore,
+} from "../engine/index.js";
 import { EmptyState, SuitBadge, Tag } from "./atoms.jsx";
-import { TeamRosterBlock } from "./roster.jsx";
+import { PointsColumn, TeamRosterBlock } from "./roster.jsx";
 
 /* One team's card: the headline everybody wants, and the twelve rows only some people do.
  *
@@ -128,6 +137,10 @@ export function FreeAgentsTab({ state }) {
                   status on him - so he would otherwise appear in the BYE list with no tag,
                   looking like an ordinary free agent who had wandered in. */}
               {p.status !== "Active" ? <Tag>{p.status}</Tag> : isOnByeThisWeek(state, p) ? <Tag>BYE</Tag> : null}
+              {/* OQ-28: what he is scoring for nobody this week, and his season average -
+                  the same column a rostered player carries, greyed because it counts for
+                  no team. */}
+              <PointsColumn pts={playerWeekPoints(state, p)} average={playerSeasonAverage(state, p)} notCounting />
             </div>
           ))
         )}

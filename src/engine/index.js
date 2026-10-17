@@ -21,5 +21,6 @@ export * from "./weeklyClock.js";
 export * from "./deal.js";
 export * from "./schemes.js";
 export * from "./scoring.js";
+export * from "./playerPoints.js";
 export * from "./standings.js";
 export * from "./playoffs.js";

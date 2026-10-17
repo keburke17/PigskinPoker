@@ -2009,3 +2009,57 @@ and the artifact happily handing them out.
 *Numbered OQ-24 and OQ-25 rather than OQ-23: written on 2026-09-08 against a main that ended
 at the repeat-block ruling, while OQ-23 (all of league setup on one page) was open on
 `scott/one-screen-league-setup` the same evening. Keep both when they merge.*
+
+---
+
+### OQ-28. Can you see what the bench and the free agents scored, and what everyone averages? **[ANSWERED 2026-10-16: yes - option A of four, average by games played]**
+
+Scott: **"each week your starting lineup accumulates points toward your weekly total. I would
+like to make it so you can see the point totals of the bench players and the free agents as
+well ... the bench and FA totals obviously do not count toward a teams score, just the
+starters do"** - and an average on every player "to help with sit start scheme advice".
+
+**Why it needed anything new at all.** The game only ever recorded six stat lines per team:
+`stat_lines` is keyed by (week, team, SLOT), because those six are what a week is scored from.
+A bench player or a free agent had no line anywhere, so there was nothing to show. The stats
+pull already downloads nflverse's whole weekly file and then threw away everyone who was not
+starting.
+
+**What was built.** A new table, `player_week_lines`: the feed's line for every pool player,
+every NFL week. The stats pull fills it - WHOLE SEASON every time, so the first pull fills in
+every week already played, including weeks a player spent on a bench - and it is written
+after the starters, in a step that cannot fail the pull. **Nothing scores from it.** Finalize,
+the projection, the standings and the playoffs never read it; `tests/playerPoints.test.js`
+and `tests/server.test.js` both assert that a team's number does not move with or without it.
+
+**Four mockups were drawn and Scott picked A.** B put the average on the matchup line, C made
+it a chip beside the team, D added the last three weeks.
+
+| | |
+|---|---|
+| Right of the row | this week's points, and `avg 18.2` under them |
+| Bench and free agents | the same, in grey italics - real points that count for nobody |
+| Bench heading | "Bench - does not count", said once rather than on every number |
+
+**Three calls inside it, all reversible:**
+
+- **Average by GAMES PLAYED** (Scott's choice over "every week so far"). A bye or a missed game
+  is no row rather than a zero, so it cannot drag the average down. Reverse: divide by weeks
+  elapsed in `playerSeasonAverage`.
+- **Finished weeks only.** The current NFL week stays out of the average until the league
+  finalizes it - half a Sunday averaged in would move every number while managers are looking
+  at them. The week's own points sit beside it anyway.
+- **The average is the feed's, not the commissioner's.** A starter whose line was corrected by
+  hand still COUNTS at the corrected number for his team, but his average is built from what
+  the feed reported - the same source the bench and free agents have, so every average on the
+  screen means the same thing.
+
+**What it needs to go live.** The migration (`20261016000000_player_week_lines.sql`) has to
+be applied with `npm run db:push` - Kyle's step. Until it is, the site loads exactly as before:
+a missing table reads as no numbers, never as an error, on both the browser's read and the
+server's. A league that types every stat by hand gets bench and free-agent numbers once the
+pull runs (the button, or the automatic pull every three hours).
+
+*Numbered OQ-28 rather than OQ-26: on 2026-10-16 two unmerged branches -
+`kyle/manager-rename-own-team` and `claude/fantasy-roster-apis-go06zn` - each already claimed
+OQ-26, so they will land as 26 and 27. Keep all three when they merge.*

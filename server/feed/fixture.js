@@ -26,6 +26,7 @@ import {
   parseCsv,
   parseWeeklyStats,
   resultsFromGames,
+  seasonResultsFrom,
   weekStartsFromGames,
 } from "./nflverse.js";
 
@@ -67,6 +68,30 @@ export async function fetchWeeklyStats({ season, week } = {}) {
     week: Number(week),
     lines: parseWeeklyStats(read("stats-week.csv"), { week }),
     stoppedEarly: false,
+  };
+}
+
+/**
+ * Every recorded week from 1 through `throughWeek` - OQ-28's season history, the same
+ * shape as the live `fetchSeasonStats`. Weeks that were not recorded are simply absent,
+ * which is what the live file does for a week not yet played.
+ */
+export async function fetchSeasonStats({ season, throughWeek } = {}) {
+  const last = Number(throughWeek);
+  return {
+    season,
+    throughWeek: last,
+    lines: parseWeeklyStats(read("stats-week.csv")).filter((l) => l.week >= 1 && l.week <= last),
+    stoppedEarly: false,
+  };
+}
+
+/** The recorded weeks' results, split by week - the live `fetchSeasonResults`'s shape. */
+export async function fetchSeasonResults({ season, throughWeek } = {}) {
+  return {
+    season,
+    throughWeek: Number(throughWeek),
+    byWeek: seasonResultsFrom(parseCsv(read("results-week.csv")), { season, throughWeek }),
   };
 }
 

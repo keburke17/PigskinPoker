@@ -689,7 +689,77 @@ export async function fetchWeeklyStats({ season, week, fetchImpl = fetch } = {})
   return { season, week: wanted, lines, stoppedEarly };
 }
 
+/**
+ * Every regular-season week's stat lines from week 1 through `throughWeek`, in one read.
+ *
+ * OQ-28 (2026-10-16): bench and free-agent points, and season averages, need every pool
+ * player's line for every week played - not only the six starters the week is scored
+ * from. Same file as `fetchWeeklyStats`, read the same way, and NO MORE EXPENSIVE: the
+ * file is ordered by week, so reaching week N already streams weeks 1..N-1 past us. This
+ * keeps them instead of dropping them.
+ *
+ * @returns {{ season, throughWeek, lines, stoppedEarly }} lines carry their own `week`.
+ */
+export async function fetchSeasonStats({ season, throughWeek, fetchImpl = fetch } = {}) {
+  const last = Number(throughWeek);
+  if (!Number.isFinite(last)) throw new Error("fetchSeasonStats needs a throughWeek");
+
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const res = await fetchImpl(WEEKLY_STATS_URL(season), {
+    signal: controller ? controller.signal : undefined,
+  });
+  if (!res.ok) throw new Error("nflverse weekly stats returned HTTP " + res.status + " for " + season);
+
+  const inRange = (line) => line && line.week >= 1 && line.week <= last;
+
+  if (!res.body || typeof res.body.getReader !== "function") {
+    return {
+      season,
+      throughWeek: last,
+      lines: parseWeeklyStats(await res.text()).filter(inRange),
+      stoppedEarly: false,
+    };
+  }
+
+  const lines = [];
+  const { stoppedEarly } = await readCsvRows(res.body, {
+    onEnough: () => controller && controller.abort(),
+    onRow: (row) => {
+      const w = Number(row.week);
+      if ((!row.season_type || row.season_type === "REG") && Number.isFinite(w) && w > last) {
+        return true;
+      }
+      const line = statLineFrom(row, null);
+      if (inRange(line)) lines.push(line);
+      return false;
+    },
+  });
+  return { season, throughWeek: last, lines, stoppedEarly };
+}
+
 /* --------------------------------------------------------- game results -- */
+
+/**
+ * Win / Tie / Loss for every team, every week 1..throughWeek - the Coach card's history,
+ * for OQ-28's averages. One read of games.csv, split by week.
+ *
+ * @returns {{ season, throughWeek, byWeek: Map<number, Map<string, "Win"|"Tie"|"Loss">> }}
+ */
+export async function fetchSeasonResults({ season, throughWeek, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(GAMES_URL);
+  if (!res.ok) throw new Error("nflverse games returned HTTP " + res.status);
+  return { season, throughWeek: Number(throughWeek), byWeek: seasonResultsFrom(parseCsv(await res.text()), { season, throughWeek }) };
+}
+
+/** Exported for testing and for the fixture: `resultsFromGames`, once per week. */
+export function seasonResultsFrom(rows, { season, throughWeek }) {
+  const byWeek = new Map();
+  for (let w = 1; w <= Number(throughWeek); w++) {
+    const results = resultsFromGames(rows, { season, week: w });
+    if (results.size) byWeek.set(w, results);
+  }
+  return byWeek;
+}
 
 /**
  * Win / Tie / Loss for every team that played in one NFL week - what the Coach slot

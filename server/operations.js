@@ -22,7 +22,7 @@ import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
-import { planStatsPull, statWriteRows } from "./stats.js";
+import { planSeasonLines, planStatsPull, statWriteRows } from "./stats.js";
 import { pullEligibility, summarize } from "./autoPull.js";
 import {
   DEADLINES,
@@ -1745,6 +1745,10 @@ async function runStatsPull(db, { leagueId, rows, period, feed }) {
   }
 
   if (!feedLines.length && results.size === 0) {
+    /* OQ-28: the WEEKS BEFORE this one still have lines, and a Thursday with nothing
+     * played yet is exactly when a manager wants the averages - so they are written
+     * anyway. This week's starters are untouched; there was nothing to write. */
+    await writeSeasonLines(db, { leagueId, rows, season, nflWeek, feed });
     /* Not an error: before Sunday's games finish this is simply the truth, and saying
      * so is more use than an empty success. */
     return {
@@ -1781,7 +1785,57 @@ async function runStatsPull(db, { leagueId, rows, period, feed }) {
     }
   }
 
-  return { report: { ...report, season, nflWeek, stoppedEarly } };
+  const history = await writeSeasonLines(db, { leagueId, rows, season, nflWeek, feed });
+
+  return { report: { ...report, season, nflWeek, stoppedEarly, history } };
+}
+
+/**
+ * OQ-28: after the starters are written, keep every pool player's line for every week so
+ * far - the bench and free-agent points, and the season averages, read these.
+ *
+ * AFTER THE STARTERS AND NEVER ABLE TO UNDO THEM. The six lines a week is scored from are
+ * already written by the time this runs, and nothing here can fail the pull: a feed
+ * hiccup, or a database that has not had `player_week_lines` applied yet, comes back as a
+ * sentence in the report and a line in the log. The week's score cannot depend on the
+ * grey numbers.
+ *
+ * WHOLE SEASON EVERY TIME, so the first pull after this ships fills in every week already
+ * played, and a stat correction nflverse publishes on Wednesday lands on the next pull.
+ *
+ * @returns {{ written: number }|{ skipped: string }}
+ */
+async function writeSeasonLines(db, { leagueId, rows, season, nflWeek, feed }) {
+  const seasonId = rows.seasons[0]?.id;
+  if (!seasonId) return { skipped: "no season" };
+  try {
+    const source = feed || (await selectFeed());
+    if (typeof source.fetchSeasonStats !== "function" || typeof source.fetchSeasonResults !== "function") {
+      return { skipped: "this feed has no season history" };
+    }
+    const [stats, games] = await Promise.all([
+      source.fetchSeasonStats({ season, throughWeek: nflWeek }),
+      source.fetchSeasonResults({ season, throughWeek: nflWeek }),
+    ]);
+    const lines = planSeasonLines({
+      players: rows.players.filter((p) => p.league_id === leagueId),
+      feedLines: stats.lines,
+      byWeek: games.byWeek,
+      leagueId,
+      seasonId,
+      at: new Date().toISOString(),
+    });
+    for (let i = 0; i < lines.length; i += 500) {
+      const { error } = await db
+        .from("player_week_lines")
+        .upsert(lines.slice(i, i + 500), { onConflict: "season_id,nfl_week,player_id" });
+      if (error) throw new Error(error.message);
+    }
+    return { written: lines.length };
+  } catch (err) {
+    console.log("[stats] season history not written -", err.message);
+    return { skipped: err.message };
+  }
 }
 
 /**

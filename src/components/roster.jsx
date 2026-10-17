@@ -14,6 +14,8 @@ import {
   getPlayer,
   isPlayerLocked,
   playerGame,
+  playerSeasonAverage,
+  playerWeekLine,
   teamPeriodScore,
   weekScheduleKnown,
 } from "../engine/index.js";
@@ -102,9 +104,18 @@ export function slotMetaLine(state, slot, player) {
  * The stat line then gets a line of its own instead of trailing off the end of the meta,
  * and the points stay hard right in a column that lines up down the whole card.
  */
-export function RosterSlotRow({ slot, player, state, statLine, locked, showStats }) {
-  const pts = showStats ? computeStarterPoints(state, statLine, player ? player.position : slot) : null;
+export function RosterSlotRow({ slot, player, state, statLine, locked, showStats, bench }) {
+  /* A BENCH ROW (OQ-28, Scott 2026-10-16) scores the feed's line for him this week, with
+   * the same function a starter is scored with - so the grey number is exactly what he
+   * would have put up in the lineup. It is greyed and italic because it does not count:
+   * teamPeriodScore walks the six starting slots and never this row. Nothing until a
+   * stats pull has a line for him, which is also what a starter's row does. */
+  const benchLine = bench && showStats ? playerWeekLine(state, player) : null;
+  const line = bench ? benchLine : statLine;
+  const withStats = bench ? !!benchLine : showStats;
+  const pts = withStats ? computeStarterPoints(state, line, player ? player.position : slot) : null;
   const meta = slotMetaLine(state, slot, player);
+  const average = playerSeasonAverage(state, player);
   return (
     <div className="pp-roster-slot">
       <PositionCard slot={slot} position={player ? player.position : null} />
@@ -121,11 +132,40 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
           </span>
           {player && player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
           {locked ? <span className="pp-locked-pill">LOCKED</span> : null}
-          {showStats ? <span className="pp-roster-slot-pts">{pts} pt{pts === 1 ? "" : "s"}</span> : null}
         </div>
         {meta ? <div className="pp-roster-slot-meta">{meta}</div> : null}
-        {showStats && player ? <div className="pp-roster-slot-stats">{statLineText(state, player, statLine)}</div> : null}
+        {withStats && player ? <div className="pp-roster-slot-stats">{statLineText(state, player, line)}</div> : null}
       </div>
+      <PointsColumn pts={pts} average={average} notCounting={bench} />
+    </div>
+  );
+}
+
+/* THE POINTS COLUMN - option A of four, Scott's pick on 2026-10-16 (OQ-28). This week's
+ * points on top, the season average under them, hard right so both line up down the card.
+ *
+ * The average is there BEFORE a ball is thrown, deliberately: Tuesday's deal and
+ * Wednesday's scheme are when "sit or start" gets decided, and that is when there are no
+ * points yet to sit beside it. Nothing at all is drawn for a player with neither, so an
+ * empty slot stays the shape it was. */
+export function PointsColumn({ pts, average, notCounting }) {
+  if (pts == null && !average) return null;
+  return (
+    <div className="pp-roster-slot-right">
+      {pts != null ? (
+        <span
+          className={"pp-roster-slot-pts" + (notCounting ? " pp-pts-not-counting" : "")}
+          title={notCounting ? "Not in the lineup - does not count toward the team's score" : undefined}
+        >
+          {pts} pt{pts === 1 ? "" : "s"}
+        </span>
+      ) : null}
+      {average ? (
+        <span className="pp-roster-slot-avg" title={"Season average over " + average.games + " game" + (average.games === 1 ? "" : "s") + " played"}>
+          {/* Always one decimal, so "avg 19.0" and "avg 13.6" line up down the column. */}
+          avg {average.avg.toFixed(1)}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -166,11 +206,12 @@ export function TeamRosterBlock({ team, state, showStats, showBench, showTotal }
       ) : null}
       {showBench ? (
         <>
-          <div className="pp-eyebrow" style={{ margin: "10px 0 6px" }}>Bench</div>
+          {/* "Does not count" is said once, here, rather than on every grey number. */}
+          <div className="pp-eyebrow" style={{ margin: "10px 0 6px" }}>Bench {ICON.dot} does not count</div>
           {team.roster.bench.map((pid, i) => {
             const player = getPlayer(state, pid);
             return (
-              <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked(pid)} showStats={false} />
+              <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked(pid)} showStats={showStats} bench />
             );
           })}
         </>

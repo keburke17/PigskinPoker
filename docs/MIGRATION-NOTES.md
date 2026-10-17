@@ -2226,3 +2226,33 @@ front of a pool screen showing 32 active quarterbacks reads as a bug.
 and bye players no longer appear under the position tabs - listing them would be the screen
 offering something the rules refuse. The Rules tab and `docs/RULES.md` section 4 say the rule
 in the league's own words.
+
+## Bench and free-agent points, and season averages (2026-10-16, OQ-28)
+
+**A new table, and nothing scores from it.** `player_week_lines` holds the feed's line for
+every pool player, every NFL week - keyed (season, NFL week, player), per league, readable
+wherever `players` is and writable by nobody but the secret key. It is listed in
+`scripts/verify-grants.mjs` under READABLE, and `tests/rls.test.js` covers it like every other
+league table (readable, not writable, hidden in a private league).
+
+**Written by the stats pull, after the starters, and never able to undo them.**
+`writeSeasonLines` in `server/operations.js` runs once the six `stat_lines` per team are in.
+It reads the season file through the current week (`fetchSeasonStats`, `fetchSeasonResults`
+in both feeds - no more expensive than the one-week read, because the file is ordered by week
+and reaching week N streams past 1..N-1 anyway). Any failure - the feed, or a database without
+the table yet - is a sentence in the report and a log line, not a failed pull. It also runs
+when the current week has nothing yet, because a Thursday is exactly when the averages are
+wanted.
+
+**Read on both sides, and an error is an empty list.** `src/storage/supabase.js` and
+`server/league.js` both read it and both treat an error as nothing, deliberately outside the
+loop that turns a read failure into the blocking error screen. It is NOT in `server/league.js`'s
+`TABLES`, because that list is also what `persistBlob` writes back. `hydrate.js` carries it in
+`_meta.playerWeeks`, for the same reason `kickoffs` is there: the artifact's shape has no field
+for it, and decompose must never carry it.
+
+**Priced by the same function as a starter.** `src/engine/playerPoints.js` scores each line
+with `computeStarterPoints`, so a bench player's grey number is exactly what he would have
+scored in the lineup. Average by games played, finished weeks only - see OQ-28.
+
+**Parity is untouched**: no engine path a week runs through changed.
