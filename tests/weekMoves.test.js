@@ -19,13 +19,14 @@ import {
   finalizeCurrentPeriod,
   getPlayer,
   processSchemes,
+  projectCurrentPeriod,
   rankTeamsWithTiebreak,
   seasonStandingsRows,
   seededRng,
 } from "../src/engine/index.js";
 import { moveChip, moveHeadline, parseMove, weekMoves } from "../src/components/weekMoves.js";
 import { schemeTicketWords, stripTags } from "../src/components/schemeTicket.jsx";
-import { finishedPeriods, resultsFor, standingsThrough } from "../src/components/weekByWeek.jsx";
+import { finishedPeriods, liveRows, resultsFor, scoreboardPages, standingsThrough } from "../src/components/weekByWeek.jsx";
 import { dealtState, emptyFreeAgents, fillStats, starter } from "./helpers/fixtures.js";
 
 const scheme = (type, position, playerId) => ({ type, position, playerId, submittedAt: "2026-10-16T12:00:00.000Z" });
@@ -222,5 +223,53 @@ describe("the week-by-week scoreboard", () => {
       const res = s.weeklyResults.find((x) => x.teamId === r.teamId && x.period.number === 1);
       expect(r.cum.standingsPoints).toBe(res.standingsPoints);
     });
+  });
+});
+
+describe("the current week on the same scoreboard (2026-10-17)", () => {
+  it("is the last page while a week is being played", () => {
+    const s = playSeason(2);
+    const res = dealRosters(s, s.teams.map((t) => t.id), seededRng(77));
+    Object.entries(res.rosters).forEach(([id, roster]) => { s.teams.find((t) => t.id === id).roster = roster; });
+    s.currentPeriod.phase = "dealt";
+    expect(scoreboardPages(s)).toEqual([
+      { type: "week", number: 1, live: false },
+      { type: "week", number: 2, live: false },
+      { type: "week", number: 3, live: true },
+    ]);
+  });
+
+  it("shows exactly what the old live table showed, with no standings points before schemes process", () => {
+    const s = playSeason(1);
+    const res = dealRosters(s, s.teams.map((t) => t.id), seededRng(78));
+    Object.entries(res.rosters).forEach(([id, roster]) => { s.teams.find((t) => t.id === id).roster = roster; });
+    s.currentPeriod.phase = "dealt";
+    fillStats(s, s.teams.map((t) => t.id), 9);
+    expect(liveRows(s).every((r) => r.standingsPoints === null)).toBe(true);
+
+    s.currentPeriod.phase = "stats";
+    const live = liveRows(s);
+    const engine = projectCurrentPeriod(s).rows;
+    expect(live.map((r) => [r.teamId, r.rank, r.rawScore, r.standingsPoints, r.tds, r.yards, r.coachResult]))
+      .toEqual(engine.map((r) => [r.teamId, r.rank, r.rawScore, r.standingsPoints, r.tds, r.yards, r.coachResult]));
+  });
+
+  it("does not change the league by being looked at", () => {
+    const s = playSeason(1);
+    s.currentPeriod.phase = "dealt";
+    const res = dealRosters(s, s.teams.map((t) => t.id), seededRng(79));
+    Object.entries(res.rosters).forEach(([id, roster]) => { s.teams.find((t) => t.id === id).roster = roster; });
+    fillStats(s, s.teams.map((t) => t.id), 10);
+    const before = JSON.stringify(s);
+    scoreboardPages(s);
+    liveRows(s);
+    expect(JSON.stringify(s)).toBe(before);
+  });
+
+  it("has no live page between a finalize and the next deal", () => {
+    const s = playSeason(2);
+    expect(s.currentPeriod.phase).toBe("pre-deal");
+    expect(liveRows(s)).toBe(null);
+    expect(scoreboardPages(s).pop()).toEqual({ type: "week", number: 2, live: false });
   });
 });

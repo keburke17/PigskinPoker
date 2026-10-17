@@ -19,13 +19,13 @@ import { WeekByWeekScoreboard } from "./weekByWeek.jsx";
 import { WeekScoreboard } from "./scoreboard.jsx";
 
 export function ScoreboardTab({ state, myTeam, onSeeAllActivity, onGoTo }) {
-  const finished = state.weeklyResults.length > 0;
   return (
     <div>
       <WeekScoreboard state={state} myTeam={myTeam} onSeeAllActivity={onSeeAllActivity} onGoTo={onGoTo} />
-      {/* One card you page through, not one table per finished week (Scott, 2026-10-16).
+      {/* The one scoreboard on this screen: the week being played, then every finished week,
+        * paged through on one card (Scott, 2026-10-16 and 2026-10-17).
         * See src/components/weekByWeek.jsx. */}
-      {finished ? <div style={{ marginTop: 18 }}><WeekByWeekScoreboard state={state} myTeam={myTeam} /></div> : null}
+      <WeekByWeekScoreboard state={state} myTeam={myTeam} />
     </div>
   );
 }
