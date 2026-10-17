@@ -15,7 +15,7 @@
  * Only the LABEL changed - the route key is still `results`, so no saved link breaks.
  */
 
-import { WeeklyResultsTab } from "./WeeklyResultsTab.jsx";
+import { WeekByWeekScoreboard } from "./weekByWeek.jsx";
 import { WeekScoreboard } from "./scoreboard.jsx";
 
 export function ScoreboardTab({ state, myTeam, onSeeAllActivity, onGoTo }) {
@@ -23,12 +23,9 @@ export function ScoreboardTab({ state, myTeam, onSeeAllActivity, onGoTo }) {
   return (
     <div>
       <WeekScoreboard state={state} myTeam={myTeam} onSeeAllActivity={onSeeAllActivity} onGoTo={onGoTo} />
-      {finished ? (
-        <>
-          <div className="pp-eyebrow" style={{ margin: "18px 0 8px" }}>Finished Weeks</div>
-          <WeeklyResultsTab state={state} />
-        </>
-      ) : null}
+      {/* One card you page through, not one table per finished week (Scott, 2026-10-16).
+        * See src/components/weekByWeek.jsx. */}
+      {finished ? <div style={{ marginTop: 18 }}><WeekByWeekScoreboard state={state} myTeam={myTeam} /></div> : null}
     </div>
   );
 }

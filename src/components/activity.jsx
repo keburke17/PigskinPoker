@@ -32,7 +32,8 @@
  * doing one day; it is an engine change and an OQ, not a thing to sneak in here.
  */
 
-import { ICON } from "../engine/index.js";
+import { ICON, abbrFor, periodTeams } from "../engine/index.js";
+import { moveChip, moveHeadline, weekMoves } from "./weekMoves.js";
 
 /* The chip is the whole point of the redesign: colour tells you which scheme fired
  * before you have read a word. Types that are not a manager's action - a finalized
@@ -107,32 +108,100 @@ export function ActivityEvent({ entry, myTeamName }) {
   );
 }
 
-/** The card on the Week screen: this period only, newest first.
+/* ---------------------------------------------------------------- receipts --
+ * The Week screen's card, rebuilt 2026-10-16 as "Around the league, with receipts" -
+ * Scott's pick out of nine mockups across three rounds. One tile per team, yours first
+ * and full width, each carrying that team's transaction lines in the same ADD / DROP /
+ * STOLEN / BLOCK vocabulary as the result ticket. Every line names the other side of
+ * the move - "stolen from Blitz Brothers", "from free agency" - which was his one
+ * request on top of the mockup.
  *
- *  It draws nothing before the deal because WeekScoreboard returns early there, and it
- *  says so plainly rather than hiding once the week is dealt but no schemes have
- *  resolved - "nothing yet" is the answer to "did I miss anything", and hiding the card
- *  would leave that question unanswered. */
+ * The full log on League -> Activity is unchanged: every week, the engine's own
+ * sentences, ActivityEvent above. This card is the week; that is the record. */
+
+const TAG = { add: "ADD", drop: "DROP", stolen: "STOLEN", block: "BLOCK", none: "NONE", empty: "EMPTY" };
+
+/* The player's NFL team, when the name and position pick out exactly one player. The
+ * log carries a name, not an id, so an ambiguous name simply goes without. */
+function nflTeamOf(state, name, position) {
+  if (!state || !state.playerPool) return null;
+  const hits = state.playerPool.filter((p) => p.name === name && p.position === position);
+  return hits.length === 1 && hits[0].team ? abbrFor(hits[0].team) || hits[0].team : null;
+}
+
+export function TxLines({ lines, state, compact }) {
+  return (
+    <div className={"pp-tx" + (compact ? " pp-tx-compact" : "")}>
+      {lines.map((l, i) => {
+        const nfl = l.kind === "none" || l.kind === "empty" ? null : nflTeamOf(state, l.player, l.position);
+        return (
+          <div key={i} className="pp-tx-row">
+            <span className={"pp-tx-tag pp-tx-" + l.kind}>{TAG[l.kind]}</span>
+            <span className="pp-tx-text">
+              <b>{l.player}</b>
+              {l.kind !== "none" && l.kind !== "empty" ? <span className="pp-tx-pos">{" " + l.position + (nfl ? " " + nfl : "")}</span> : null}
+              <small>{l.note}</small>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MoveTile({ state, tm, mine }) {
+  const chip = moveChip(tm);
+  return (
+    <div className={"pp-mtile " + chip.cls.replace("pp-chip-", "pp-tk-") + (mine ? " pp-mtile-mine" : "") + (tm.hit && !mine ? " pp-mtile-hit" : "")}>
+      <div className="pp-mtile-head">
+        <span className="pp-mtile-name">{tm.teamName}</span>
+        {mine ? <span className="pp-you">You</span> : null}
+        {mine ? <span className={"pp-chip " + chip.cls}>{chip.label}</span> : null}
+      </div>
+      {/* Your own tile IS the result announcement - there is no separate banner on this
+        * screen (Scott, 2026-10-16) - so it leads with the sentence, not the one word. */}
+      <div className="pp-mtile-word">{mine && (tm.scheme || tm.lines.length) ? moveHeadline(tm) : chip.label}</div>
+      {tm.lines.length > 0
+        ? <TxLines lines={tm.lines} state={state} compact={!mine} />
+        : <p className="pp-mtile-quiet">Roster unchanged</p>}
+    </div>
+  );
+}
+
+/** The card on the Week screen: this period's moves, team by team. */
 export function WeekActivityCard({ state, myTeam, onSeeAll }) {
-  const entries = eventsForPeriod(state.activityLog, state.currentPeriod);
   const roundWord = state.currentPeriod.type === "playoff" ? "round" : "week";
+  const playing = new Set(periodTeams(state).map((t) => t.id));
+  const { any, teams, unread } = weekMoves(state);
+  const tiles = teams.filter((t) => playing.has(t.teamId) || t.lines.length > 0);
+  const mine = myTeam ? tiles.find((t) => t.teamId === myTeam.id) : null;
+  const others = tiles.filter((t) => t !== mine);
   return (
     <div className="pp-card">
       <div className="pp-card-head">
-        <h3 className="pp-h3" style={{ marginBottom: 0 }}>This {roundWord}&apos;s action</h3>
+        <h3 className="pp-h3" style={{ marginBottom: 0 }}>Around the league</h3>
         {onSeeAll ? (
           <button type="button" className="pp-linkbtn" onClick={onSeeAll}>All weeks {ICON.caretRight}</button>
         ) : null}
       </div>
-      {entries.length === 0 ? (
+      {!any ? (
         <p className="pp-sub" style={{ margin: 0 }}>
-          Nothing yet this {roundWord}. Blocks, steals and redraws appear here the moment
-          schemes are processed.
+          Nothing yet this {roundWord}. Every team&apos;s steals, blocks and redraws appear
+          here the moment schemes are processed.
         </p>
       ) : (
-        entries.map((entry) => (
-          <ActivityEvent key={entry.id} entry={entry} myTeamName={myTeam ? myTeam.name : null} />
-        ))
+        <>
+          <div className="pp-mtiles">
+            {mine ? <MoveTile state={state} tm={mine} mine /> : null}
+            {others.map((tm) => <MoveTile key={tm.teamId} state={state} tm={tm} />)}
+          </div>
+          {unread.length > 0 ? (
+            <div style={{ marginTop: 10 }}>
+              {unread.map((entry) => <ActivityEvent key={entry.id} entry={entry} myTeamName={myTeam ? myTeam.name : null} />)}
+            </div>
+          ) : null}
+          <p className="pp-mtile-key">A red outline means that team had a player stolen.</p>
+        </>
       )}
     </div>
   );
