@@ -39,6 +39,7 @@ import { RulesTab } from "./components/RulesTab.jsx";
 import { HelpTab } from "./components/HelpTab.jsx";
 import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
 import { hasBeenWelcomed, markWelcomed } from "./storage/firstRun.js";
+import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
 import { CommissionerTab } from "./components/commissioner.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 
@@ -762,6 +763,14 @@ export default function App() {
         </div>
 
         <div style={{ paddingTop: 14 }}>
+          {/* Your scheme on every tab until it processes, and on My Team and Rosters a small
+            * line saying what it did (Scott, 2026-10-16). The Week screen carries the full
+            * answer in Around the league, so the strip is left off it on purpose. See
+            * src/components/schemeTicket.jsx. */}
+          {myTeam ? <SchemeTicket state={state} team={myTeam} onOpen={() => goToTab("myteam")} /> : null}
+          {myTeam && (tab === "myteam" || tab === "hub") ? (
+            <ResultStrip state={state} team={myTeam} onSeeWeek={() => goToTab("results")} />
+          ) : null}
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && (
             <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
