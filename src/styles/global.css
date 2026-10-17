@@ -265,6 +265,60 @@
   text-transform:uppercase;
 }
 
+/* OQ-29: THE INJURY REPORT - Scott's "N1 with the practice key", 2026-10-17. A pill on
+   the name line when the NFL has given a game status, a notepad beside it whenever the
+   player is on the report at all, and the report itself opening under the player. Display
+   only - see src/engine/injuries.js. The three statuses are coloured by how likely he is
+   to sit: gold for a coin flip, orange for probably not, red for not. */
+.pp-inj-pill{
+  flex:none; font-size:9px; font-weight:800; letter-spacing:0.6px; line-height:1.3;
+  border-radius:999px; padding:1px 6px; align-self:center;
+}
+.pp-inj-ques{ background:var(--gold); color:#2a2105; }
+.pp-inj-doubt{ background:#e98a3c; color:#2b1404; }
+.pp-inj-out{ background:var(--danger); color:#fff4f2; }
+.pp-inj-pad{
+  position:relative; flex:none; align-self:center;
+  display:inline-grid; place-items:center; width:22px; height:22px; padding:0;
+  border:1px solid var(--border); border-radius:5px; background:var(--surface-2);
+  color:var(--text-dim); cursor:pointer;
+}
+.pp-inj-pad:hover{ color:var(--gold-bright); border-color:var(--gold-dim); }
+.pp-inj-pad:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+.pp-inj-pad.open{ color:var(--bg); background:var(--gold); border-color:var(--gold); }
+.pp-inj-new{
+  position:absolute; top:-3px; right:-3px; width:8px; height:8px; border-radius:50%;
+  background:var(--gold-bright); box-shadow:0 0 0 2px var(--surface);
+}
+/* An open report makes the row tall; the card stays at the top beside the name rather
+   than sliding down to the middle of the row. */
+.pp-roster-slot:has(.pp-inj-report){ align-items:flex-start; }
+.pp-inj-report{
+  margin-top:7px; padding:9px 10px; border:1px solid var(--border); border-radius:8px;
+  background:var(--surface-2); display:flex; flex-direction:column; gap:7px;
+}
+.pp-inj-head{ display:flex; justify-content:space-between; align-items:baseline; gap:4px 10px; flex-wrap:wrap; }
+.pp-inj-what{ font-weight:700; font-size:13px; color:var(--text); }
+.pp-inj-when{ font-size:11px; color:var(--text-faint); }
+.pp-inj-label{ font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--gold-dim); font-weight:700; }
+.pp-inj-label sup, .pp-inj-star{ color:var(--gold); }
+.pp-inj-days{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; }
+.pp-inj-day{
+  display:flex; flex-direction:column; align-items:center; gap:2px; padding:5px 6px;
+  border:1px solid var(--border); border-radius:6px; background:var(--surface);
+  font-size:11px; color:var(--text-dim);
+}
+.pp-inj-day b{ font-family: var(--font-mono); font-size:12px; }
+.pp-inj-dnp{ color:var(--danger); }
+.pp-inj-lp{ color:var(--gold); }
+.pp-inj-fp{ color:var(--ok); }
+.pp-inj-none{ color:var(--text-faint); font-weight:400; }
+.pp-inj-key{
+  border-top:1px dashed var(--border); padding-top:6px; font-size:11px; line-height:1.5;
+  color:var(--text-faint); display:flex; flex-wrap:wrap; gap:2px 12px;
+}
+.pp-inj-key b{ font-family: var(--font-mono); }
+
 /* THE SLOT AS A CARD. The rank sits top-left and the pip bottom-right, the way a card
    in a fanned hand shows itself, on an ivory face that reads as a card on the felt
    rather than as another coloured chip. The position keeps its own ink, so the six

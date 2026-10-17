@@ -80,6 +80,11 @@ export async function fetchLeagueRows(db, leagueId) {
   const weekLines = await db.from("player_week_lines").select("*").in("season_id", seasonIds);
   rows.player_week_lines = weekLines.error ? [] : (weekLines.data ?? []);
 
+  /* OQ-29: the NFL injury report on the league's players - display only, and out of
+   * `TABLES` and forgiving of an error for exactly the reasons player_week_lines is. */
+  const injuries = await db.from("player_injuries").select("*").in("season_id", seasonIds);
+  rows.player_injuries = injuries.error ? [] : (injuries.data ?? []);
+
   for (const t of TABLES) if (!rows[t]) rows[t] = [];
   return rows;
 }

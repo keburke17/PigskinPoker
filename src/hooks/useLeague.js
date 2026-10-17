@@ -454,6 +454,18 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* OQ-29: read the injury report now. Reports what it found, like the kickoff refresh. */
+  const [injuryReport, setInjuryReport] = useState(null);
+  const refreshInjuries = useCallback(
+    () =>
+      immediate("refreshInjuries", async () => {
+        const r = await store.refreshInjuries();
+        setInjuryReport(r && r.ok ? (r.report ?? null) : null);
+        return r;
+      }),
+    [store, immediate]
+  );
+
   /* Let the schedule press Pull Stats instead of the commissioner. Off by default, and
    * it grants nothing the button does not - same guards, same refusal to overwrite a
    * line he typed. See server/autoPull.js. */
@@ -504,6 +516,7 @@ export function useLeague(store) {
     poolReport,
     statsReport,
     kickoffReport,
+    injuryReport,
     identity,
     setIdentity,
     loading,
@@ -535,6 +548,7 @@ export function useLeague(store) {
       setNflWeek,
       setLineupLock,
       refreshKickoffs,
+      refreshInjuries,
       setAutoPullStats,
       setAutoCycle,
       setNotifyMembers,
