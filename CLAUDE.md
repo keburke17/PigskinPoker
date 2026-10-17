@@ -372,7 +372,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-806 tests. Three groups worth knowing about:
+826 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
