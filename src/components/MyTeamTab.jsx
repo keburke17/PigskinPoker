@@ -74,12 +74,12 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoT
         <p className="pp-sub" style={{ marginBottom: 10 }}>Swap a starter with an eligible bench player. Direct starter-for-starter swaps aren't allowed - route every change through the bench.</p>
         <LineupEditor state={state} team={team} onSwap={onSwap} showStats={dealt} />
         <h3 className="pp-h3" style={{ marginTop: 16 }}>Bench</h3>
-        <p className="pp-sub" style={{ marginBottom: 10 }}>Not tied to any slot - swap any of these into a matching starting spot above.</p>
+        <p className="pp-sub" style={{ marginBottom: 10 }}>Not tied to any slot - swap any of these into a matching starting spot above. Bench points are shown in grey and do not count toward your score.</p>
         {team.roster ? (
           team.roster.bench.map((pid, i) => {
             const player = getPlayer(state, pid);
             const locked = !!pid && isPlayerLocked(state, pid, now);
-            return <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked} showStats={false} />;
+            return <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked} showStats={dealt} bench />;
           })
         ) : (
           [0, 1, 2, 3, 4, 5].map((i) => <RosterSlotRow key={i} slot="BN" player={null} state={state} statLine={null} locked={false} showStats={false} />)

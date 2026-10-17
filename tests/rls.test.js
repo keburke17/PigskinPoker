@@ -59,8 +59,11 @@ async function setup() {
     .insert({ season_id: season.id, type: "week", number: 1 }).select().single();
   const { data: period2 } = await secret.from("periods")
     .insert({ season_id: season.id, type: "week", number: 2 }).select().single();
+  const { data: player } = await secret.from("players")
+    .insert({ league_id: league.id, name: "RLS Test Player", position: "QB", nfl_team: "XX" })
+    .select().single();
   Object.assign(ids, {
-    season: season.id, team: team.id, period: period.id, period2: period2.id,
+    season: season.id, team: team.id, period: period.id, period2: period2.id, player: player.id,
   });
 
   /* The secret-bearing fixture is an INVITE now. league_secrets, team_secrets, sessions
@@ -110,6 +113,8 @@ gate()("RLS: what a browser holding the publishable key can READ", () => {
     // Not league-scoped and deliberately public: it is NFL names, and every league
     // already exposes the same ones through `players`.
     "player_pool",
+    // OQ-28: every pool player's feed line, every week. Display only.
+    "player_week_lines",
   ];
   for (const table of readable) {
     it("can select from " + table, async () => {
@@ -188,6 +193,11 @@ gate()("RLS: what it can NOT write - the whole write-security model", () => {
     /* The pool is public to READ - it is NFL names, and every league already exposes
      * them - but writing it would poison every league created afterwards. */
     ["player_pool", () => ({ legacy_id: "hacked", name: "Hacker", position: "QB", nfl_team: "Nowhere" })],
+    /* Real foreign keys, so the refusal is RLS's and not a missing row's. Writable from a
+     * browser, it would let anyone put numbers on every manager's bench. */
+    ["player_week_lines", () => ({
+      season_id: ids.season, player_id: ids.player, league_id: ids.league, nfl_week: 1, pass_yards: 9999,
+    })],
   ];
 
   for (const [table, row] of cases) {
@@ -340,9 +350,15 @@ gate()("RLS: a PRIVATE league is invisible from outside", () => {
       .insert({ season_id: season.id, type: "week", number: 1 }).select().single();
     Object.assign(priv, { season: season.id, team: team.id, period: period.id });
 
-    await secret.from("players").insert({
+    const { data: privPlayer } = await secret.from("players").insert({
       league_id: league.id, name: "Confidential Player", position: "QB", nfl_team: "XX",
+    }).select().single();
+    /* THROW rather than ignore, for the reason the invite fixture does: "hidden" passes
+     * just as happily when there is nothing there to hide. */
+    const privLine = await secret.from("player_week_lines").insert({
+      season_id: season.id, player_id: privPlayer.id, league_id: league.id, nfl_week: 1, pass_yards: 4242,
     });
+    if (privLine.error) throw new Error("player_week_lines fixture failed: " + privLine.error.message);
     await secret.from("roster_slots")
       .insert({ period_id: period.id, team_id: team.id, area: "starter", slot: "QB" });
     await secret.from("stat_lines")
@@ -418,6 +434,7 @@ gate()("RLS: a PRIVATE league is invisible from outside", () => {
     ["roster_slots", () => ({ col: "period_id", val: priv.period })],
     ["stat_lines", () => ({ col: "period_id", val: priv.period })],
     ["period_results", () => ({ col: "period_id", val: priv.period })],
+    ["player_week_lines", () => ({ col: "league_id", val: priv.league })],
   ];
 
   for (const [table, where] of hidden) {

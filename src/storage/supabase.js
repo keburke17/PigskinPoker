@@ -226,6 +226,15 @@ export function createSupabaseStore(config) {
     for (const r of [teams, players, periods, totals, slots, stats, schemes, results, events]) {
       if (r.error) throw new Error("Couldn't read the league: " + r.error.message);
     }
+
+    /* OQ-28: bench and free-agent points, and season averages. Display only - nothing
+     * scores from it. NOT in the loop above, deliberately: a failure here must never be
+     * a load failure, because a load failure blocks the whole app (useLeague.js) and a
+     * database without this table yet is an ordinary state, not a broken one. It costs
+     * the grey numbers and nothing else. */
+    const weekLines = seasonIds.length
+      ? await sb.from("player_week_lines").select("*").in("season_id", seasonIds)
+      : { data: [] };
     return {
       leagues: [league.data],
       seasons: seasons.data ?? [],
@@ -238,6 +247,7 @@ export function createSupabaseStore(config) {
       schemes: schemes.data ?? [],
       period_results: results.data ?? [],
       events: events.data ?? [],
+      player_week_lines: weekLines.error ? [] : (weekLines.data ?? []),
     };
   }
 

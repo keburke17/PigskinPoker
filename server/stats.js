@@ -278,3 +278,74 @@ export function statWriteRows({ writes, chunkSize = STAT_WRITE_CHUNK, newId = ra
   for (let i = 0; i < withIds.length; i += size) chunks.push(withIds.slice(i, i + size));
   return chunks;
 }
+
+/* ------------------------------------------------- every player, every week -- */
+
+/**
+ * OQ-28: the feed's line for EVERY pool player, every week played so far - not just the
+ * six starters a week is scored from.
+ *
+ * DISPLAY ONLY. These rows go to `player_week_lines`, which nothing scores from: they are
+ * the grey number beside a bench player or a free agent, and the season average beside
+ * everybody. The promise `planStatsPull` keeps - never overwrite what a person typed - is
+ * not even in play here, because no person ever types into this table.
+ *
+ * Matched the same two ways a starter is: a skill player on `gsis`, never on name, and a
+ * head coach on his NFL team's result for that week.
+ *
+ * A player absent from the file for a week gets NO ROW, not a zero - he did not play, and
+ * "average by games played" (Scott, 2026-10-16) means that week must not count against
+ * him. Same reasoning `planStatsPull` gives for leaving a missing starter blank.
+ *
+ * @param {Array}  players   the league's players rows
+ * @param {Array}  feedLines `fetchSeasonStats` lines - each carries its own `week`
+ * @param {Map}    byWeek    week -> (full team name -> 'Win' | 'Tie' | 'Loss')
+ * @returns {Array} player_week_lines rows
+ */
+export function planSeasonLines({ players, feedLines, byWeek, leagueId, seasonId, at }) {
+  const byGsis = new Map();
+  for (const line of feedLines) {
+    if (!line.gsis || !Number.isFinite(line.week)) continue;
+    /* Keyed by week as well, so a line the file somehow carries twice is one row - an
+     * upsert batch that names the same key twice is refused outright by Postgres. */
+    const key = String(line.gsis);
+    if (!byGsis.has(key)) byGsis.set(key, new Map());
+    byGsis.get(key).set(line.week, line);
+  }
+
+  const base = (player, week) => ({
+    season_id: seasonId,
+    player_id: player.id,
+    league_id: leagueId,
+    nfl_week: week,
+    pass_yards: null,
+    pass_tds: null,
+    rush_yards: null,
+    rush_tds: null,
+    rec_yards: null,
+    rec_tds: null,
+    coach_result: null,
+    feed_provider: FEED_PROVIDER,
+    updated_at: at,
+  });
+
+  const rows = [];
+  for (const player of players) {
+    if (player.position === "Coach") {
+      if (!player.nfl_team) continue;
+      for (const [week, results] of byWeek || []) {
+        const result = results.get(player.nfl_team);
+        if (result) rows.push({ ...base(player, week), coach_result: result });
+      }
+      continue;
+    }
+    const gsis = player.external_ids && player.external_ids.gsis;
+    if (!gsis) continue;
+    for (const line of (byGsis.get(String(gsis)) || new Map()).values()) {
+      const row = base(player, line.week);
+      for (const field of SPLIT_STAT_FIELDS) row[SPLIT_COLUMN[field]] = line[field];
+      rows.push(row);
+    }
+  }
+  return rows;
+}

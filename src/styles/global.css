@@ -249,6 +249,14 @@
 .pp-roster-slot-meta{ font-size:11px; color:var(--text-faint); margin-top:3px; line-height:1.35; }
 .pp-roster-slot-stats{ font-size:11.5px; color:var(--text-dim); margin-top:2px; line-height:1.35; }
 .pp-roster-slot-pts{ font-family: var(--font-mono); font-weight:700; color:var(--gold-bright); font-size:13px; flex:none; }
+/* OQ-28, option A: this week's points over the season average, hard right. The column
+   is its own flex item now rather than the end of the name line, so the two numbers stack
+   and line up down the whole card. */
+.pp-roster-slot-right{ flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:2px; align-self:flex-start; padding-top:1px; }
+.pp-roster-slot-avg{ font-family: var(--font-mono); font-size:11px; color:var(--text-dim); white-space:nowrap; }
+/* Bench and free agents: real points that count for nobody. Grey and italic so no one
+   adds them up by eye and gets a different total from the one on the card. */
+.pp-pts-not-counting{ color:var(--text-faint); font-style:italic; font-weight:600; }
 .pp-locked-pill{ font-size:9px; font-weight:800; color:#ffb4a8; border:1px solid #7a2e29; border-radius:4px; padding:1px 5px; flex:none; }
 /* OUT, IR, BYE. Never Active - a healthy player says nothing. */
 .pp-status-pill{

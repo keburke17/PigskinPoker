@@ -72,6 +72,14 @@ export async function fetchLeagueRows(db, leagueId) {
   rows.period_results = results.data ?? [];
   rows.events = events.data ?? [];
 
+  /* OQ-28: every pool player's feed line, every week - display only. DELIBERATELY NOT IN
+   * `TABLES`, because that list is also what persistBlob writes back, and nothing about a
+   * deal or a finalize may touch these rows. An ERROR IS AN EMPTY LIST, not a failure: a
+   * database that has not had the migration applied yet must still load the league, and
+   * losing the grey numbers is the right price for that. */
+  const weekLines = await db.from("player_week_lines").select("*").in("season_id", seasonIds);
+  rows.player_week_lines = weekLines.error ? [] : (weekLines.data ?? []);
+
   for (const t of TABLES) if (!rows[t]) rows[t] = [];
   return rows;
 }

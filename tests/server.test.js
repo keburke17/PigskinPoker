@@ -2190,6 +2190,62 @@ gate()("the stats pull", () => {
     expect(r.body.report.nflWeek).toBe(2);
   });
 
+  /* OQ-28: the same pull keeps every pool player's line, every week so far - the bench
+   * and free-agent points and the season averages. Display only; nothing scores from it. */
+  const weekLines = async () => {
+    const { data } = await db.from("player_week_lines").select("*").eq("league_id", leagueId);
+    return data;
+  };
+
+  it("keeps every pool player's line for every week so far, not just the starters", async () => {
+    const token = await asCommissioner();
+    const fixture = await import("../server/feed/fixture.js");
+    const period = await current();
+    const starterIds = new Set((await startersOf(period.id)).map((s) => s.player_id));
+
+    const r = await ops.pullStats(db, { leagueId, token, feed: fixture });
+    expect(r.status).toBe(200);
+    expect(r.body.report.history.written).toBeGreaterThan(0);
+
+    const rows = await weekLines();
+    expect(new Set(rows.map((x) => x.nfl_week))).toEqual(new Set([1, 2])); // through week 2, no further
+    expect(rows.some((x) => !starterIds.has(x.player_id))).toBe(true); // bench and free agents too
+    expect(Object.keys(r.body.view._meta.playerWeeks).length).toBeGreaterThan(0);
+
+    /* Pulling again is a correction, not a duplicate. */
+    await ops.pullStats(db, { leagueId, token, feed: fixture });
+    expect((await weekLines()).length).toBe(rows.length);
+  });
+
+  it("still fills the season in on a day this week has nothing yet", async () => {
+    const token = await asCommissioner();
+    const fixture = await import("../server/feed/fixture.js");
+    const r = await ops.pullStats(db, {
+      leagueId, token,
+      feed: {
+        ...fixture,
+        fetchWeeklyStats: async () => ({ lines: [], stoppedEarly: false }),
+        fetchGameResults: async () => ({ results: new Map() }),
+      },
+    });
+    expect(r.body.reason).toBe("feed-empty");
+    expect((await weekLines()).length).toBeGreaterThan(0);
+  });
+
+  it("does not move a single stat line, whether or not the history is written", async () => {
+    const token = await asCommissioner();
+    const fixture = await import("../server/feed/fixture.js");
+    const period = await current();
+    const { fetchSeasonStats, fetchSeasonResults, ...noHistory } = fixture;
+
+    await ops.pullStats(db, { leagueId, token, feed: noHistory });
+    const without = await lines(period.id);
+    await ops.pullStats(db, { leagueId, token, feed: fixture });
+    const strip = (ls) => ls.map(({ updated_at, feed_updated_at, version, ...rest }) => rest)
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    expect(strip(await lines(period.id))).toEqual(strip(without));
+  });
+
   /* ------------------------ stage 7: the scheduled pull ------------------------
    *
    * The unit half of this - which leagues are eligible and why not - is in
