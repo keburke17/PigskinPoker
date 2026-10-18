@@ -8,14 +8,31 @@
  */
 
 import { useState } from "react";
-import { emptyCumulative, periodLabel, rankTeamsWithTiebreak, seasonStandingsRows } from "../engine/index.js";
+import { emptyCumulative, isTable, periodLabel, rankTeamsWithTiebreak, seasonStandingsRows } from "../engine/index.js";
 import { ActivityPanel, PlayoffsPanel, StandingsTable } from "./standings.jsx";
+import { TableRecordPanel } from "./table.jsx";
 
 /* `initialSub` lets the week card's "All weeks" link land on the activity log rather
  * than on the standings (OQ-20). Read once, at mount, which is all it needs to be:
  * App keys this component on the same value, so arriving again re-mounts it. */
 export function LeagueHomeTab({ state, myTeam, initialSub }) {
   const [sub, setSub] = useState(initialSub || "regular");
+  /* A table has no season standings and no playoffs (issue #75): its record is hands won
+   * and lost, in the place standings would be. "regular" stays the key so the week
+   * screen's links land in the same place for both. */
+  if (isTable(state)) {
+    return (
+      <div>
+        <div className="pp-subnav">
+          <button className={"pp-subnav-btn" + (sub !== "activity" ? " active" : "")} onClick={() => setSub("regular")}>Table Record</button>
+          <button className={"pp-subnav-btn" + (sub === "activity" ? " active" : "")} onClick={() => setSub("activity")}>Activity</button>
+        </div>
+        <div className="pp-card">
+          {sub === "activity" ? <ActivityPanel state={state} myTeam={myTeam} /> : <TableRecordPanel state={state} myTeam={myTeam} />}
+        </div>
+      </div>
+    );
+  }
   const standings = seasonStandingsRows(state);
   const ranked = rankTeamsWithTiebreak(standings.map((r) => ({ teamId: r.teamId, rawScore: r.rawScore, tb: r.tb })))
     .map((r) => Object.assign({}, r, { teamName: (state.teams.find(t => t.id === r.teamId) || {}).name, cum: (state.teams.find(t => t.id === r.teamId) || {}).cumulative || emptyCumulative() }));
