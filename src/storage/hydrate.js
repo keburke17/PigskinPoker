@@ -19,7 +19,7 @@
  * been set, which is what the UI actually needs to decide what to render.
  */
 
-import { emptyCumulative, normalizeLineupLock } from "../engine/index.js";
+import { SEAT, SEAT_STATES, emptyCumulative, normalizeLineupLock } from "../engine/index.js";
 import { SPLIT_COLUMN, SPLIT_STAT_FIELDS } from "./statLine.js";
 
 const STARTER_SLOTS = ["Coach", "QB", "WR", "RB", "TE", "FLEX"];
@@ -112,6 +112,26 @@ function injuriesFrom(rows, seasonId, playerLegacy) {
     };
   }
   return out;
+}
+
+/* Issue #75. Everything a table knows, in the `_meta` shape src/engine/table.js reads.
+ * A season gets `mode: "season"` and nothing else, so no season screen can trip over it.
+ *
+ * WHO IS IN THE HAND. Before the deal it is whoever is seated now, so the dealer sees the
+ * hand form as people sit down and get up. From the deal on it is the snapshot the deal
+ * wrote to `participant_team_ids` - so a player who sits out or leaves mid-hand still
+ * plays out the hand they were dealt, and somebody who joins mid-hand waits for the next. */
+function tableMeta(league, teamRows, current, teamLegacy) {
+  if (league.mode !== "table") return { mode: "season" };
+  const seats = {};
+  teamRows.forEach((t) => {
+    seats[t.legacy_id] = SEAT_STATES.includes(t.seat) ? t.seat : SEAT.SEATED;
+  });
+  const dealt = current && current.phase !== "pre-deal";
+  const seatedTeamIds = dealt
+    ? (current.participant_team_ids || []).map((id) => teamLegacy.get(id)).filter(Boolean)
+    : teamRows.filter((t) => seats[t.legacy_id] === SEAT.SEATED).map((t) => t.legacy_id);
+  return { mode: "table", tableSeats: league.table_seats ?? null, seats, seatedTeamIds };
 }
 
 export function hydrateLeague(db, opts = {}) {
@@ -399,6 +419,9 @@ export function hydrateLeague(db, opts = {}) {
        * next, whether they will be told by email or have to come and look. */
       notifyMembers: league.notify_members === true,
       tz: league.tz || "America/New_York",
+      /* Issue #75: a table, rather than a season. Chosen once, at creation; see
+       * src/engine/table.js for what each of these means and who reads them. */
+      ...tableMeta(league, teamRows, current, teamLegacy),
       versions: buildVersionMap(db, season, current, slotsForCurrent, teamLegacy),
     },
   };

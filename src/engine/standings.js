@@ -8,6 +8,7 @@ import { deepClone, defaultAdvancement, emptyCumulative, nowStamp, periodLabel, 
 import { getPlayer } from "./state.js";
 import { computeStarterPoints, currentStandingsPointsArray, roundPoints, statLineTotals } from "./scoring.js";
 import { ICON, STARTER_SLOTS } from "./constants.js";
+import { handTeamIds, isTable } from "./table.js";
 
 /**
  * Generic ranking with tiebreakers.
@@ -75,9 +76,13 @@ export function periodTeams(state) {
  * deal and the clock's head count each used to work it out for themselves.
  */
 export function periodTeamIds(state) {
-  return state.currentPeriod.type === "playoff"
-    ? (state.playoffConfig && state.playoffConfig.activeTeamIds) || []
-    : (state.teams || []).map((t) => t.id);
+  if (state.currentPeriod.type === "playoff") {
+    return (state.playoffConfig && state.playoffConfig.activeTeamIds) || [];
+  }
+  /* A table's hand is whoever is seated at it - see src/engine/table.js. A season is
+   * everybody, exactly as it has always been. */
+  if (isTable(state)) return handTeamIds(state);
+  return (state.teams || []).map((t) => t.id);
 }
 
 /** One team's score for the period that is currently open, from the stat lines entered
@@ -238,6 +243,9 @@ export function nextPeriodNflWeek(state) {
 export function playoffsDueToStart(state, nflWeek) {
   const cfg = state && state.playoffConfig;
   if (!cfg || cfg.started || cfg.completed) return false;
+  /* A table has no playoffs (issue #75). Its setup never asks for a start week, so this
+   * is belt and braces against one arriving some other way. */
+  if (isTable(state)) return false;
   const start = Number(cfg.startNflWeek);
   /* Unset is "never". See the note on startNflWeek in state.js - it is a real trap, and
    * it is guarded on screen rather than by guessing a week here. */

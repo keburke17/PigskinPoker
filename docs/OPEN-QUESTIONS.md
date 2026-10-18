@@ -2131,3 +2131,66 @@ switched on stays a dash.
 `npm run db:push` - Kyle's step. Until then the site loads exactly as before (a missing table
 reads as nobody hurt, never as an error), and the scheduled job logs a failure every three
 hours until the table exists.
+
+---
+
+### OQ-30. Table mode: a dealer, seats, and one hand at a time. **[ANSWERED 2026-09-30 by Kyle - Scott agreed Kyle takes point on this mode]**
+
+The request, issue #75: *"instead of being a commissioner, you're a dealer and you have a
+table and you can invite people to join your table and get in on that deal. After that hand
+you can leave the table ... and come back in two weeks if you want, or you can play the next
+hand."* Gamble mode - a buy-in - was split out to issue #85 and is not part of this.
+
+**This is a second shape of league, not a change to the first.** A league is chosen as a
+season or a table when it is created, and never changes. **No season's rules moved**:
+`tests/parity.test.js` passes unchanged, and every table rule below is guarded so a league
+that is not a table never reads it.
+
+| Question | Answer |
+|---|---|
+| Does a table keep a running leaderboard? | **A tally of hands won and lost.** No running point totals, no standings table. |
+| Is a big hand worth more than a small one? | **Moot.** Nothing adds points across hands, so the ladder only decides who won that hand. |
+| When does the door close for a hand? | **At the deal.** |
+| Fixed dealer, or does the deal pass? | **Fixed.** Whoever made the table deals it. |
+| Are tables listed publicly? | **No.** Invites, as today. |
+| After a hand, are you in the next one? | **Yes, unless you get up.** |
+| How many players? | **2 to 13 seats**, set by the dealer. 13 is the most the deal can always serve: two Coaches per player, one per NFL team, and a week with six teams on a bye leaves 26. |
+| Can a player leave? | **Two ways.** *Sit out* keeps your seat. *Leave* gives it up so somebody else can take it. |
+| Whose is the record when a seat changes hands? | **The person's.** Leave and come back and you get your own team and record back; a newcomer in your old seat starts at 0-0. |
+
+**What it does, in the game's terms:**
+
+- **The dealer plays.** The dealer gets a seat when the table is made, like a home game, and
+  can sit out a hand like anybody else. Underneath it is still the commissioner role.
+- **One invite, many seats.** A table's invite names no team: whoever redeems it sits down
+  and gets a team of their own, until the seats run out ("that table is full").
+- **A hand is a week, played by whoever is seated.** The deal deals the seated players only
+  and writes down who they were; that list is the hand. Sitting out, leaving or joining
+  mid-hand applies from the next deal - nobody is pulled out of cards they were dealt, and
+  only players in the hand can play a scheme or be stolen from.
+- **A hand needs two.** The deal refuses one, and the clock waits rather than failing.
+- **Places pay on a ladder sized to the hand** - 4 players, 4 down to 1 - because finalize
+  already does that; it only decides who won. A **win is first place**, and a dead tie for
+  first is a win for both, the same rule a season's "week wins" tiebreaker counts by.
+- **No playoffs.** A table never sets a playoff week, and the engine refuses to seed one
+  for a table regardless.
+- **Leaving keeps your membership.** Leave gives up the seat; Rejoin takes one back if one
+  is free. The dealer can unseat a player, which is the same as that player leaving.
+
+**Calls made while building it, all reversible:**
+
+- **The dealer playing** is the biggest. The request did not say; a dealer who only deals
+  is one line in `createLeague` (do not make their team).
+- **Leave keeps the membership** rather than removing it, so a returning player needs no new
+  invite. A dealer wanting someone gone for good still has the members list.
+- **A team at a table is named from the start of the player's email address** until they
+  rename it.
+
+**What it needs to go live.** `20261018000000_table_mode.sql` applied with `npm run db:push`
+- Kyle's step. It adds three columns and relaxes one rule on invites; every existing league
+is a season with every team seated, which a season never reads. Then the code merged.
+
+**Not built, and recorded so nobody thinks it was forgotten:** the poker-table view (seats
+round a table, each showing the hand's points, tap a seat to see that hand once schemes have
+processed) - issue #75's "later" section. And two players redeeming the last seat in the
+same instant could both get in; nothing stops it but the odds.
