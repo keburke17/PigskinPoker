@@ -39,6 +39,7 @@ import { RulesTab } from "./components/RulesTab.jsx";
 import { HelpTab } from "./components/HelpTab.jsx";
 import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
 import { hasBeenWelcomed, markWelcomed } from "./storage/firstRun.js";
+import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
 import { CommissionerTab } from "./components/commissioner.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 
@@ -62,6 +63,7 @@ export default function App() {
     poolReport,
     statsReport,
     kickoffReport,
+    injuryReport,
     identity,
     setIdentity,
     loading,
@@ -342,6 +344,7 @@ export default function App() {
   const onSetNflWeek = (week) => ops.setNflWeek(week);
   const onSetLineupLock = (mode) => ops.setLineupLock(mode);
   const onRefreshKickoffs = () => ops.refreshKickoffs();
+  const onRefreshInjuries = () => ops.refreshInjuries();
   const onSetAutoPullStats = (enabled) => ops.setAutoPullStats(enabled);
   const onSetAutoCycle = (patch) => ops.setAutoCycle(patch);
   const onSetNotifyMembers = (enabled) => ops.setNotifyMembers(enabled);
@@ -762,6 +765,14 @@ export default function App() {
         </div>
 
         <div style={{ paddingTop: 14 }}>
+          {/* Your scheme on every tab until it processes, and on My Team and Rosters a small
+            * line saying what it did (Scott, 2026-10-16). The Week screen carries the full
+            * answer in Around the league, so the strip is left off it on purpose. See
+            * src/components/schemeTicket.jsx. */}
+          {myTeam ? <SchemeTicket state={state} team={myTeam} onOpen={() => goToTab("myteam")} /> : null}
+          {myTeam && (tab === "myteam" || tab === "hub") ? (
+            <ResultStrip state={state} team={myTeam} onSeeWeek={() => goToTab("results")} />
+          ) : null}
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && (
             <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
@@ -790,6 +801,7 @@ export default function App() {
               onSetNflWeek={onSetNflWeek}
               onSetLineupLock={onSetLineupLock} onRefreshKickoffs={onRefreshKickoffs}
               kickoffReport={kickoffReport}
+              onRefreshInjuries={onRefreshInjuries} injuryReport={injuryReport}
               onSaveScoring={onSaveScoring}
               onSavePlayoffSettings={onSavePlayoffSettings}
               onDeleteLeague={onDeleteLeague}

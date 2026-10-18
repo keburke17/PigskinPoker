@@ -13,7 +13,7 @@ import { useNow } from "../hooks/useNow.js";
 import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
 import { RosterSlotRow } from "./roster.jsx";
-import { SchemeForm, SchemeSummary } from "./scheme.jsx";
+import { SchemeForm } from "./scheme.jsx";
 import { NextStepNote } from "./WelcomeOverlay.jsx";
 
 export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoTo }) {
@@ -69,17 +69,18 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoT
             </>
           )}
         </div>
-        <SchemeSummary state={state} team={team} />
+        {/* The scheme sentence that sat here is now the Ticket at the top of every tab
+          * (schemeTicket.jsx). The one beside the Submit button stays - issue #27. */}
         <h3 className="pp-h3">Starting Lineup</h3>
         <p className="pp-sub" style={{ marginBottom: 10 }}>Swap a starter with an eligible bench player. Direct starter-for-starter swaps aren't allowed - route every change through the bench.</p>
         <LineupEditor state={state} team={team} onSwap={onSwap} showStats={dealt} />
         <h3 className="pp-h3" style={{ marginTop: 16 }}>Bench</h3>
-        <p className="pp-sub" style={{ marginBottom: 10 }}>Not tied to any slot - swap any of these into a matching starting spot above.</p>
+        <p className="pp-sub" style={{ marginBottom: 10 }}>Not tied to any slot - swap any of these into a matching starting spot above. Bench points are shown in grey and do not count toward your score.</p>
         {team.roster ? (
           team.roster.bench.map((pid, i) => {
             const player = getPlayer(state, pid);
             const locked = !!pid && isPlayerLocked(state, pid, now);
-            return <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked} showStats={false} />;
+            return <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked} showStats={dealt} bench />;
           })
         ) : (
           [0, 1, 2, 3, 4, 5].map((i) => <RosterSlotRow key={i} slot="BN" player={null} state={state} statLine={null} locked={false} showStats={false} />)

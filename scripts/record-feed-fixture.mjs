@@ -3,6 +3,7 @@
  *
  *   npm run feed:record                 # this year's depth charts, last year's week 1
  *   npm run feed:record -- --season 2026 --stats-season 2025 --stats-week 1
+ *   npm run feed:record -- --only injuries   # just this season's injury report
  *
  * WHY A RECORDED FEED EXISTS AT ALL. Two reasons, and the second is the load-bearing
  * one:
@@ -29,11 +30,13 @@ import { fileURLToPath } from "node:url";
 import {
   DEPTH_CHART_URL,
   GAMES_URL,
+  INJURIES_URL,
   NFL_TEAMS,
   buildPool,
   fetchDepthChart,
   fetchHeadCoaches,
   parseCsv,
+  parseInjuries,
   readLatestSnapshot,
   STATS_COLUMNS,
   WEEKLY_STATS_URL,
@@ -82,6 +85,44 @@ const write = (name, text) => {
   const lines = text.split("\n").length - 1;
   console.log("  " + name.padEnd(20) + String(lines).padStart(4) + " lines, " + kb + "KB");
 };
+
+/* ---------------------------------------------------------- injury report -- */
+
+/* OQ-29. THIS season's report, verbatim but for the columns that are read and the four
+ * positions the pool holds - unlike the stat lines it is real from the first week of the
+ * season, so there is nothing to relabel. The file has no date column; what dates a
+ * reading is when nflverse published it, so that is recorded too, and the fixture hands
+ * it back as the publish time.
+ *
+ * Recordable on its own (--only injuries) because re-recording the depth chart moves the
+ * pool every test reads, and a new week of injuries is no reason to do that. */
+const INJURY_COLUMNS = [
+  "season", "season_type", "week", "team", "position", "gsis_id", "full_name",
+  "report_primary_injury", "report_status", "practice_primary_injury", "practice_status",
+];
+async function recordInjuries() {
+  const res = await fetch(INJURIES_URL(season));
+  if (!res.ok) throw new Error("injury report: HTTP " + res.status + " for " + season);
+  const modified = res.headers.get("last-modified");
+  const rows = parseCsv(await res.text()).filter((r) => parseInjuries(toCsv(INJURY_COLUMNS, [r])).length);
+  write("injuries.csv", toCsv(INJURY_COLUMNS, rows));
+  return {
+    source: "injuries_" + season + ".csv",
+    publishedAt: modified ? new Date(modified).toISOString() : null,
+    weeks: [...new Set(rows.map((r) => Number(r.week)))].sort((a, b) => a - b),
+    rows: rows.length,
+  };
+}
+
+if (flag("only", null) === "injuries") {
+  console.log("Recording the injury report only:");
+  const file = path.join(OUT, "manifest.json");
+  const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+  manifest.injuries = await recordInjuries();
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + "\n");
+  console.log("  manifest.json");
+  process.exit(0);
+}
 
 /* ------------------------------------------------------------ depth chart -- */
 
@@ -156,6 +197,8 @@ write("stats-week.csv", toCsv(STATS_COLUMNS, statRows.map((r) => ({ ...r, season
 
 /* ----------------------------------------------------------------- manifest -- */
 
+const injuries = await recordInjuries();
+
 const manifest = {
   recordedAt: new Date().toISOString(),
   season,
@@ -180,6 +223,8 @@ const manifest = {
     relabelledTo: { season },
     rows: resultRows.length,
   },
+  /* OQ-29. Real, this season's, and dated by when nflverse published it. */
+  injuries,
 };
 fs.writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 console.log("  manifest.json");

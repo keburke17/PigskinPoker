@@ -249,6 +249,14 @@
 .pp-roster-slot-meta{ font-size:11px; color:var(--text-faint); margin-top:3px; line-height:1.35; }
 .pp-roster-slot-stats{ font-size:11.5px; color:var(--text-dim); margin-top:2px; line-height:1.35; }
 .pp-roster-slot-pts{ font-family: var(--font-mono); font-weight:700; color:var(--gold-bright); font-size:13px; flex:none; }
+/* OQ-28, option A: this week's points over the season average, hard right. The column
+   is its own flex item now rather than the end of the name line, so the two numbers stack
+   and line up down the whole card. */
+.pp-roster-slot-right{ flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:2px; align-self:flex-start; padding-top:1px; }
+.pp-roster-slot-avg{ font-family: var(--font-mono); font-size:11px; color:var(--text-dim); white-space:nowrap; }
+/* Bench and free agents: real points that count for nobody. Grey and italic so no one
+   adds them up by eye and gets a different total from the one on the card. */
+.pp-pts-not-counting{ color:var(--text-faint); font-style:italic; font-weight:600; }
 .pp-locked-pill{ font-size:9px; font-weight:800; color:#ffb4a8; border:1px solid #7a2e29; border-radius:4px; padding:1px 5px; flex:none; }
 /* OUT, IR, BYE. Never Active - a healthy player says nothing. */
 .pp-status-pill{
@@ -256,6 +264,60 @@
   color:#ffdc84; border:1px solid var(--gold-dim); border-radius:4px; padding:1px 5px;
   text-transform:uppercase;
 }
+
+/* OQ-29: THE INJURY REPORT - Scott's "N1 with the practice key", 2026-10-17. A pill on
+   the name line when the NFL has given a game status, a notepad beside it whenever the
+   player is on the report at all, and the report itself opening under the player. Display
+   only - see src/engine/injuries.js. The three statuses are coloured by how likely he is
+   to sit: gold for a coin flip, orange for probably not, red for not. */
+.pp-inj-pill{
+  flex:none; font-size:9px; font-weight:800; letter-spacing:0.6px; line-height:1.3;
+  border-radius:999px; padding:1px 6px; align-self:center;
+}
+.pp-inj-ques{ background:var(--gold); color:#2a2105; }
+.pp-inj-doubt{ background:#e98a3c; color:#2b1404; }
+.pp-inj-out{ background:var(--danger); color:#fff4f2; }
+.pp-inj-pad{
+  position:relative; flex:none; align-self:center;
+  display:inline-grid; place-items:center; width:22px; height:22px; padding:0;
+  border:1px solid var(--border); border-radius:5px; background:var(--surface-2);
+  color:var(--text-dim); cursor:pointer;
+}
+.pp-inj-pad:hover{ color:var(--gold-bright); border-color:var(--gold-dim); }
+.pp-inj-pad:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+.pp-inj-pad.open{ color:var(--bg); background:var(--gold); border-color:var(--gold); }
+.pp-inj-new{
+  position:absolute; top:-3px; right:-3px; width:8px; height:8px; border-radius:50%;
+  background:var(--gold-bright); box-shadow:0 0 0 2px var(--surface);
+}
+/* An open report makes the row tall; the card stays at the top beside the name rather
+   than sliding down to the middle of the row. */
+.pp-roster-slot:has(.pp-inj-report){ align-items:flex-start; }
+.pp-inj-report{
+  margin-top:7px; padding:9px 10px; border:1px solid var(--border); border-radius:8px;
+  background:var(--surface-2); display:flex; flex-direction:column; gap:7px;
+}
+.pp-inj-head{ display:flex; justify-content:space-between; align-items:baseline; gap:4px 10px; flex-wrap:wrap; }
+.pp-inj-what{ font-weight:700; font-size:13px; color:var(--text); }
+.pp-inj-when{ font-size:11px; color:var(--text-faint); }
+.pp-inj-label{ font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--gold-dim); font-weight:700; }
+.pp-inj-label sup, .pp-inj-star{ color:var(--gold); }
+.pp-inj-days{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px; }
+.pp-inj-day{
+  display:flex; flex-direction:column; align-items:center; gap:2px; padding:5px 6px;
+  border:1px solid var(--border); border-radius:6px; background:var(--surface);
+  font-size:11px; color:var(--text-dim);
+}
+.pp-inj-day b{ font-family: var(--font-mono); font-size:12px; }
+.pp-inj-dnp{ color:var(--danger); }
+.pp-inj-lp{ color:var(--gold); }
+.pp-inj-fp{ color:var(--ok); }
+.pp-inj-none{ color:var(--text-faint); font-weight:400; }
+.pp-inj-key{
+  border-top:1px dashed var(--border); padding-top:6px; font-size:11px; line-height:1.5;
+  color:var(--text-faint); display:flex; flex-wrap:wrap; gap:2px 12px;
+}
+.pp-inj-key b{ font-family: var(--font-mono); }
 
 /* THE SLOT AS A CARD. The rank sits top-left and the pip bottom-right, the way a card
    in a fanned hand shows itself, on an ivory face that reads as a card on the felt
@@ -536,3 +598,152 @@
   color:var(--gold); white-space:nowrap;
 }
 .pp-linkbtn:hover{ color:var(--gold-bright); }
+
+/* ------------------------------------------------------------ the ticket --
+   Your scheme, and what it did (Scott, 2026-10-16) - src/components/schemeTicket.jsx
+   and the Around the league card in activity.jsx. One colour per scheme, shared by the
+   ticket, the strip and the tiles, and the same hues the activity chips already wear,
+   so a steal is red wherever you meet it. --k is the scheme's colour for whatever
+   element carries the pp-tk-* class. */
+.pp-tk-steal{ --k: var(--red); }
+.pp-tk-block{ --k: var(--blue); }
+.pp-tk-redraw{ --k: var(--purple); }
+.pp-tk-miss{ --k: #f0a03c; }
+.pp-tk-lost{ --k: #ff8a80; }
+.pp-tk-quiet{ --k: #8a9a90; }
+.pp-chip-miss{ background:#f0a03c; }
+.pp-chip-lost{ background:#ff8a80; color:#2a0d0a; }
+.pp-tk-chip{
+  display:inline-block; align-self:flex-start; background:var(--k); color:#120c06;
+  font-size:9.5px; font-weight:900; letter-spacing:0.09em; text-transform:uppercase;
+  padding:2px 7px; border-radius:4px; white-space:nowrap;
+}
+
+.pp-ticket{
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left; cursor:pointer;
+  margin-bottom:14px; padding:12px 14px; border-radius:var(--radius);
+  font-family:var(--font-body); color:var(--text);
+  border:1px solid var(--k); border-bottom-width:3px;
+  background: var(--surface-2);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--k) 34%, var(--surface)) 0%, var(--surface-2) 100%);
+}
+.pp-ticket:hover{ filter:brightness(1.08); }
+.pp-ticket-main{ display:flex; flex-direction:column; gap:3px; min-width:0; flex:1; }
+.pp-ticket-big{ font-family:var(--font-display); font-size:20px; font-weight:700; line-height:1.15; }
+.pp-ticket-sub{ font-size:12.5px; color:var(--text); opacity:0.88; }
+.pp-ticket-dot{
+  display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ok);
+  margin-right:6px; animation: pp-ticket-pulse 2s infinite;
+}
+@keyframes pp-ticket-pulse{
+  0%{ box-shadow:0 0 0 0 rgba(98,199,140,0.7); }
+  70%{ box-shadow:0 0 0 8px rgba(98,199,140,0); }
+  100%{ box-shadow:0 0 0 0 rgba(98,199,140,0); }
+}
+@media (prefers-reduced-motion: reduce){ .pp-ticket-dot{ animation:none; } }
+.pp-ticket-when{ display:flex; flex-direction:column; align-items:flex-end; text-align:right; flex:none; font-size:11px; color:var(--text-dim); line-height:1.3; }
+.pp-ticket-when b{ font-size:14px; color:var(--text); }
+.pp-ticket-change{ color:var(--gold); font-weight:700; margin-top:3px; }
+
+/* The small strip on My Team and Rosters. The headline WRAPS - Scott asked that nothing
+   be cut off, and a long player name is exactly what an ellipsis would eat. */
+.pp-strip{
+  margin-bottom:14px; padding:9px 12px; border-radius:var(--radius-sm);
+  background:var(--surface-2); border:1px solid var(--border); border-left:3px solid var(--k);
+  display:flex; flex-direction:column; gap:6px;
+}
+.pp-strip-line{ display:flex; align-items:flex-start; gap:8px; font-size:13px; }
+.pp-strip-line .pp-tk-chip{ margin-top:1px; }
+.pp-strip-head{ flex:1; min-width:0; font-weight:700; line-height:1.35; overflow-wrap:anywhere; }
+.pp-strip-tags{ display:flex; flex-wrap:wrap; gap:5px; }
+.pp-strip-tag{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; background:rgba(0,0,0,0.3); }
+.pp-strip-add{ color:#8ff0b6; }
+.pp-strip-drop{ color:var(--text-dim); }
+.pp-strip-stolen{ color:#ffc4bd; background:rgba(209,89,79,0.28); }
+
+/* Transaction lines - ADD / DROP / STOLEN / BLOCK - the R4 style Scott picked. */
+.pp-tx{ display:flex; flex-direction:column; border-radius:var(--radius-sm); background:rgba(0,0,0,0.22); }
+.pp-tx-row{ display:flex; gap:8px; padding:7px 8px; border-bottom:1px solid rgba(255,255,255,0.06); align-items:flex-start; }
+.pp-tx-row:last-child{ border-bottom:0; }
+.pp-tx-tag{
+  flex:none; width:52px; text-align:center; font-size:9.5px; font-weight:900; letter-spacing:0.06em;
+  border-radius:4px; padding:2px 0; margin-top:1px;
+}
+.pp-tx-add{ background:rgba(98,199,140,0.25); color:#8ff0b6; }
+.pp-tx-drop{ background:rgba(255,255,255,0.1); color:var(--text-dim); }
+.pp-tx-stolen, .pp-tx-empty{ background:rgba(209,89,79,0.38); color:#ffd0cb; }
+.pp-tx-block{ background:rgba(88,147,212,0.3); color:#b9d6f7; }
+.pp-tx-none{ background:rgba(240,160,60,0.25); color:#ffd29a; }
+.pp-tx-text{ min-width:0; font-size:12.5px; line-height:1.3; overflow-wrap:anywhere; }
+.pp-tx-text b{ font-size:13px; }
+.pp-tx-pos{ color:var(--text-dim); font-size:11px; font-weight:700; }
+.pp-tx-text small{ display:block; color:var(--text-dim); font-size:11.5px; }
+.pp-tx-compact .pp-tx-row{ padding:5px 6px; gap:6px; }
+.pp-tx-compact .pp-tx-tag{ width:44px; font-size:8.5px; }
+.pp-tx-compact .pp-tx-text{ font-size:11.5px; }
+.pp-tx-compact .pp-tx-text b{ font-size:12px; }
+.pp-tx-compact .pp-tx-text small{ font-size:10.5px; }
+
+/* Around the league: a tile per team, yours first and full width. Two across on a
+   phone, three on anything wider. */
+.pp-mtiles{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+@media (min-width: 720px){ .pp-mtiles{ grid-template-columns:repeat(3, 1fr); } }
+.pp-mtile{
+  background:var(--surface); border:1px solid var(--border); border-top:4px solid var(--k);
+  border-radius:var(--radius); padding:8px; min-width:0; display:flex; flex-direction:column; gap:6px;
+}
+.pp-mtile-head{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.pp-mtile-name{ font-size:12.5px; font-weight:800; line-height:1.15; overflow-wrap:anywhere; }
+.pp-mtile-head .pp-chip{ margin-right:0; }
+.pp-you{ background:var(--gold); color:#1b1a16; font-size:9px; font-weight:900; padding:1px 5px; border-radius:4px; letter-spacing:0.06em; text-transform:uppercase; }
+.pp-mtile-word{ font-family:var(--font-display); font-weight:700; font-size:18px; color:var(--k); line-height:1.1; }
+.pp-mtile-quiet{ font-size:12px; color:var(--text-faint); margin:0; }
+.pp-mtile-mine{
+  grid-column:1 / -1; border:2px solid var(--gold); border-top:4px solid var(--gold);
+  background:linear-gradient(180deg, rgba(232,194,90,0.15), var(--surface));
+}
+.pp-mtile-mine .pp-mtile-word{ color:var(--gold-bright); font-size:21px; }
+.pp-mtile-hit{ box-shadow:inset 0 0 0 2px #ff8a80; }
+.pp-mtile-key{ font-size:11.5px; color:var(--text-faint); margin:10px 0 0; }
+
+/* ------------------------------------------------------- finished weeks --
+   One card you page through - src/components/weekByWeek.jsx. */
+.pp-wk-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.pp-wk-btn{
+  width:38px; height:38px; border-radius:50%; border:1px solid var(--gold-dim);
+  background:var(--surface-2); color:var(--gold); font-size:17px; font-weight:900;
+  cursor:pointer; line-height:1; font-family:var(--font-body);
+}
+.pp-wk-btn:disabled{ opacity:0.3; cursor:default; }
+.pp-wk-title{ text-align:center; }
+.pp-wk-title b{ display:block; font-family:var(--font-display); font-size:20px; }
+.pp-wk-title small{ color:var(--text-dim); font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; }
+.pp-wk-strip{ display:flex; gap:5px; overflow-x:auto; padding:10px 0 2px; -webkit-overflow-scrolling:touch; }
+.pp-wk-pick{
+  flex:none; min-width:34px; height:30px; border-radius:15px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text-dim); font-family:var(--font-body);
+  font-size:12px; font-weight:800; cursor:pointer;
+}
+.pp-wk-pick.active{ background:var(--gold); color:#1b1a16; border-color:var(--gold); }
+.pp-wk-mode{ display:flex; background:var(--bg-2); border-radius:8px; padding:3px; margin-top:10px; }
+.pp-wk-mode button{
+  flex:1; font-family:var(--font-body); font-size:12px; font-weight:800; border:0; border-radius:6px;
+  padding:7px 4px; background:transparent; color:var(--text-dim); cursor:pointer;
+}
+.pp-wk-mode button.active{ background:var(--surface-3); color:var(--gold-bright); }
+.pp-wk-mine{
+  display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; text-align:center;
+  background:var(--surface-2); border-radius:8px; padding:8px; margin:10px 0;
+}
+.pp-wk-mine b{ display:block; font-family:var(--font-display); font-size:17px; color:var(--gold-bright); line-height:1.1; }
+.pp-wk-mine span{ font-size:9.5px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim); }
+.pp-wk-num{ text-align:right; font-family:var(--font-mono); }
+/* The team name stays put while the table swipes sideways. Sticky cells need a solid
+   background or the columns scroll visibly underneath them. */
+.pp-wk-table .pp-wk-stick1{ position:sticky; left:0; z-index:1; background:var(--surface-2); }
+.pp-wk-table .pp-wk-stick2{ position:sticky; left:30px; z-index:1; background:var(--surface-2); box-shadow:4px 0 6px -4px rgba(0,0,0,0.7); }
+.pp-wk-table tr.pp-wk-me td{ background:#22351f; }
+.pp-wk-win{ color:var(--ok); font-weight:800; font-family:var(--font-body); }
+.pp-wk-coach-W{ color:var(--ok); font-weight:800; }
+.pp-wk-coach-T{ color:#f0a03c; font-weight:800; }
+.pp-wk-coach-L, .pp-wk-coach-none{ color:var(--text-faint); }

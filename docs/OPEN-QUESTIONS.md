@@ -2010,6 +2010,130 @@ and the artifact happily handing them out.
 at the repeat-block ruling, while OQ-23 (all of league setup on one page) was open on
 `scott/one-screen-league-setup` the same evening. Keep both when they merge.*
 
+---
+
+### OQ-28. Can you see what the bench and the free agents scored, and what everyone averages? **[ANSWERED 2026-10-16: yes - option A of four, average by games played]**
+
+Scott: **"each week your starting lineup accumulates points toward your weekly total. I would
+like to make it so you can see the point totals of the bench players and the free agents as
+well ... the bench and FA totals obviously do not count toward a teams score, just the
+starters do"** - and an average on every player "to help with sit start scheme advice".
+
+**Why it needed anything new at all.** The game only ever recorded six stat lines per team:
+`stat_lines` is keyed by (week, team, SLOT), because those six are what a week is scored from.
+A bench player or a free agent had no line anywhere, so there was nothing to show. The stats
+pull already downloads nflverse's whole weekly file and then threw away everyone who was not
+starting.
+
+**What was built.** A new table, `player_week_lines`: the feed's line for every pool player,
+every NFL week. The stats pull fills it - WHOLE SEASON every time, so the first pull fills in
+every week already played, including weeks a player spent on a bench - and it is written
+after the starters, in a step that cannot fail the pull. **Nothing scores from it.** Finalize,
+the projection, the standings and the playoffs never read it; `tests/playerPoints.test.js`
+and `tests/server.test.js` both assert that a team's number does not move with or without it.
+
+**Four mockups were drawn and Scott picked A.** B put the average on the matchup line, C made
+it a chip beside the team, D added the last three weeks.
+
+| | |
+|---|---|
+| Right of the row | this week's points, and `avg 18.2` under them |
+| Bench and free agents | the same, in grey italics - real points that count for nobody |
+| Bench heading | "Bench - does not count", said once rather than on every number |
+
+**Three calls inside it, all reversible:**
+
+- **Average by GAMES PLAYED** (Scott's choice over "every week so far"). A bye or a missed game
+  is no row rather than a zero, so it cannot drag the average down. Reverse: divide by weeks
+  elapsed in `playerSeasonAverage`.
+- **Finished weeks only.** The current NFL week stays out of the average until the league
+  finalizes it - half a Sunday averaged in would move every number while managers are looking
+  at them. The week's own points sit beside it anyway.
+- **The average is the feed's, not the commissioner's.** A starter whose line was corrected by
+  hand still COUNTS at the corrected number for his team, but his average is built from what
+  the feed reported - the same source the bench and free agents have, so every average on the
+  screen means the same thing.
+
+**What it needs to go live.** The migration (`20261016000000_player_week_lines.sql`) has to
+be applied with `npm run db:push` - Kyle's step. Until it is, the site loads exactly as before:
+a missing table reads as no numbers, never as an error, on both the browser's read and the
+server's. A league that types every stat by hand gets bench and free-agent numbers once the
+pull runs (the button, or the automatic pull every three hours).
+
+*Numbered OQ-28 rather than OQ-26: on 2026-10-16 two unmerged branches -
+`kyle/manager-rename-own-team` and `claude/fantasy-roster-apis-go06zn` - each already claimed
+OQ-26, so they will land as 26 and 27. Keep all three when they merge.*
+
+### OQ-29. Can managers see who is hurt? **[ANSWERED 2026-10-17: yes - a pill and a notepad, display only]**
+
+Scott: **"players are being dealt to rosters with questionable injury tags. And then as the
+week progresses, they may be listed as out. But managers don't have any way to see whether
+or not these players are hurt for themselves unless they look at an actual depth chart on the
+internet"** - and he wanted the tags "updated throughout the week as it's updated".
+
+**Where it comes from.** nflverse publishes the NFL's official injury report as
+`injuries_<season>.csv` - free, no key, the same source the pool and the stats already use,
+and matched on the same `gsis` id. On 2026-10-17 it held weeks 1-6 and had been republished
+that morning at 7:33am Eastern with Friday's final report. One row per player per week,
+OVERWRITTEN as each day's report comes out; there is no date column.
+
+**What was built.**
+
+| | |
+|---|---|
+| Name line | a pill - **QUES**, **DOUBT** or **OUT** - once the NFL gives a game status |
+| Beside it | a notepad, whenever he is on the report at all; a gold dot when it changed since you last opened it |
+| Opened | the injury, his three practice days (DNP / LP / FP), and a key behind an asterisk saying what those mean |
+| Where | every roster row (starters and bench), the free-agent list, and the commissioner's Enter Stats rows |
+| When | read every three hours on a schedule, for EVERY league, plus a Refresh Injury Report button on the commissioner's Weeks tab |
+
+Four rounds of mockups: A/B/C for the look (he liked B's pill and C's practice report), then
+B1/B2 for where the practice days go, then N1/N2/N3 to make it quieter ("eventually this is
+going to become too crowded on one card") - he picked **N1, the pill plus a notepad** - and
+finally the key, which he asked for by name.
+
+**It is display only, and he asked twice.** "This has nothing to do with the deal, correct?"
+and then "Don't touch the deal quite yet. Don't do anything with the deal." The report lives
+in its own table, `player_injuries`, and NOTHING deals, schemes, scores, locks or finalizes
+from it. In particular it never touches `players.status`, which is what the deal reads: a
+player listed Questionable or Out on the injury report is still dealt exactly as before.
+`tests/injuries.test.js` and `tests/server.test.js` both assert it.
+
+**Parked, not decided: keeping injured players out of the deal.** Scott asked whether a
+player already Out or Doubtful would be kept off rosters. Today he is not - the deal only
+skips players off the active roster (IR, practice squad, cut). Doing it would be a rules
+change, and it has a timing problem worth knowing before anyone builds it: rosters are
+dealt Tuesday and the new week's first report is Wednesday, so the deal could only use LAST
+week's final report. That catches most of them, misses anyone hurt in Sunday's or Monday's
+game, and wrongly skips anyone returning this week. If he wants it, it is its own question.
+
+**Three calls inside it, all reversible:**
+
+- **How a reading gets its day.** The file has no date, so a reading is dated by when
+  nflverse PUBLISHED the file (its Last-Modified time): before 4pm Eastern it holds
+  yesterday's report, after 4pm today's. Each day is saved as it arrives, because the file
+  will have overwritten it by tomorrow. Only a player's three practice days count - Wed/Thu/Fri
+  for a Sunday game, Thu/Fri/Sat for Monday, Mon/Tue/Wed for Thursday - so a republish on a
+  Saturday or Sunday does not grow a fourth box. `reportDateOf` and `practiceDays` in
+  `src/engine/injuries.js`.
+- **Last week's final report stands in on Tuesday and Wednesday**, labelled as last week's,
+  until the new week's first report exists - otherwise a player Out last Sunday looks healthy
+  for the two days managers are setting schemes. The moment anyone is on the new week's
+  report, last week's stops showing.
+- **Every league, no switch.** The stats pull and the weekly clock are opt-in because they do
+  something a commissioner would otherwise do. This is a label beside a name.
+
+**What it can't see.** Sunday-morning inactives are not in this file, so a late scratch does
+not flip to OUT on its own. And the first week it runs, any practice day before it was
+switched on stays a dash.
+
+**What it needs to go live.** `20261017000000_player_injuries.sql` applied with
+`npm run db:push` - Kyle's step. Until then the site loads exactly as before (a missing table
+reads as nobody hurt, never as an error), and the scheduled job logs a failure every three
+hours until the table exists.
+
+---
+
 ### OQ-23. The setup checklist's Open buttons. **[ANSWERED 2026-09-08: they are gone - one page, top to bottom]**
 
 Scott, on the create-a-league screen: **"the open button once you click on it opens the page

@@ -11,6 +11,7 @@ not depend on the network - or on what the depth charts happen to say this morni
 | `games.csv` | THIS season's `games.csv`, cut to the nine columns that are read: the head coaches, plus `gameday`/`weekday`/`gametime` for the lineup lock |
 | `results-week.csv` | A few real weeks of FINISHED games, for the Coach slot's Win/Tie/Loss |
 | `stats-week.csv` | A few real weeks of player stats, filtered to players in the pool |
+| `injuries.csv` | THIS season's injury report (OQ-29), the four pool positions and the columns that are read - real, not relabelled. The file has no date column, so the fixture dates a copy as the Friday evening of the week asked for; see `fetchInjuries` in `../fixture.js`. Re-record it alone with `npm run feed:record -- --only injuries` |
 | `manifest.json` | What was recorded, when, which weeks are real, and where the numbers came from |
 
 ## Three things to know before trusting a number here

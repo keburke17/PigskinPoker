@@ -22,7 +22,8 @@ import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
-import { planStatsPull, statWriteRows } from "./stats.js";
+import { planSeasonLines, planStatsPull, statWriteRows } from "./stats.js";
+import { planInjuryRows } from "./injuries.js";
 import { pullEligibility, summarize } from "./autoPull.js";
 import {
   DEADLINES,
@@ -1745,6 +1746,10 @@ async function runStatsPull(db, { leagueId, rows, period, feed }) {
   }
 
   if (!feedLines.length && results.size === 0) {
+    /* OQ-28: the WEEKS BEFORE this one still have lines, and a Thursday with nothing
+     * played yet is exactly when a manager wants the averages - so they are written
+     * anyway. This week's starters are untouched; there was nothing to write. */
+    await writeSeasonLines(db, { leagueId, rows, season, nflWeek, feed });
     /* Not an error: before Sunday's games finish this is simply the truth, and saying
      * so is more use than an empty success. */
     return {
@@ -1781,7 +1786,57 @@ async function runStatsPull(db, { leagueId, rows, period, feed }) {
     }
   }
 
-  return { report: { ...report, season, nflWeek, stoppedEarly } };
+  const history = await writeSeasonLines(db, { leagueId, rows, season, nflWeek, feed });
+
+  return { report: { ...report, season, nflWeek, stoppedEarly, history } };
+}
+
+/**
+ * OQ-28: after the starters are written, keep every pool player's line for every week so
+ * far - the bench and free-agent points, and the season averages, read these.
+ *
+ * AFTER THE STARTERS AND NEVER ABLE TO UNDO THEM. The six lines a week is scored from are
+ * already written by the time this runs, and nothing here can fail the pull: a feed
+ * hiccup, or a database that has not had `player_week_lines` applied yet, comes back as a
+ * sentence in the report and a line in the log. The week's score cannot depend on the
+ * grey numbers.
+ *
+ * WHOLE SEASON EVERY TIME, so the first pull after this ships fills in every week already
+ * played, and a stat correction nflverse publishes on Wednesday lands on the next pull.
+ *
+ * @returns {{ written: number }|{ skipped: string }}
+ */
+async function writeSeasonLines(db, { leagueId, rows, season, nflWeek, feed }) {
+  const seasonId = rows.seasons[0]?.id;
+  if (!seasonId) return { skipped: "no season" };
+  try {
+    const source = feed || (await selectFeed());
+    if (typeof source.fetchSeasonStats !== "function" || typeof source.fetchSeasonResults !== "function") {
+      return { skipped: "this feed has no season history" };
+    }
+    const [stats, games] = await Promise.all([
+      source.fetchSeasonStats({ season, throughWeek: nflWeek }),
+      source.fetchSeasonResults({ season, throughWeek: nflWeek }),
+    ]);
+    const lines = planSeasonLines({
+      players: rows.players.filter((p) => p.league_id === leagueId),
+      feedLines: stats.lines,
+      byWeek: games.byWeek,
+      leagueId,
+      seasonId,
+      at: new Date().toISOString(),
+    });
+    for (let i = 0; i < lines.length; i += 500) {
+      const { error } = await db
+        .from("player_week_lines")
+        .upsert(lines.slice(i, i + 500), { onConflict: "season_id,nfl_week,player_id" });
+      if (error) throw new Error(error.message);
+    }
+    return { written: lines.length };
+  } catch (err) {
+    console.log("[stats] season history not written -", err.message);
+    return { skipped: err.message };
+  }
 }
 
 /**
@@ -1894,6 +1949,173 @@ export async function scheduledStatsPull(db, { feed } = {}) {
     });
   }
 
+  return good(summarize(outcomes));
+}
+
+/* ------------------------------------------------------- injury report -- */
+
+/**
+ * OQ-29: refresh the NFL injury report on this league's players now, rather than waiting
+ * for the next scheduled pull.
+ *
+ * Commissioner only, like every other button that reaches the feed, and NOT phase-gated:
+ * the report is display-only and true in every phase of the week, and the scheduled pull
+ * runs in all of them anyway. Shares `runInjuryPull` with that job, for the reason
+ * `runStatsPull` is shared - one implementation of what gets written.
+ */
+export async function refreshInjuries(db, { leagueId, token, feed }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (!ctx.period) return fail(404, "This league has no current week.");
+  if (!isValidNflWeek(ctx.period.nfl_week)) {
+    return fail(409, "This week is not mapped to an NFL week yet - set that first and the injury report will know which week to read.", {
+      reason: "unmapped",
+      view: ctx.view,
+    });
+  }
+
+  const outcome = await runInjuryPull(db, { leagueId, rows: ctx.rows, period: ctx.period, feed });
+  if (outcome.error) {
+    return fail(outcome.error.status, outcome.error.message, { reason: outcome.error.reason, view: ctx.view });
+  }
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)), report: outcome.report });
+}
+
+/**
+ * The injury pull itself, with no opinion about who asked for it.
+ *
+ * Writes THIS NFL week and the one before. This week's is the point; last week's is what
+ * a manager sees on Tuesday and Wednesday, before the new week's first report exists
+ * (src/engine/injuries.js explains why that stands in). Older weeks are history nobody
+ * reads, and leaving them alone keeps the merge small.
+ *
+ * `report` is the already-fetched file, so the scheduled job downloads it once for every
+ * league rather than once per league.
+ */
+async function runInjuryPull(db, { leagueId, rows, period, feed, report = null }) {
+  const season = rows.seasons[0]?.year ?? new Date().getUTCFullYear();
+  const seasonId = rows.seasons[0]?.id;
+  if (!seasonId) return { error: { status: 404, reason: "season", message: "This league has no season." } };
+  const week = Number(period.nfl_week);
+  const weeks = week > 1 ? [week - 1, week] : [week];
+
+  let file = report;
+  if (!file) {
+    try {
+      const source = feed || (await selectFeed());
+      file = await source.fetchInjuries({ season, weeks });
+    } catch (err) {
+      return {
+        error: { status: 502, reason: "feed", message: "Could not reach the injury report - nothing was changed. " + err.message },
+      };
+    }
+  }
+
+  /* The kickoffs decide which three days count as practice days for each team. Every
+   * period in the season carries its own, so last week's are as good as this week's. */
+  const kickoffsByWeek = {};
+  for (const p of rows.periods) {
+    if (weeks.includes(Number(p.nfl_week)) && p.kickoffs) kickoffsByWeek[Number(p.nfl_week)] = p.kickoffs;
+  }
+
+  const at = new Date().toISOString();
+  const { rows: writes, report: summary } = planInjuryRows({
+    players: rows.players.filter((p) => p.league_id === leagueId),
+    feedRows: file.rows,
+    existing: (rows.player_injuries ?? []).filter((r) => r.season_id === seasonId && weeks.includes(r.nfl_week)),
+    weeks,
+    kickoffsByWeek,
+    publishedAt: file.publishedAt,
+    at,
+    leagueId,
+    seasonId,
+  });
+
+  for (let i = 0; i < writes.length; i += 500) {
+    const { error } = await db
+      .from("player_injuries")
+      .upsert(writes.slice(i, i + 500), { onConflict: "season_id,nfl_week,player_id" });
+    if (error) {
+      return { error: { status: 500, reason: "write", message: "Writing the injury report failed: " + error.message } };
+    }
+  }
+  return { report: { ...summary, season, publishedAt: file.publishedAt, at } };
+}
+
+/**
+ * OQ-29: read the injury report onto every league's players, on a schedule.
+ *
+ * EVERY LEAGUE, NOT ONLY ONES THAT OPTED IN. The stats pull and the weekly clock are
+ * switches because they do something a commissioner would otherwise do - write the
+ * numbers a week is scored from, move the week. This writes nothing anybody plays from:
+ * it is a label beside a name, and Scott asked for it on every roster.
+ *
+ * One download per run, whatever the number of leagues. A league with no current week,
+ * or one not mapped to an NFL week, is skipped rather than failed - the same "not yet"
+ * the stats job uses (server/autoPull.js).
+ */
+export async function scheduledInjuryPull(db, { feed } = {}) {
+  const { data: leagues, error } = await db.from("leagues").select("id, name");
+  if (error) return fail(500, "Could not list leagues: " + error.message);
+
+  const files = new Map();
+  const outcomes = [];
+  for (const league of leagues ?? []) {
+    const where = { leagueId: league.id, league: league.name };
+    let rows;
+    try {
+      rows = await fetchLeagueRows(db, league.id);
+    } catch (err) {
+      outcomes.push({ ...where, status: "failed", why: "could not read the league: " + err.message });
+      continue;
+    }
+    if (!rows) {
+      outcomes.push({ ...where, status: "skipped", why: "no such league" });
+      continue;
+    }
+    const view = hydrate(rows);
+    const period = rows.periods.find((p) => p.id === view?._meta?.periodId) ?? null;
+    if (!period) {
+      outcomes.push({ ...where, status: "skipped", why: "no current week" });
+      continue;
+    }
+    if (!isValidNflWeek(period.nfl_week)) {
+      outcomes.push({ ...where, status: "skipped", why: "the week is not mapped to an NFL week" });
+      continue;
+    }
+
+    const season = rows.seasons[0]?.year ?? new Date().getUTCFullYear();
+    if (!files.has(season)) {
+      try {
+        const source = feed || (await selectFeed());
+        files.set(season, await source.fetchInjuries({ season }));
+      } catch (err) {
+        files.set(season, { error: err.message });
+      }
+    }
+    const file = files.get(season);
+    if (file.error) {
+      outcomes.push({ ...where, status: "failed", why: "could not reach the injury report: " + file.error });
+      continue;
+    }
+
+    const outcome = await runInjuryPull(db, { leagueId: league.id, rows, period, feed, report: file });
+    if (outcome.error) {
+      outcomes.push({ ...where, status: "failed", why: outcome.error.message });
+      continue;
+    }
+    outcomes.push({
+      ...where,
+      status: "pulled",
+      why: "NFL week " + period.nfl_week,
+      matched: outcome.report.matched,
+      changed: outcome.report.changed,
+      reportDate: outcome.report.reportDate,
+    });
+  }
   return good(summarize(outcomes));
 }
 

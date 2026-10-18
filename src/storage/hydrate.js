@@ -77,6 +77,43 @@ function buildVersionMap(db, season, current, slotsForCurrent, teamLegacy) {
  * @param {object} [opts]
  * @param {string} [opts.seasonId]  which season to hydrate (defaults to the only one)
  */
+/* OQ-28. player_week_lines rows -> { [legacyPlayerId]: { [nflWeek]: line } }. */
+function playerWeeksFrom(rows, seasonId, playerLegacy) {
+  const out = {};
+  for (const r of rows) {
+    if (r.season_id !== seasonId) continue;
+    const pid = playerLegacy.get(r.player_id);
+    if (!pid) continue;
+    const line = r.coach_result ? { result: r.coach_result } : {};
+    if (!r.coach_result) {
+      SPLIT_STAT_FIELDS.forEach((field) => {
+        const v = r[SPLIT_COLUMN[field]];
+        line[field] = v == null ? "" : Number(v);
+      });
+    }
+    (out[pid] || (out[pid] = {}))[r.nfl_week] = line;
+  }
+  return out;
+}
+
+/* OQ-29. player_injuries rows -> { [legacyPlayerId]: { [nflWeek]: report } }. */
+function injuriesFrom(rows, seasonId, playerLegacy) {
+  const out = {};
+  for (const r of rows) {
+    if (r.season_id !== seasonId) continue;
+    const pid = playerLegacy.get(r.player_id);
+    if (!pid) continue;
+    (out[pid] || (out[pid] = {}))[r.nfl_week] = {
+      status: r.game_status || null,
+      injury: r.injury || null,
+      practice: r.practice && typeof r.practice === "object" ? r.practice : {},
+      reportDate: r.report_date || null,
+      updatedAt: r.updated_at || null,
+    };
+  }
+  return out;
+}
+
 export function hydrateLeague(db, opts = {}) {
   const league = db.leagues[0];
   const season = opts.seasonId
@@ -326,6 +363,18 @@ export function hydrateLeague(db, opts = {}) {
       lineupLock: normalizeLineupLock(season.lineup_lock),
       kickoffs: current?.kickoffs ?? {},
       kickoffsReadAt: current?.kickoffs_read_at ?? null,
+      /* OQ-28: every pool player's feed line, by NFL week - player id -> week -> a stat
+       * line in the same view shape statsEntry uses, so the engine scores it with the
+       * same function. In _meta for the reason nflWeek is: the artifact's shape has no
+       * field for it, and decompose must never carry it - NOTHING SCORES FROM THESE. They
+       * are the bench and free-agent points and the season averages, and no more.
+       * `?? []` because a database without the table yet hands back nothing. */
+      playerWeeks: playerWeeksFrom(db.player_week_lines ?? [], season.id, playerLegacy),
+      /* OQ-29: the NFL injury report - player id -> NFL week -> game status, injury and
+       * practice days. In _meta for the same reason as playerWeeks, and with the same
+       * promise: NOTHING DEALS, SCORES OR LOCKS FROM IT. It is the pill and the notepad on
+       * a roster row. See src/engine/injuries.js. */
+      injuries: injuriesFrom(db.player_injuries ?? [], season.id, playerLegacy),
       /* Whether a scheduled job may run the stats pull for this league. An operational
        * setting rather than a game rule - it says who presses the button, not what the
        * button does - so it lives on `leagues` and, like nflWeek, is deliberately not

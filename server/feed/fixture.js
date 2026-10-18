@@ -24,8 +24,10 @@ import {
   fetchHeadCoaches as fetchHeadCoachesFrom,
   kickoffsFromGames,
   parseCsv,
+  parseInjuries,
   parseWeeklyStats,
   resultsFromGames,
+  seasonResultsFrom,
   weekStartsFromGames,
 } from "./nflverse.js";
 
@@ -67,6 +69,30 @@ export async function fetchWeeklyStats({ season, week } = {}) {
     week: Number(week),
     lines: parseWeeklyStats(read("stats-week.csv"), { week }),
     stoppedEarly: false,
+  };
+}
+
+/**
+ * Every recorded week from 1 through `throughWeek` - OQ-28's season history, the same
+ * shape as the live `fetchSeasonStats`. Weeks that were not recorded are simply absent,
+ * which is what the live file does for a week not yet played.
+ */
+export async function fetchSeasonStats({ season, throughWeek } = {}) {
+  const last = Number(throughWeek);
+  return {
+    season,
+    throughWeek: last,
+    lines: parseWeeklyStats(read("stats-week.csv")).filter((l) => l.week >= 1 && l.week <= last),
+    stoppedEarly: false,
+  };
+}
+
+/** The recorded weeks' results, split by week - the live `fetchSeasonResults`'s shape. */
+export async function fetchSeasonResults({ season, throughWeek } = {}) {
+  return {
+    season,
+    throughWeek: Number(throughWeek),
+    byWeek: seasonResultsFrom(parseCsv(read("results-week.csv")), { season, throughWeek }),
   };
 }
 
@@ -120,6 +146,44 @@ export async function fetchWeekStarts({ season } = {}) {
     season,
     weekStarts: weekStartsFromGames(parseCsv(read("games.csv")), { season }),
   };
+}
+
+/**
+ * This season's recorded injury report - the live `fetchInjuries`'s shape. OQ-29.
+ *
+ * THE PUBLISH TIME IS THE ONE THING THAT IS NOT THE RECORDING'S. The live file is dated by
+ * when nflverse published it, and a reading only counts as a practice day if that date
+ * falls in the player's three practice days that week. The recording was published in
+ * October; the demo league plays September. Handing back October would file every reading
+ * outside every window and leave the notepads with no days in them - which is a true
+ * answer to a question nobody local is asking.
+ *
+ * So when the caller names the weeks it wants, the copy is dated as if it had been read on
+ * the evening of the newest week's final report day (the Friday before its Sunday games),
+ * which is what the recorded rows actually are: each week's last reading. Without weeks it
+ * is the recording's own publish time.
+ */
+export async function fetchInjuries({ season, weeks = null } = {}) {
+  const recorded = manifest().injuries || {};
+  let publishedAt = recorded.publishedAt || null;
+  if (weeks && weeks.length) {
+    const week = Math.max(...weeks.map(Number));
+    const kickoffs = kickoffsFromGames(parseCsv(read("games.csv")), { season, week });
+    const sundays = Object.values(kickoffs)
+      .map((k) => (typeof k === "string" ? k : k && k.at))
+      .filter(Boolean)
+      .map((iso) => new Date(iso))
+      .filter((d) => d.getUTCDay() === 0 || (d.getUTCDay() === 1 && d.getUTCHours() < 8))
+      .sort((a, b) => a - b);
+    if (sundays.length) {
+      /* Friday 5pm Eastern is Friday 21:00 or 22:00 UTC; 22:00 is after 4pm Eastern
+       * either side of the clock change, which is all reportDateOf asks. */
+      const sunday = sundays[0];
+      const friday = Date.UTC(sunday.getUTCFullYear(), sunday.getUTCMonth(), sunday.getUTCDate() - 2, 22);
+      publishedAt = new Date(friday).toISOString();
+    }
+  }
+  return { season, publishedAt, rows: parseInjuries(read("injuries.csv"), { weeks }) };
 }
 
 export { buildPool };

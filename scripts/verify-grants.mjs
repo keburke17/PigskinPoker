@@ -20,6 +20,10 @@ import path from "node:path";
 const READABLE = [
   "leagues", "seasons", "teams", "team_totals", "players",
   "periods", "roster_slots", "stat_lines", "period_results", "events",
+  // OQ-28: the feed's line for every pool player, every week. Display only.
+  "player_week_lines",
+  // OQ-29: the NFL injury report on every pool player. Display only.
+  "player_injuries",
   // Global, not league-scoped, and public on purpose - see the pool migration.
   "player_pool",
 ];
