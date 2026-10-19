@@ -27,6 +27,15 @@ function pointsFor(state, lines, pid) {
 }
 
 /* The same standings the Week screen pages through, tiebreakers and all. */
+/* "241 pass yds, 2 TD" - the plain line a card falls back to when the jokes run out. */
+function statText(line) {
+  if (!line) return "Did not play";
+  if (line.result) return line.result;
+  const yds = [["passYards", "pass"], ["rushYards", "rush"], ["recYards", "rec"]].filter(([k]) => Number(line[k]) > 0).map(([k, w]) => line[k] + " " + w + " yds");
+  const tds = ["passTds", "rushTds", "recTds"].reduce((n, k) => n + (Number(line[k]) || 0), 0);
+  return yds.concat(tds ? [tds + " TD"] : []).join(", ") || "No stats";
+}
+
 function standingsAfter(weeklyResults, week) {
   const rank = new Map();
   if (week < 1) return rank;
@@ -58,7 +67,7 @@ export function gatherFacts(league, week, teamId) {
   const starters = SLOTS.map((slot) => {
     const pid = team.roster.starters[slot];
     const p = player(pid);
-    return p ? { id: pid, slot, name: p.name, pos: p.position, pts: pts(pid), played: !!lines[pid] } : null;
+    return p ? { id: pid, slot, name: p.name, pos: p.position, pts: pts(pid), played: !!lines[pid], statText: statText(lines[pid]) } : null;
   }).filter(Boolean);
   const bench = team.roster.bench.map((pid) => {
     const p = player(pid);
@@ -131,8 +140,11 @@ export function gatherFacts(league, week, teamId) {
 
   const rankBefore = standingsAfter(league.state.weeklyResults, week - 1);
   const rankAfter = standingsAfter(league.state.weeklyResults, week);
-  const above = results.find((r) => r.rank === mine.rank - 1) || null;
-  const below = results.find((r) => r.rank === mine.rank + 1) || null;
+  /* Neighbours by position in the finished order, not by rank arithmetic - a dead heat
+   * on every tiebreaker shares a rank and leaves a gap in the numbers. */
+  const at = results.indexOf(mine);
+  const above = results[at - 1] || null;
+  const below = results[at + 1] || null;
   const coach = starters.find((s) => s.pos === "Coach");
   const coachLine = coach ? lines[coach.id] : null;
   const scorers = starters.filter((s) => s.pos !== "Coach").sort((a, b) => b.pts - a.pts);
@@ -180,6 +192,7 @@ const f = (n) => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
 /* {name} style blanks, filled from an object. */
 function fill(line, v) {
+  if (line == null) return null;
   return line.replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m));
 }
 
@@ -189,42 +202,33 @@ function hash(str) {
   return h;
 }
 
-/* A DECK per list. Lines are dealt from a shuffled list and not dealt again until the
- * whole list has gone round, so twelve teams in one week never share a line while a
- * list has twelve in it, and the next week carries on from where this one stopped.
- * The real feature would keep the deck's position in the database between weeks. */
+/* A DECK per list. Lines are dealt from a shuffled list and never dealt twice in a
+ * season: once a list runs dry it is simply out, and the recap falls back - to another
+ * list, to a plain sentence of fact, or for an optional note to leaving it out - rather
+ * than repeat a joke. scripts/recap-season-check.mjs plays whole seasons through this to
+ * check that a 12-team, 18-week season neither repeats a line nor runs a list dry. The real feature would keep each deck's
+ * position in the database between weeks. */
 export function makeDeck(seed) {
   const lists = new Map();
-  let thisWeek = new Set();
-  const draw = (name, list) => {
+  const deal = (name, list) => {
     let d = lists.get(name);
-    if (!d || d.pos >= d.order.length) {
-      const cycle = d ? d.cycle + 1 : 0;
-      const rng = seededRng(hash(seed + ":" + name + ":" + cycle));
+    if (!d) {
+      const rng = seededRng(hash(seed + ":" + name));
       const order = list.map((_, i) => i);
       for (let i = order.length - 1; i > 0; i--) {
         const j = Math.floor(rng() * (i + 1));
         [order[i], order[j]] = [order[j], order[i]];
       }
-      d = { order, pos: 0, cycle };
+      d = { order, pos: 0 };
       lists.set(name, d);
     }
-    return list[d.order[d.pos++]];
+    return d.pos < d.order.length ? list[d.order[d.pos++]] : null;
   };
   return {
-    /* A new week: anything may be dealt again, but nothing twice inside one week. */
-    newWeek() {
-      thisWeek = new Set();
-    },
-    pick(name, list) {
-      for (let tries = 0; tries <= list.length; tries++) {
-        const line = draw(name, list);
-        if (!thisWeek.has(line)) {
-          thisWeek.add(line);
-          return line;
-        }
-      }
-      return draw(name, list);
+    newWeek() {},
+    /** A line never dealt before from this list, or null when the list is spent. */
+    fresh(name, list) {
+      return list && list.length ? deal(name, list) : null;
     },
   };
 }
@@ -246,7 +250,14 @@ function streak(history, test) {
 
 /** Facts in, recap out - in the shape WeeklyRecap.jsx draws. */
 export function writeRecap(fx, deck) {
-  const pick = (name) => deck.pick(name, L[name]);
+  /* The first list with a fresh line wins; `fallback` (plain fact) when all are spent. */
+  const pick = (names, fallback) => {
+    for (const n of [].concat(names)) {
+      const line = deck.fresh(n, L[n]);
+      if (line) return line;
+    }
+    return fallback;
+  };
   const b = band(fx);
   const s = fx.scheme;
   const base = {
@@ -255,80 +266,93 @@ export function writeRecap(fx, deck) {
     gapTop: f(roundPoints(fx.winner.score - fx.score)), weeks: fx.week,
   };
   const moments = [];
-  const add = (weight, headline, kind, title, line) => moments.push({ weight, headline, note: { kind, title, text: line } });
+  /* A moment's words are only dealt if it makes the recap, so a list is not spent on
+   * notes nobody reads; one whose list is spent is left out rather than repeated. */
+  const add = (weight, headline, kind, title, write) => moments.push({ weight, headline, kind, title, write });
 
   /* Streaks first - they are what a league remembers. */
   const winRun = streak(fx.history, (p) => p === 1);
   const bottomRun = streak(fx.history, (p) => p > fx.of - 3);
   const firstWin = fx.place === 1 && fx.history.filter((p) => p === 1).length === 1 && fx.week > 2;
-  if (winRun >= 2) add(9, "winStreak", "close", "The streak", fill(pick("STREAK_WIN"), { count: winRun }));
-  else if (firstWin) add(6, "firstWin", "close", "Milestone", fill(pick("FIRST_WIN"), base));
-  if (bottomRun >= 2) add(8, fx.place === fx.of ? "lastStreak" : null, "bench", "The streak", fill(pick("STREAK_BOTTOM"), { count: bottomRun }));
+  if (winRun >= 2) add(9, "winStreak", "close", "The streak", () => fill(pick("STREAK_WIN"), { count: winRun }));
+  else if (firstWin) add(6, "firstWin", "close", "Milestone", () => fill(pick("FIRST_WIN"), base));
+  if (bottomRun >= 2) add(8, fx.place === fx.of ? "lastStreak" : null, "bench", "The streak", () => fill(pick("STREAK_BOTTOM"), { count: bottomRun }));
 
   if (fx.robbed) {
     const big = fx.robbed.pts >= 10;
     const v = { ...fx.robbed, pts: f(fx.robbed.pts), week: fx.week };
-    let text = fill(pick(big ? "ROBBED_BIG" : "ROBBED_SMALL"), v);
-    if (big && fx.robbed.thiefPlace === 1) text += " " + fill(pick("ROBBED_AFTER_WIN"), v);
-    add(big ? (fx.robbed.pts >= 15 ? 9 : 6) : 3, big ? "robbed" : null, "steal", "Crime scene", text);
+    add(big ? (fx.robbed.pts >= 15 ? 9 : 6) : 3, big ? "robbed" : null, "steal", "Crime scene", () => {
+      const text = fill(pick(big ? "ROBBED_BIG" : "ROBBED_SMALL"), v);
+      const after = text && big && fx.robbed.thiefPlace === 1 ? fill(pick("ROBBED_AFTER_WIN"), v) : null;
+      return text && after ? text + " " + after : text;
+    });
   }
 
   if (s.type === "steal" && s.skipped) {
-    add(5, "stealSkipped", "steal", "Steal review", fill(pick("STEAL_SKIPPED"), { pos: s.position }));
+    add(5, "stealSkipped", "steal", "Steal review", () => fill(pick("STEAL_SKIPPED"), { pos: s.position }));
   } else if ((s.type === "steal" || s.type === "redraw") && s.got) {
     const net = roundPoints(s.got.pts - s.dropped.pts);
     const kind = net >= 8 ? "HIT" : net <= -6 ? "BUST" : "MEH";
     const v = { dropped: s.dropped.name, droppedPts: f(s.dropped.pts), got: s.got.name, gotPts: f(s.got.pts), from: s.fromName, net: f(net), team: s.droppedLanded };
-    let text = fill(pick((s.type === "steal" ? "STEAL_" : "REDRAW_") + kind), v);
-    if (s.type === "steal" && s.fromPlace === fx.of) text += " " + pick("STEAL_FROM_LAST");
-    if (s.type === "redraw" && s.droppedLanded) text += " " + fill(pick("DROPPED_LANDED"), v);
+    const write = () => {
+      const text = fill(pick((s.type === "steal" ? "STEAL_" : "REDRAW_") + kind), v);
+      const extra = !text ? null : s.type === "steal" && s.fromPlace === fx.of ? pick("STEAL_FROM_LAST") : s.type === "redraw" && s.droppedLanded ? fill(pick("DROPPED_LANDED"), v) : null;
+      return text && extra ? text + " " + extra : text;
+    };
     const title = s.type === "steal" ? (kind === "HIT" ? "Steal of the week" : "Steal review") : kind === "HIT" ? "Redraw of the week" : "Redraw review";
-    add(kind === "MEH" ? 2 : s.type === "steal" ? 8 : 7, kind === "MEH" ? null : (s.type === "steal" ? "steal" : "redraw") + (kind === "HIT" ? "Hit" : "Bust"), s.type, title, text);
+    add(kind === "MEH" ? 2 : s.type === "steal" ? 8 : 7, kind === "MEH" ? null : (s.type === "steal" ? "steal" : "redraw") + (kind === "HIT" ? "Hit" : "Bust"), s.type, title, write);
   } else if (s.type === "block") {
     const v = { player: s.player.name, pos: s.player.pos, pts: f(s.player.pts), attempts: s.attempts + (s.attempts === 1 ? " team" : " teams") };
     const low = s.player.pts < 8;
     const list = s.attempts === 0 ? (low ? "BLOCK_WASTED_LOW" : "BLOCK_WASTED_OK") : low ? "BLOCK_SAVED_LOW" : "BLOCK_SAVED_GOOD";
-    add(s.attempts === 0 ? (low ? 6 : 2) : low ? 4 : 6, null, "block", "Block review", fill(pick(list), v));
+    add(s.attempts === 0 ? (low ? 6 : 2) : low ? 4 : 6, null, "block", "Block review", () => fill(pick(list), v));
   } else {
-    add(1, null, "league", "No scheme", pick("NO_SCHEME"));
+    add(1, null, "league", "No scheme", () => pick("NO_SCHEME"));
   }
 
   const v = { score: f(fx.score), benchTotal: f(fx.benchTotal) };
   if (fx.swap) Object.assign(v, { benchName: fx.swap.bench.name, benchPts: f(fx.swap.bench.pts), starterName: fx.swap.starter.name, starterPts: f(fx.swap.starter.pts), wouldPlace: ord(fx.swap.wouldPlace) });
   if (fx.benchTotal > fx.score) {
-    add(7, fx.benchTotal > fx.score + 10 ? "bench" : null, "bench", "Bench check", fill(pick("BENCH_BETTER"), v));
+    add(7, fx.benchTotal > fx.score + 10 ? "bench" : null, "bench", "Bench check", () => fill(pick("BENCH_BETTER"), v));
   } else if (fx.swap && fx.swap.gain >= 5 && fx.swap.wouldPlace < fx.place) {
     const jump = fx.place - fx.swap.wouldPlace;
-    add(jump >= 3 ? 8 : 5, jump >= 5 ? "bench" : null, "bench", "Bench check", fill(pick("BENCH_COST"), v));
+    add(jump >= 3 ? 8 : 5, jump >= 5 ? "bench" : null, "bench", "Bench check", () => fill(pick("BENCH_COST"), v));
   } else if (fx.swap && fx.swap.gain >= 8) {
-    add(3, null, "bench", "Bench check", fill(pick("BENCH_NOTED"), v));
+    add(3, null, "bench", "Bench check", () => fill(pick("BENCH_NOTED"), v));
   }
 
   const zero = fx.worst && fx.worst.pts === 0 ? fx.worst : null;
-  if (zero) add(5, "zero", "injury", "Missing person", fill(pick("ZERO_STARTER"), { name: zero.name, pos: zero.pos }));
+  if (zero) add(5, "zero", "injury", "Missing person", () => fill(pick("ZERO_STARTER"), { name: zero.name, pos: zero.pos }));
 
   fx.hurt.forEach((h) => {
     if (h.pts >= 8 || h === zero) return;
-    add(6, "injury", "injury", "The injury report", fill(pick("INJURY"), { name: h.name, tag: h.tag === "QUES" ? "Questionable" : "Doubtful", pts: f(h.pts) }));
+    add(6, "injury", "injury", "The injury report", () => fill(pick("INJURY"), { name: h.name, tag: h.tag === "QUES" ? "Questionable" : "Doubtful", pts: f(h.pts) }));
   });
 
   if (fx.place === 1 && fx.below && fx.below.gap < 3) {
-    add(7, "closeWin", "close", "By a hair", fill(pick(fx.below.gap === 0 ? "TIE_WIN" : "CLOSE_WIN"), { other: fx.below.name, gap: f(fx.below.gap) }));
+    add(7, "closeWin", "close", "By a hair", () => fill(pick(fx.below.gap === 0 ? "TIE_WIN" : "CLOSE_WIN"), { other: fx.below.name, gap: f(fx.below.gap) }));
   } else if (fx.above && fx.above.gap < 3) {
     const tie = fx.above.gap === 0;
     add(tie ? 7 : 5, tie ? "tieLoss" : fx.place === 2 ? "closeLoss" : null, "close", tie ? "Tiebreaker" : "So close",
-      fill(pick(tie ? "TIE" : "CLOSE_LOSS"), { other: fx.above.name, gap: f(fx.above.gap), nextPlace: ord(fx.place - 1) }));
+      () => fill(pick(tie ? "TIE" : "CLOSE_LOSS"), { other: fx.above.name, gap: f(fx.above.gap), nextPlace: ord(fx.place - 1) }));
   }
 
   if (fx.coach && fx.coach.result === "Loss" && fx.above && fx.above.gap > 0 && fx.above.gap < 2) {
-    add(5, null, "close", "Coach card", fill(pick("COACH_LOSS_COSTLY"), { coach: fx.coach.name, gap: f(fx.above.gap), nextPlace: ord(fx.place - 1) }));
+    add(5, null, "close", "Coach card", () => fill(pick("COACH_LOSS_COSTLY"), { coach: fx.coach.name, gap: f(fx.above.gap), nextPlace: ord(fx.place - 1) }));
   }
 
   /* Two moments, then always one jab around the league. */
   const top = moments.sort((a, b2) => b2.weight - a.weight);
-  const notes = top.slice(0, 2).map((m) => m.note);
+  const notes = [];
+  for (const m of top) {
+    if (notes.length === 2) break;
+    const text = m.write();
+    if (text && !/\{\w+\}/.test(text)) notes.push({ kind: m.kind, title: m.title, text });
+  }
   const jab = fx.place === fx.of ? "JAB_FROM_LAST" : fx.place === 1 ? "JAB_TO_LAST" : "JAB_MID";
-  notes.push({ kind: "league", title: "Around the league", text: fill(pick(jab), base) });
+  const neighbor = fx.above || fx.below;
+  const jv = { ...base, other: neighbor ? neighbor.name : fx.winner.name, otherPlace: ord(neighbor === fx.above ? fx.place - 1 : fx.place + 1) };
+  notes.push({ kind: "league", title: "Around the league", text: fill(pick([jab, "JAB_NEIGHBOR", "JAB_ANY"], fx.winner.name + " won the week with {winnerScore}. " + fx.last.name + " finished last with {lastScore}."), jv) });
 
   /* The headline follows the biggest story; a win is always about the win. */
   const lead = top.find((m) => m.headline && m.weight >= 5);
@@ -337,15 +361,17 @@ export function writeRecap(fx, deck) {
     const blowout = fx.below && fx.below.gap >= 15;
     headlineKey = winRun >= 2 ? "winStreak" : firstWin ? "firstWin" : lead && lead.headline === "closeWin" ? "closeWin" : blowout ? "winBlowout" : lead && lead.headline === "stealHit" ? "stealHit" : "win";
   }
-  const headline = pick("HEADLINES_" + headlineKey);
+  const headline = pick(["HEADLINES_" + headlineKey, "HEADLINES_" + b, "HEADLINES_any"], "Week " + fx.week + ": " + ord(fx.place) + " of " + fx.of);
 
   const sv = { ...base, rankNow: ord(fx.rankNow), move: Math.abs(fx.rankMove) + (Math.abs(fx.rankMove) === 1 ? " spot" : " spots") };
   const standingsKey = fx.rankNow === 1 ? "firstOverall" : fx.rankNow === fx.of ? "lastOverall" : fx.rankMove > 0 ? "up" : fx.rankMove < 0 ? "down" : "flat";
-  let standingsLine = fill(pick("STANDINGS_" + standingsKey), sv);
+  const moveKey = fx.rankMove > 0 ? "up" : fx.rankMove < 0 ? "down" : "flat";
+  const plain = fx.rankMove === 0 ? "You're {rankNow} overall." : "You're {rankNow} overall, " + (fx.rankMove > 0 ? "up " : "down ") + "{move}.";
+  let standingsLine = fill(pick(["STANDINGS_" + standingsKey, "STANDINGS_" + moveKey], plain), sv);
   if ((standingsKey === "firstOverall" || standingsKey === "lastOverall") && fx.rankMove !== 0) {
-    standingsLine = fill(pick("STANDINGS_" + (fx.rankMove > 0 ? "up" : "down")), sv) + " " + standingsLine;
+    standingsLine = fill(pick("STANDINGS_" + moveKey, ""), sv) + " " + standingsLine;
   }
-  const story = fill(pick("OPENERS_" + b), base) + " " + standingsLine;
+  const story = fill(pick(["OPENERS_" + b, "OPENERS_any"], "{score} points, {place} of {of} in Week {week}."), base) + " " + standingsLine.trim();
 
   const margin = fx.place === 1
     ? (fx.below.gap === 0 ? "Tied " + fx.below.name + " and won the tiebreaker" : "Won the week by " + f(fx.below.gap) + " over " + fx.below.name)
@@ -366,18 +392,17 @@ export function writeRecap(fx, deck) {
     margin,
     headline,
     story,
-    mvp: { name: fx.best.name, pos: fx.best.pos, pts: fx.best.pts, note: pick("MVP_NOTES") },
-    dud: { name: fx.worst.name, pos: fx.worst.pos, pts: fx.worst.pts, note: pick(fx.worst.pts === 0 ? "ZERO_NOTES" : fx.worst.pts >= 8 ? "DECENT_DUD_NOTES" : "DUD_NOTES") },
+    /* The quip when there is a fresh one, otherwise his actual stat line. */
+    mvp: { name: fx.best.name, pos: fx.best.pos, pts: fx.best.pts, note: pick("MVP_NOTES", fx.best.statText) },
+    dud: { name: fx.worst.name, pos: fx.worst.pos, pts: fx.worst.pts, note: pick(fx.worst.pts === 0 ? "ZERO_NOTES" : fx.worst.pts >= 8 ? ["DECENT_DUD_NOTES", "DUD_NOTES"] : "DUD_NOTES", fx.worst.statText) },
     notes,
   };
 }
 
 /** Every team's free recap for every recap week, best finish first, from one deck. */
-export function freeRecapsByWeek(league, weeks) {
-  const deck = makeDeck("league");
+export function freeRecapsByWeek(league, weeks, deck = makeDeck("league")) {
   const out = {};
   weeks.slice().sort((a, b) => a - b).forEach((w) => {
-    deck.newWeek();
     const facts = league.state.teams.map((t) => gatherFacts(league, w, t.id)).sort((a, b) => a.place - b.place);
     out[w] = facts.map((fx) => writeRecap(fx, deck));
   });

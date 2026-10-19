@@ -1,4 +1,4 @@
-/* A 12-team league for the weekly-recap preview, six weeks played and Week 7 freshly
+/* A 12-team league for the weekly-recap preview, ten weeks played and Week 11 freshly
  * dealt - the screen a manager actually opens on a Tuesday morning.
  *
  * Built from the engine the same way src/storage/demoLeague.js builds the six-team demo,
@@ -39,7 +39,7 @@ export const PREVIEW_TEAMS = [
 export const previewTeamId = (i) => "preview_team_" + (i + 1);
 
 /** The weeks the free recaps are written for. */
-export const RECAP_WEEKS = [3, 4, 5, 6];
+export const RECAP_WEEKS = [2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 function deal(state, ids, seed) {
   const res = dealRosters(state, ids, seededRng(seed));
@@ -102,7 +102,10 @@ function randomSchemes(state, seed) {
   return schemes;
 }
 
-export function createPreviewLeague() {
+/* `played` and `recapWeeks` exist so a whole simulated season can be run through the free
+ * recap to measure how many lines it uses (the preview itself takes the defaults). */
+export function createPreviewLeague({ played = 10, recapWeeks = RECAP_WEEKS, seed = 0 } = {}) {
+  const salt = seed * 100000;
   let state = createDefaultState();
   state.leagueName = "Ball So Hard League";
   state.teams = PREVIEW_TEAMS.map((name, i) => ({
@@ -115,14 +118,14 @@ export function createPreviewLeague() {
   const ids = state.teams.map((t) => t.id);
   const weeks = {};
 
-  for (let week = 1; week <= 6; week++) {
-    state = deal(state, ids, 4100 + week);
-    state.schemes = randomSchemes(state, 8100 + week);
+  for (let week = 1; week <= played; week++) {
+    state = deal(state, ids, salt + 4100 + week);
+    state.schemes = randomSchemes(state, salt + 8100 + week);
     const beforeSchemes = deepClone(state);
-    state = processSchemes(state, seededRng(5100 + week));
+    state = processSchemes(state, seededRng(salt + 5100 + week));
     state.currentPeriod.phase = "stats";
     state.rosterLocked = true;
-    const lines = weekLines(state, 6100 + week);
+    const lines = weekLines(state, salt + 6100 + week);
     state.teams.forEach((t) => {
       const entry = {};
       ["Coach", "QB", "WR", "RB", "TE", "FLEX"].forEach((slot) => {
@@ -132,15 +135,15 @@ export function createPreviewLeague() {
       state.statsEntry[t.id] = entry;
     });
     const scored = deepClone(state);
-    const done = finalizeCurrentPeriod(state, seededRng(7100 + week));
+    const done = finalizeCurrentPeriod(state, seededRng(salt + 7100 + week));
     if (done.error) throw new Error("recap preview: finalize failed - " + done.error);
     state = done.state;
-    if (RECAP_WEEKS.includes(week)) {
-      weeks[week] = { beforeSchemes, scored, lines, injuries: weekInjuries(scored, 9100 + week) };
+    if (recapWeeks.includes(week)) {
+      weeks[week] = { beforeSchemes, scored, lines, injuries: weekInjuries(scored, salt + 9100 + week) };
     }
   }
 
-  /* Week 7, Tuesday morning: a brand new roster and nothing submitted yet. */
-  state = deal(state, ids, 4107);
+  /* The next week, Tuesday morning: a brand new roster and nothing submitted yet. */
+  state = deal(state, ids, salt + 4100 + played + 1);
   return { state, weeks };
 }

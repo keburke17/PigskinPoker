@@ -1,9 +1,9 @@
 /* The weekly-recap preview: the real league screens - header, nav, My Team, Week,
- * League, Rosters - for a 12-team league on the Tuesday morning Week 7 was dealt, with
+ * League, Rosters - for a 12-team league on the Tuesday morning Week 11 was dealt, with
  * the recap pop-up on top and a bar at the bottom to flip between recaps.
  *
  * Two kinds of recap, chosen in the bar:
- *   FREE      - written by freeRecap.js from this league's own Weeks 3 to 6, with
+ *   FREE      - written by freeRecap.js from this league's own Weeks 2 to 10, with
  *               fill-in-the-blank lines. No AI, no account. Its numbers match the screens.
  *   AI-STYLE  - the hand-written samples in recapExamples.js, showing what an AI writer
  *               (a paid account) would aim for. Its numbers do NOT match the screens.
