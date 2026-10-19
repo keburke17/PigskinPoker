@@ -39,6 +39,11 @@ export function LandingScreen({
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState(initialCode);
   const [leagueName, setLeagueName] = useState("");
+  /* Issue #75: a season or a table, chosen once. A table also needs its seats and a
+   * name for the dealer's own team, because the dealer plays at it. */
+  const [leagueMode, setLeagueMode] = useState("season");
+  const [seats, setSeats] = useState(6);
+  const [myTeamName, setMyTeamName] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -60,7 +65,10 @@ export function LandingScreen({
 
   const create = async () => {
     setBusy(true);
-    await onCreateLeague(leagueName);
+    await onCreateLeague(
+      leagueName,
+      leagueMode === "table" ? { mode: "table", seats, teamName: myTeamName.trim() || null } : {}
+    );
     setBusy(false);
   };
 
@@ -190,15 +198,54 @@ export function LandingScreen({
             {signedIn ? (
               <>
                 <div className="pp-field">
-                  <label className="pp-label">League Name</label>
-                  <input className="pp-input" type="text" value={leagueName} onChange={(e) => setLeagueName(e.target.value)} placeholder="The Sunday Boys" />
+                  <label className="pp-label">What are you starting?</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className={"pp-btn pp-btn-sm" + (leagueMode === "season" ? " pp-btn-gold" : " pp-btn-ghost")}
+                      onClick={() => setLeagueMode("season")}
+                    >
+                      A Season
+                    </button>
+                    <button
+                      className={"pp-btn pp-btn-sm" + (leagueMode === "table" ? " pp-btn-gold" : " pp-btn-ghost")}
+                      onClick={() => setLeagueMode("table")}
+                    >
+                      A Table
+                    </button>
+                  </div>
+                  <span className="pp-sub" style={{ display: "block", marginTop: 6 }}>
+                    {leagueMode === "season"
+                      ? "The same teams every week, a standings table, and playoffs at the end."
+                      : "One hand at a time. Players sit out a week or leave whenever they like, and the table keeps a tally of hands won and lost. No playoffs."}
+                  </span>
                 </div>
+                <div className="pp-field">
+                  <label className="pp-label">{leagueMode === "table" ? "Table Name" : "League Name"}</label>
+                  <input className="pp-input" type="text" value={leagueName} onChange={(e) => setLeagueName(e.target.value)} placeholder={leagueMode === "table" ? "Tuesday Night Table" : "The Sunday Boys"} />
+                </div>
+                {leagueMode === "table" ? (
+                  <>
+                    <div className="pp-field">
+                      <label className="pp-label">Seats</label>
+                      <select className="pp-input" value={seats} onChange={(e) => setSeats(Number(e.target.value))}>
+                        {Array.from({ length: 12 }, (_, i) => i + 2).map((n) => (
+                          <option key={n} value={n}>{n} players{n === 13 ? " (the most a deal can serve)" : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="pp-field">
+                      <label className="pp-label">Your Team Name</label>
+                      <input className="pp-input" type="text" value={myTeamName} onChange={(e) => setMyTeamName(e.target.value)} placeholder="The House" />
+                    </div>
+                  </>
+                ) : null}
                 <div className="pp-hint">
-                  You will be its commissioner. New leagues are private - only members can
-                  see them - and you can change that later.
+                  {leagueMode === "table"
+                    ? "You will be its dealer, and you take one of the seats yourself. Tables are private - people join with an invite you send them."
+                    : "You will be its commissioner. New leagues are private - only members can see them - and you can change that later."}
                 </div>
                 <button className="pp-btn pp-btn-gold" style={{ marginTop: 8 }} disabled={!leagueName.trim() || busy} onClick={create}>
-                  {busy ? "Creating..." : "Create League"}
+                  {busy ? "Creating..." : leagueMode === "table" ? "Open The Table" : "Create League"}
                 </button>
               </>
             ) : (

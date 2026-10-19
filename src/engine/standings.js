@@ -8,6 +8,7 @@ import { deepClone, defaultAdvancement, emptyCumulative, nowStamp, periodLabel, 
 import { getPlayer } from "./state.js";
 import { computeStarterPoints, currentStandingsPointsArray, roundPoints, statLineTotals } from "./scoring.js";
 import { ICON, STARTER_SLOTS } from "./constants.js";
+import { handTeamIds, isTable } from "./table.js";
 
 /**
  * Generic ranking with tiebreakers.
@@ -58,11 +59,30 @@ export function rankTeamsWithTiebreak(rows) {
  * everybody; a playoff round is only the teams still in the bracket.
  */
 export function periodTeams(state) {
-  const period = state.currentPeriod;
-  const activeIds = period.type === "playoff"
-    ? state.playoffConfig.activeTeamIds
-    : state.teams.map((t) => t.id);
+  const activeIds = periodTeamIds(state);
   return state.teams.filter((t) => activeIds.includes(t.id));
+}
+
+/**
+ * The same answer as ids, IN THE ORDER THE DEAL USES: the bracket's own order in a playoff
+ * round, the league's team order otherwise. `periodTeams` above always comes back in
+ * league order, and the two differ in a playoff round.
+ *
+ * THE ORDER IS LOAD-BEARING. `dealRosters` hands out cards in the order it is given the
+ * teams, from a seed stored on the period so a deal can be replayed. Feed it the same
+ * teams in a different order and the same seed deals different hands.
+ *
+ * It exists so "who is in this period" is asked in one place (issue #75). The server's
+ * deal and the clock's head count each used to work it out for themselves.
+ */
+export function periodTeamIds(state) {
+  if (state.currentPeriod.type === "playoff") {
+    return (state.playoffConfig && state.playoffConfig.activeTeamIds) || [];
+  }
+  /* A table's hand is whoever is seated at it - see src/engine/table.js. A season is
+   * everybody, exactly as it has always been. */
+  if (isTable(state)) return handTeamIds(state);
+  return (state.teams || []).map((t) => t.id);
 }
 
 /** One team's score for the period that is currently open, from the stat lines entered
@@ -223,6 +243,9 @@ export function nextPeriodNflWeek(state) {
 export function playoffsDueToStart(state, nflWeek) {
   const cfg = state && state.playoffConfig;
   if (!cfg || cfg.started || cfg.completed) return false;
+  /* A table has no playoffs (issue #75). Its setup never asks for a start week, so this
+   * is belt and braces against one arriving some other way. */
+  if (isTable(state)) return false;
   const start = Number(cfg.startNflWeek);
   /* Unset is "never". See the note on startNflWeek in state.js - it is a real trap, and
    * it is guarded on screen rather than by guessing a week here. */

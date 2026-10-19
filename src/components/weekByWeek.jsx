@@ -19,7 +19,7 @@
  */
 
 import { useState } from "react";
-import { emptyCumulative, periodLabel, projectCurrentPeriod, rankTeamsWithTiebreak } from "../engine/index.js";
+import { emptyCumulative, isTable, periodLabel, periodTitle, projectCurrentPeriod, rankTeamsWithTiebreak } from "../engine/index.js";
 import { EmptyState } from "./atoms.jsx";
 import { StandingsTable } from "./standings.jsx";
 
@@ -135,12 +135,15 @@ export function WeekByWeekScoreboard({ state, myTeam }) {
   const [picked, setPicked] = useState(null);
   const [mode, setMode] = useState("week");
   if (pages.length === 0) return null;
+  /* A table (issue #75) keeps no running points, so the card drops the standings-points
+   * column and the "season through this week" view, and calls each page a hand. */
+  const table = isTable(state);
 
   const at = picked !== null && picked < pages.length ? picked : pages.length - 1;
   const page = pages[at];
   /* The finished week "Season through this week" counts up to: the page itself, or for
    * the week being played, the last finished regular week before it. */
-  const seasonTo = page.type !== "week"
+  const seasonTo = table || page.type !== "week"
     ? null
     : page.live
       ? pages.slice(0, at).filter((p) => p.type === "week").pop() || null
@@ -159,7 +162,7 @@ export function WeekByWeekScoreboard({ state, myTeam }) {
       <div className="pp-wk-head">
         <button type="button" className="pp-wk-btn" onClick={() => setPicked(at - 1)} disabled={at === 0} aria-label="Previous week">{"<"}</button>
         <div className="pp-wk-title">
-          <b>{periodLabel(page)}</b>
+          <b>{periodTitle(state, page)}</b>
           <small>{seasonView ? "Standings after " + periodLabel(seasonTo) : page.live ? "In progress" : "Final"}</small>
         </div>
         <button type="button" className="pp-wk-btn" onClick={() => setPicked(at + 1)} disabled={at === pages.length - 1} aria-label="Next week">{">"}</button>
@@ -188,25 +191,26 @@ export function WeekByWeekScoreboard({ state, myTeam }) {
         <div className="pp-wk-mine">
           <div><b>{ordinal(mineWeek.rank)}</b><span>Finish</span></div>
           <div><b>{mineWeek.rawScore}</b><span>Score</span></div>
-          <div><b>{mineWeek.standingsPoints == null ? "-" : "+" + mineWeek.standingsPoints}</b><span>Std Pts</span></div>
+          {table ? null : <div><b>{mineWeek.standingsPoints == null ? "-" : "+" + mineWeek.standingsPoints}</b><span>Std Pts</span></div>}
           <div><b>{mineWeek.tds}</b><span>TDs</span></div>
+          {table ? <div><b>{mineWeek.yards}</b><span>Yards</span></div> : null}
         </div>
       ) : null}
 
       {seasonView ? (
         <StandingsTable rows={standings} teams={state.teams} />
       ) : rows.length === 0 ? (
-        <EmptyState>No results recorded for {periodLabel(page)}.</EmptyState>
+        <EmptyState>No results recorded for {periodTitle(state, page)}.</EmptyState>
       ) : (
         <div className="pp-table-scroll">
           <table className="pp-table pp-table-wide pp-wk-table">
             <thead>
               <tr>
                 <th className="pp-wk-stick1" style={{ width: 30 }}>#</th>
-                <th className="pp-wk-stick2">Team</th>
+                <th className="pp-wk-stick2">{table ? "Player" : "Team"}</th>
                 <th style={{ textAlign: "right" }}>Score</th>
-                <th style={{ textAlign: "right" }}>Std Pts</th>
-                <th style={{ textAlign: "right" }}>Wk Win</th>
+                {table ? null : <th style={{ textAlign: "right" }}>Std Pts</th>}
+                <th style={{ textAlign: "right" }}>{table ? "Won" : "Wk Win"}</th>
                 <th style={{ textAlign: "right" }}>Coach</th>
                 <th style={{ textAlign: "right" }}>TDs</th>
                 <th style={{ textAlign: "right" }}>Yards</th>
@@ -219,7 +223,7 @@ export function WeekByWeekScoreboard({ state, myTeam }) {
                   <td className="pp-wk-stick1">{r.rank}</td>
                   <td className="pp-wk-stick2" style={{ fontWeight: 700 }}>{r.teamName}</td>
                   <td className="pp-wk-num" style={{ fontWeight: 700 }}>{r.rawScore}</td>
-                  <td className="pp-wk-num" style={{ color: "var(--gold-bright)", fontWeight: 700 }}>{sp(r.standingsPoints)}</td>
+                  {table ? null : <td className="pp-wk-num" style={{ color: "var(--gold-bright)", fontWeight: 700 }}>{sp(r.standingsPoints)}</td>}
                   <td className="pp-wk-num">{r.rank === 1 && !page.live ? <span className="pp-wk-win">Won</span> : "-"}</td>
                   <td className={"pp-wk-num pp-wk-coach-" + (COACH[r.coachResult] || "none")}>{COACH[r.coachResult] || "-"}</td>
                   <td className="pp-wk-num">{r.tds}</td>

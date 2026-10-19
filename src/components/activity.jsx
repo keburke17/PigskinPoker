@@ -32,7 +32,7 @@
  * doing one day; it is an engine change and an OQ, not a thing to sneak in here.
  */
 
-import { ICON, abbrFor, periodTeams } from "../engine/index.js";
+import { ICON, abbrFor, isTable, periodTeams, periodWord } from "../engine/index.js";
 import { moveChip, moveHeadline, weekMoves } from "./weekMoves.js";
 
 /* The chip is the whole point of the redesign: colour tells you which scheme fired
@@ -170,7 +170,7 @@ function MoveTile({ state, tm, mine }) {
 
 /** The card on the Week screen: this period's moves, team by team. */
 export function WeekActivityCard({ state, myTeam, onSeeAll }) {
-  const roundWord = state.currentPeriod.type === "playoff" ? "round" : "week";
+  const roundWord = periodWord(state);
   const playing = new Set(periodTeams(state).map((t) => t.id));
   const { any, teams, unread } = weekMoves(state);
   const tiles = teams.filter((t) => playing.has(t.teamId) || t.lines.length > 0);
@@ -181,12 +181,12 @@ export function WeekActivityCard({ state, myTeam, onSeeAll }) {
       <div className="pp-card-head">
         <h3 className="pp-h3" style={{ marginBottom: 0 }}>Around the league</h3>
         {onSeeAll ? (
-          <button type="button" className="pp-linkbtn" onClick={onSeeAll}>All weeks {ICON.caretRight}</button>
+          <button type="button" className="pp-linkbtn" onClick={onSeeAll}>{isTable(state) ? "All hands" : "All weeks"} {ICON.caretRight}</button>
         ) : null}
       </div>
       {!any ? (
         <p className="pp-sub" style={{ margin: 0 }}>
-          Nothing yet this {roundWord}. Every team&apos;s steals, blocks and redraws appear
+          Nothing yet this {roundWord}. Every {isTable(state) ? "player" : "team"}&apos;s steals, blocks and redraws appear
           here the moment schemes are processed.
         </p>
       ) : (

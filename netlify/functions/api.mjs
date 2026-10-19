@@ -79,6 +79,8 @@ const ROUTES = {
   setAutoPullStats: (db, p) => ops.setAutoPullStats(db, p),
   setAutoCycle: (db, p) => ops.setAutoCycle(db, p),
   setNotifyMembers: (db, p) => ops.setNotifyMembers(db, p),
+  /* Issue #75: sit out, come back, leave or rejoin a table. */
+  setSeat: (db, p) => ops.setSeat(db, p),
 };
 
 export async function handler(event) {

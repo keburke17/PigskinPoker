@@ -25,6 +25,8 @@ import { LandingScreen } from "./components/LandingScreen.jsx";
 import { useLeague } from "./hooks/useLeague.js";
 import {
   emptyCumulative,
+  hostTitle,
+  isTable,
   uid,
   POSITIONS,
   SUIT_CH,
@@ -41,6 +43,7 @@ import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
 import { hasBeenWelcomed, markWelcomed } from "./storage/firstRun.js";
 import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
 import { CommissionerTab } from "./components/commissioner.jsx";
+import { MySeatCard } from "./components/table.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 
 
@@ -280,9 +283,9 @@ export default function App() {
     go({ name: "league", leagueId: r.leagueId, tab: landing }, { replace: true });
   };
 
-  const onCreateLeague = async (name) => {
+  const onCreateLeague = async (name, opts = {}) => {
     setLoginError(null);
-    const r = await store.createLeague?.(name);
+    const r = await store.createLeague?.(name, undefined, undefined, opts);
     if (!r || r.ok === false) {
       setLoginError(r?.message || "Could not create that league.");
       return;
@@ -348,6 +351,7 @@ export default function App() {
   const onSetAutoPullStats = (enabled) => ops.setAutoPullStats(enabled);
   const onSetAutoCycle = (patch) => ops.setAutoCycle(patch);
   const onSetNotifyMembers = (enabled) => ops.setNotifyMembers(enabled);
+  const onSetSeat = (teamId, seat) => ops.setSeat(teamId, seat);
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -658,7 +662,13 @@ export default function App() {
   }
 
   const isCommissioner = identity.role === "commissioner";
-  const myTeam = identity.role === "manager" ? state.teams.find((t) => t.id === identity.teamId) : null;
+  const table = isTable(state);
+  /* A manager's team - and at a table, the DEALER's too, because they play at their own
+   * table (issue #75). A season is exactly as before: a commissioner who was once a
+   * manager can still carry a team_id, and must not grow a My Team tab because of it. */
+  const myTeam = identity.teamId && (identity.role === "manager" || table)
+    ? state.teams.find((t) => t.id === identity.teamId) || null
+    : null;
 
   /* The welcome card - issue #24 from the commissioner's side, #26 from a manager's.
    * Shown once per person per league; `hasBeenWelcomed` is the durable half and reads
@@ -685,9 +695,9 @@ export default function App() {
    * row at 375px), so the nav also wraps on narrow screens - see .pp-nav in global.css.
    * Keep new labels short anyway: two rows of pills is fine, three is a menu. */
   const NAV = [
-    { key: "results", label: "Week" },
-    ...(identity.role === "manager" ? [{ key: "myteam", label: "My Team" }] : []),
-    { key: "home", label: "League" },
+    { key: "results", label: table ? "Hand" : "Week" },
+    ...(identity.role === "manager" || (table && myTeam) ? [{ key: "myteam", label: "My Team" }] : []),
+    { key: "home", label: table ? "Table" : "League" },
     { key: "hub", label: "Rosters" },
     { key: "rules", label: "Rules" },
     /* Beside Rules, not merged into it (issue #25): Rules reads out the league's live
@@ -695,7 +705,7 @@ export default function App() {
      * is a seventh pill for a commissioner on a phone, and the nav wraps rather than
      * clips, so it can reach a third row at 375px. Recorded as OQ-H for Scott. */
     { key: "help", label: "Help" },
-    ...(isCommissioner ? [{ key: "comm", label: "Commish" }] : []),
+    ...(isCommissioner ? [{ key: "comm", label: table ? "Dealer" : "Commish" }] : []),
     /* Not a tab at all - it navigates OUT of the league to /admin, because the head
      * coaches are one list shared by every league (issue #40). It rides in the nav
      * because that is where a person looks for it, and it is drawn for the two site
@@ -728,7 +738,7 @@ export default function App() {
                 * second row of header. */}
               <div className="pp-eyebrow">Pigskin Poker</div>
               <h1 className="pp-h1 pp-league-title">{SUIT_CH.spade} {state.leagueName} {SUIT_CH.diamond}</h1>
-              <span className="pp-badge-role">{isCommissioner ? "Commissioner" : myTeam ? myTeam.name : "Manager"}</span>
+              <span className="pp-badge-role">{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</span>
             </div>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLogout}>Log Out</button>
           </div>
@@ -774,6 +784,7 @@ export default function App() {
             <ResultStrip state={state} team={myTeam} onSeeWeek={() => goToTab("results")} />
           ) : null}
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
+          {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} /> : null}
           {tab === "myteam" && myTeam && (
             <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
           )}
@@ -791,6 +802,7 @@ export default function App() {
               onSetAutoPullStats={onSetAutoPullStats}
               onSetAutoCycle={onSetAutoCycle}
               onSetNotifyMembers={onSetNotifyMembers}
+              onSetSeat={onSetSeat}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}

@@ -492,6 +492,13 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* Issue #75: sit out, come back, leave or rejoin a table. Your own seat, or anybody's
+   * if you are the dealer - the server decides which, and whether a seat is free. */
+  const setSeat = useCallback(
+    (teamId, seat) => immediate("setSeat:" + teamId, () => store.setSeat(teamId, seat)),
+    [store, immediate]
+  );
+
   /** Commissioner admin: low-frequency, genuinely league-wide. */
   const mutate = useCallback(
     (key, fn) => immediate(key, () => store.mutateLeague(fn)),
@@ -552,6 +559,7 @@ export function useLeague(store) {
       setAutoPullStats,
       setAutoCycle,
       setNotifyMembers,
+      setSeat,
       processSchemes,
       finalizePeriod,
         mutate,

@@ -20,7 +20,7 @@
  * commissioner-driven flow is unchanged.
  */
 
-import { ICON, periodLabel, projectCurrentPeriod } from "../engine/index.js";
+import { ICON, hostTitle, periodTitle, periodWord, projectCurrentPeriod } from "../engine/index.js";
 import { WeekActivityCard } from "./activity.jsx";
 import { EmptyState, PeriodBanner } from "./atoms.jsx";
 
@@ -65,7 +65,7 @@ function MyWeekCard({ state, team, rows, onGoTo }) {
     <div className="pp-card pp-my-card">
       <div className="pp-score-hero">
         <div style={{ minWidth: 0 }}>
-          <div className="pp-eyebrow">Your {state.currentPeriod.type === "playoff" ? "round" : "week"}</div>
+          <div className="pp-eyebrow">Your {periodWord(state)}</div>
           <h2 className="pp-h2" style={{ marginBottom: 2 }}>{team.name}</h2>
           <div className="pp-sub" style={{ marginBottom: 0 }}>
             {ordinal(row.rank)} of {rows.length}
@@ -91,7 +91,7 @@ function MyWeekCard({ state, team, rows, onGoTo }) {
 
 export function WeekScoreboard({ state, myTeam, onSeeAllActivity, onGoTo }) {
   const period = state.currentPeriod;
-  const roundWord = period.type === "playoff" ? "round" : "week";
+  const roundWord = periodWord(state);
 
   /* Pre-deal is a real state, not an absence of one, and it deserves a sentence that says
    * so. "No weeks finalized yet" was the old message here and it was answering a
@@ -102,8 +102,8 @@ export function WeekScoreboard({ state, myTeam, onSeeAllActivity, onGoTo }) {
         <PeriodBanner state={state} />
         <div className="pp-card">
           <EmptyState>
-            {periodLabel(period)} has not been dealt yet. Scores appear here as soon as the
-            commissioner deals the {roundWord}.
+            {periodTitle(state)} has not been dealt yet. Scores appear here as soon as the
+            {" " + hostTitle(state).toLowerCase()} deals the {roundWord}.
           </EmptyState>
         </div>
       </div>

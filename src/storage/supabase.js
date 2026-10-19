@@ -412,8 +412,10 @@ export function createSupabaseStore(config) {
     /* These three are about an ACCOUNT rather than a league, so they carry the account
      * token in the body. `call` would send it as the Authorization header, which the
      * server reads as a league session - correct everywhere else, wrong here. */
-    createLeague: (name, year, visibility) =>
-      callWithAccount("createLeague", { name, year, visibility }),
+    /* `opts` is issue #75's table: { mode: "table", seats, teamName }. Left out, it is a
+     * season, exactly as before. */
+    createLeague: (name, year, visibility, opts = {}) =>
+      callWithAccount("createLeague", { name, year, visibility, ...opts }),
     myLeagues: () => callWithAccount("myLeagues", {}),
     redeemInvite: (code) => callWithAccount("redeemInvite", { code }),
 
@@ -483,6 +485,9 @@ export function createSupabaseStore(config) {
      * rather than one that has to know the other two's current values. */
     setAutoCycle: (patch) => call("setAutoCycle", patch),
     setNotifyMembers: (enabled) => call("setNotifyMembers", { enabled }),
+    /* Issue #75: "seated", "sitting_out" or "left", for your own seat - or anybody's,
+     * if you are the dealer. */
+    setSeat: (teamId, seat) => call("setSeat", { teamId, seat }),
 
     async mutateLeague(fn) {
       const view = await readView();

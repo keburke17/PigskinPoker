@@ -18,6 +18,7 @@
  * and a client cannot re-roll a deal it did not like.
  */
 
+import { randomBytes } from "node:crypto";
 import { createDefaultState } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
@@ -46,7 +47,16 @@ import {
   lockedByClock,
   normalizeLineupLock,
   newSeed,
+  periodTeamIds,
   processSchemes as engineProcessSchemes,
+  SEAT,
+  SEAT_STATES,
+  TABLE_SEATS_MAX,
+  TABLE_SEATS_MIN,
+  isTable,
+  seatOf,
+  seatsFree,
+  tableDealProblem,
   seedFromString,
   seededRng,
 } from "../src/engine/index.js";
@@ -330,7 +340,7 @@ export async function whoami(db, { leagueId, token }) {
  * a league whose owner is "whoever holds this string" is the thing this phase exists to
  * get away from.
  */
-export async function createLeague(db, { accountToken, name, year, visibility = "members" }) {
+export async function createLeague(db, { accountToken, name, year, visibility = "members", mode = "season", seats = null, teamName = null }) {
   const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to create a league.");
 
@@ -338,6 +348,16 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   if (!trimmed) return fail(400, "Give your league a name.");
   if (trimmed.length > 80) return fail(400, "That league name is too long.");
   if (!["members", "public"].includes(visibility)) return fail(400, "Unknown visibility.");
+
+  /* Issue #75. A table is chosen here and only here - nothing changes a league's mode
+   * later, because a season's history means something a table's does not. */
+  if (!["season", "table"].includes(mode)) return fail(400, "Unknown league type.");
+  const table = mode === "table";
+  const seatCount = table ? Number(seats) : null;
+  if (table && !(Number.isInteger(seatCount) && seatCount >= TABLE_SEATS_MIN && seatCount <= TABLE_SEATS_MAX)) {
+    return fail(400, "A table has " + TABLE_SEATS_MIN + " to " + TABLE_SEATS_MAX + " seats.");
+  }
+  const dealerTeamName = table ? cleanTeamName(teamName) || defaultTeamName(user) : null;
 
   const seasonYear = Number(year) || new Date().getFullYear();
 
@@ -389,11 +409,35 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
     await db.from("leagues").delete().eq("id", leagueId);
     return fail(500, "Could not stock the player pool: " + (poolError?.message ?? "the pool is empty"));
   }
-  const { error: visError } = await db.from("leagues").update({ visibility }).eq("id", leagueId);
-  if (visError) return fail(500, visError.message);
+  /* A season writes exactly what it always did. The table columns are only named for a
+   * table, so a season league is created the same way whether or not the table-mode
+   * migration has reached this database yet. */
+  const { error: visError } = await db
+    .from("leagues")
+    .update(table ? { visibility, mode, table_seats: seatCount } : { visibility })
+    .eq("id", leagueId);
+  if (visError) {
+    /* Nobody is a member yet, so a league left here could be reached by nobody. Same
+     * undo as the two failures below. */
+    await db.from("leagues").delete().eq("id", leagueId);
+    return fail(500, visError.message);
+  }
+
+  /* THE DEALER PLAYS. A table is a home game, and the person who set it up takes a seat
+   * at it like everybody else - and can sit out a hand like everybody else. Their
+   * membership is still the commissioner role underneath; it simply has a team too. */
+  let dealerTeamId = null;
+  if (table) {
+    const made = await insertTableTeam(db, leagueId, dealerTeamName);
+    if (made.error) {
+      await db.from("leagues").delete().eq("id", leagueId);
+      return fail(500, "Could not seat you at the table: " + made.error);
+    }
+    dealerTeamId = made.id;
+  }
 
   const { error: memberError } = await db.from("league_members").insert({
-    league_id: leagueId, user_id: user.id, role: "commissioner", team_id: null,
+    league_id: leagueId, user_id: user.id, role: "commissioner", team_id: dealerTeamId,
   });
   if (memberError) {
     /* Without a commissioner row the league would exist and be reachable by nobody -
@@ -403,7 +447,84 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   }
 
   await db.from("profiles").upsert({ user_id: user.id }, { onConflict: "user_id" });
-  return good({ leagueId, name: trimmed, visibility });
+  return good({ leagueId, name: trimmed, visibility, mode });
+}
+
+/* ------------------------------ table mode ------------------------------- */
+/*
+ * Issue #75, OQ-30. A table's teams are made by people sitting down, not by the dealer
+ * typing names: the dealer gets one at creation, and every redeemed table invite makes
+ * another. Each is a plain team row, so everything downstream - the deal, schemes,
+ * scoring, finalize - treats it exactly as a season's team.
+ */
+
+const cleanTeamName = (name) => String(name ?? "").trim().slice(0, 40);
+
+/* A name to start with, from the part of the address before the @. Renamable later; it
+ * only has to be recognisable on the first scoreboard. */
+const defaultTeamName = (user) => {
+  const local = String(user?.email ?? "").split("@")[0].replace(/[^A-Za-z0-9 ._-]/g, "").trim();
+  return (local || "Player").slice(0, 30);
+};
+
+async function insertTableTeam(db, leagueId, name) {
+  /* The legacy id is the team's identity everywhere the engine looks - the same
+   * "team_" + hex shape the commissioner's Add Team makes in the browser. */
+  const legacy = "team_" + randomBytes(5).toString("hex");
+  const { data, error } = await db
+    .from("teams")
+    .insert({ league_id: leagueId, name, legacy_id: legacy, seat: SEAT.SEATED })
+    .select("id, legacy_id")
+    .single();
+  if (error) return { error: error.message };
+  return { id: data.id, legacyId: data.legacy_id };
+}
+
+/**
+ * Sit out, come back, leave, or rejoin.
+ *
+ * A player changes their own seat; the dealer can change anybody's (unseating a player is
+ * the dealer setting them to "left"). Any phase: the hand in progress is fixed by the
+ * snapshot the deal took, so a change made mid-hand applies from the next deal and nobody
+ * is ever pulled out of cards they were dealt.
+ *
+ * THE ONE LIMIT IS SEATS. Sitting out keeps your seat; leaving gives it up. So moving FROM
+ * "left" back to the table needs a seat to be free, and is refused when the table is full.
+ */
+export async function setSeat(db, { leagueId, token, teamId, seat }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isTable(ctx.view)) return fail(400, "Only a table has seats.");
+  if (!SEAT_STATES.includes(seat)) return fail(400, "Unknown seat.");
+  const team = teamRow(ctx.rows, teamId);
+  if (!team || !team.active) return fail(404, "Unknown player.");
+  if (!canActForTeam(ctx.session, team.id)) {
+    return fail(AUTH_ERRORS.notYourTeam.status, AUTH_ERRORS.notYourTeam.error);
+  }
+  const from = seatOf(ctx.view, teamId);
+  if (from === seat) return good({ view: ctx.view });
+  if (from === SEAT.LEFT && seatsFree(ctx.view) < 1) {
+    return fail(409, "The table is full - a seat has to come free first.", { reason: "full" });
+  }
+
+  const { error } = await db.from("teams").update({ seat }).eq("id", team.id);
+  if (error) return fail(500, error.message);
+
+  const verb = {
+    [SEAT.SEATED]: from === SEAT.LEFT ? "rejoined the table" : "is back in",
+    [SEAT.SITTING_OUT]: "is sitting out",
+    [SEAT.LEFT]: "left the table",
+  }[seat];
+  const byDealer = ctx.session.teamId !== team.id;
+  await db.from("events").insert({
+    season_id: ctx.rows.seasons[0].id,
+    period_id: ctx.period?.id ?? null,
+    type: "seat",
+    text: team.name + " " + verb + (byDealer ? " (the dealer)" : "") +
+      (ctx.view.currentPeriod.phase === "pre-deal" ? "." : " from the next hand."),
+  });
+
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
 /** Every league this account belongs to. The landing page's "your leagues" door. */
@@ -452,7 +573,11 @@ export async function createInvite(db, { leagueId, token, teamId = null, role = 
   if (!["commissioner", "manager"].includes(role)) return fail(400, "Unknown role.");
 
   let teamUuid = null;
-  if (role === "manager") {
+  /* A TABLE INVITE NAMES NO TEAM (issue #75): whoever redeems it sits down, and their
+   * team is made for them. Many people can redeem one, up to the seats there are. */
+  if (role === "manager" && isTable(ctx.view)) {
+    if (teamId != null) return fail(400, "At a table, an invite is for a seat, not a team.");
+  } else if (role === "manager") {
     const team = teamRow(ctx.rows, teamId);
     if (!team) return fail(404, "Pick a team for this invite.");
     teamUuid = team.id;
@@ -569,11 +694,26 @@ export async function redeemInvite(db, { code, accountToken }) {
   }
 
   await db.from("profiles").upsert({ user_id: user.id }, { onConflict: "user_id" });
+
+  /* A TABLE INVITE: sit them down. Their team is made here, so it is theirs - and it
+   * stays theirs, record and all, if they leave and come back. Refused when every seat
+   * is taken; the invite is not used up by a refusal. */
+  let teamId = invite.team_id;
+  if (invite.role === "manager" && teamId == null) {
+    const rows = await fetchLeagueRows(db, invite.league_id);
+    const view = rows ? hydrate(rows) : null;
+    if (!view || !isTable(view)) return fail(410, "That invite has no team to give you - ask for a new one.");
+    if (seatsFree(view) < 1) return fail(409, "That table is full - every seat is taken.", { reason: "full" });
+    const made = await insertTableTeam(db, invite.league_id, defaultTeamName(user));
+    if (made.error) return fail(500, made.error);
+    teamId = made.id;
+  }
+
   const { error } = await db.from("league_members").insert({
     league_id: invite.league_id,
     user_id: user.id,
     role: invite.role,
-    team_id: invite.team_id,
+    team_id: teamId,
   });
   if (error && !String(error.message).includes("duplicate key")) return fail(500, error.message);
 
@@ -874,6 +1014,11 @@ export async function submitScheme(db, { leagueId, token, teamId, scheme, expect
   const bad = guard(ctx, "submitScheme", expect, [vkey.scheme(teamId)]);
   if (bad) return bad;
   if (ctx.period.roster_locked) return fail(409, "Schemes are locked.", { reason: "locked" });
+  /* At a table, only the players dealt into this hand have a scheme to play. A season is
+   * not asked - its scheme rules are exactly what they were. */
+  if (isTable(ctx.view) && !periodTeamIds(ctx.view).includes(teamId)) {
+    return fail(409, "You are not in this hand.", { reason: "not-in-hand" });
+  }
 
   /* OQ-B: a Block must protect one of your OWN STARTERS. The artifact's form allowed
    * nothing else but the engine never re-checked, which stops being harmless the
@@ -1156,8 +1301,9 @@ export async function dealPeriod(db, { leagueId, token, expect, feed, refresh })
 function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
   return async (ctx) => {
     const v = ctx.view;
-    const teamIds =
-      v.currentPeriod.type === "playoff" ? v.playoffConfig.activeTeamIds : v.teams.map((t) => t.id);
+    const teamIds = periodTeamIds(v);
+    const tableProblem = tableDealProblem(v);
+    if (tableProblem) return { error: tableProblem };
     if (teamIds.length === 0) return { error: "Add at least one team before dealing rosters." };
 
     /* THE SCHEDULE IS READ BEFORE THE DEAL, NOT AFTER (OQ-25, 2026-09-08). It used to be
@@ -2387,6 +2533,10 @@ async function dealIfDue(db, { league, now, feed, ctx: known = null }) {
     if (verdict.endOfSeason) await noteEndOfSeason(db, ctx, league.id);
     return { steps: [{ step: "deal", did: false, why: verdict.why }] };
   }
+  /* A table short of players is waiting for people, not broken - so it is a reason not
+   * to deal, not a failed run to be retried every hour. */
+  const tableProblem = tableDealProblem(ctx.view);
+  if (tableProblem) return { steps: [{ step: "deal", did: false, why: tableProblem }] };
 
   /* Refresh the pool first, exactly as "Refresh Pool & Deal Rosters" does - Scott's
    * 2026-09-06 answer was that a deal should be off live rosters every time, and an
@@ -2485,12 +2635,10 @@ async function remindOneLeague(db, { league, now }) {
   };
 }
 
-/** Teams eligible for the period in front of us - all of them, or the survivors. *//** Teams eligible for the period in front of us - all of them, or the survivors. */
+/** Teams eligible for the period in front of us - all of them, or the survivors. */
 function periodTeamCount(view) {
-  if (!view) return 0;
-  return view.currentPeriod?.type === "playoff"
-    ? (view.playoffConfig?.activeTeamIds ?? []).length
-    : (view.teams ?? []).length;
+  if (!view || !view.currentPeriod) return 0;
+  return periodTeamIds(view).length;
 }
 
 /**
@@ -2523,7 +2671,12 @@ export async function replaceLeague(db, { leagueId, token, blob }) {
   if (!isCommissioner(ctx.session)) {
     return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
   }
-  await persistBlob(db, ctx.rows, blob, {
+  /* The browser strips `_meta` before sending (src/storage/supabase.js), and at a table
+   * that is where "who is in this hand" lives (issue #75). Without the server's own copy
+   * a rename mid-hand would rewrite the hand's players as every team at the table. The
+   * blob never gets to choose these: they are server-owned, like the clock switches. */
+  const toWrite = isTable(ctx.view) ? { ...blob, _meta: ctx.view._meta } : blob;
+  await persistBlob(db, ctx.rows, toWrite, {
     leagueKey: ctx.rows.leagues[0].name === "Pigskin Poker (Demo League)" ? "demo" : leagueId,
     year: ctx.rows.seasons[0].year,
     /* A player appearing through this path was added by the commissioner on his own

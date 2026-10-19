@@ -2945,3 +2945,177 @@ gate()("the scheduled weekly cycle", () => {
     expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("schemes-processed");
   });
 });
+
+/* ============================================================================
+ *  TABLE MODE - issue #75, OQ-30.
+ *
+ *  A table is created with seats, its dealer sits at it, people join by an invite that
+ *  names no team, and each player chooses hand by hand whether to be dealt in. What is
+ *  asserted here is the part only the server can promise: seats are a hard limit, the
+ *  door closes at the deal, and nobody but the player (or the dealer) moves their seat.
+ * ==========================================================================*/
+
+gate()("table mode", () => {
+  beforeEach(() => resetDemo());
+  const NAME = "Test Table";
+  const cleanup = async () => { await db.from("leagues").delete().eq("name", NAME); };
+
+  /** A table with a dealer, plus `joiners` players who redeemed its invite. */
+  async function makeTable(seats, joiners = 0) {
+    const dealer = await makeAccount("dealer-" + Math.random().toString(36).slice(2) + "@example.test");
+    const made = await ops.createLeague(db, {
+      accountToken: dealer.token, name: NAME, year: 2033, mode: "table", seats, teamName: "The House",
+    });
+    expect(made.body).toMatchObject({ ok: true });
+    const id = made.body.leagueId;
+    const inv = await ops.createInvite(db, { leagueId: id, token: dealer.token, teamId: null, role: "manager" });
+    expect(inv.status).toBe(200);
+    const players = [];
+    for (let i = 0; i < joiners; i += 1) {
+      const acct = await makeAccount("joiner" + i + "-" + Math.random().toString(36).slice(2) + "@example.test");
+      const r = await ops.redeemInvite(db, { code: inv.body.code, accountToken: acct.token });
+      players.push({ ...acct, status: r.status, body: r.body });
+    }
+    const view = async () => hydrate(await fetchLeagueRows(db, id));
+    return { id, dealer, code: inv.body.code, players, view };
+  }
+
+  const legacyOf = async (leagueId, token) => (await ops.whoami(db, { leagueId, token })).body.teamId;
+
+  it("is created with its seats, and seats its dealer", async () => {
+    const t = await makeTable(6);
+    const { data: league } = await db.from("leagues").select("mode, table_seats").eq("id", t.id).single();
+    expect(league).toEqual({ mode: "table", table_seats: 6 });
+
+    const v = await t.view();
+    expect(v._meta.mode).toBe("table");
+    expect(v.teams.map((x) => x.name)).toEqual(["The House"]);
+
+    const me = await ops.whoami(db, { leagueId: t.id, token: t.dealer.token });
+    expect(me.body.role).toBe("commissioner");
+    expect(me.body.teamId).toBe(v.teams[0].id);
+    await cleanup();
+  });
+
+  it("refuses a seat count outside 2 to 13, and a season is still a season", async () => {
+    const { token } = await makeAccount("seats-" + Math.random().toString(36).slice(2) + "@example.test");
+    for (const seats of [1, 14, "lots", null]) {
+      const r = await ops.createLeague(db, { accountToken: token, name: NAME, year: 2033, mode: "table", seats });
+      expect(r.status).toBe(400);
+    }
+    const season = await ops.createLeague(db, { accountToken: token, name: NAME, year: 2033 });
+    const { data } = await db.from("leagues").select("mode, table_seats").eq("id", season.body.leagueId).single();
+    expect(data).toEqual({ mode: "season", table_seats: null });
+    await cleanup();
+  });
+
+  it("gives everyone who redeems the invite their own seat, until the table is full", async () => {
+    const t = await makeTable(3, 3);
+    expect(t.players.map((p) => p.status)).toEqual([200, 200, 409]);
+    expect(t.players[2].body.error).toMatch(/full/);
+
+    const v = await t.view();
+    expect(v.teams).toHaveLength(3);
+    expect(Object.values(v._meta.seats)).toEqual(["seated", "seated", "seated"]);
+    expect(await legacyOf(t.id, t.players[0].token)).toBeTruthy();
+    await cleanup();
+  });
+
+  it("will not let a table invite name a team", async () => {
+    const t = await makeTable(4);
+    const v = await t.view();
+    const r = await ops.createInvite(db, { leagueId: t.id, token: t.dealer.token, teamId: v.teams[0].id, role: "manager" });
+    expect(r.status).toBe(400);
+    await cleanup();
+  });
+
+  it("lets a player sit out, but not move somebody else", async () => {
+    const t = await makeTable(4, 2);
+    const [a, b] = t.players;
+    const aTeam = await legacyOf(t.id, a.token);
+    const bTeam = await legacyOf(t.id, b.token);
+
+    const mine = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "sitting_out" });
+    expect(mine.status).toBe(200);
+    expect(mine.body.view._meta.seatedTeamIds).not.toContain(aTeam);
+
+    const theirs = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: bTeam, seat: "left" });
+    expect(theirs.status).toBe(403);
+
+    // The dealer can unseat anybody.
+    const unseat = await ops.setSeat(db, { leagueId: t.id, token: t.dealer.token, teamId: bTeam, seat: "left" });
+    expect(unseat.status).toBe(200);
+    await cleanup();
+  });
+
+  it("deals only the seated, and the hand keeps its players whatever happens next", async () => {
+    const t = await makeTable(5, 3);
+    const teams = await Promise.all(t.players.map((p) => legacyOf(t.id, p.token)));
+    await ops.setSeat(db, { leagueId: t.id, token: t.players[2].token, teamId: teams[2], seat: "sitting_out" });
+
+    const dealt = await ops.dealPeriod(db, { leagueId: t.id, token: t.dealer.token, refresh: false });
+    expect(dealt.status).toBe(200);
+    const inHand = dealt.body.view._meta.seatedTeamIds;
+    expect(inHand).toHaveLength(3); // the dealer and two of the three
+    expect(inHand).not.toContain(teams[2]);
+    expect(dealt.body.view.teams.find((x) => x.id === teams[2]).roster).toBeNull();
+
+    // Sitting out mid-hand changes the NEXT hand, not this one.
+    await ops.setSeat(db, { leagueId: t.id, token: t.players[0].token, teamId: teams[0], seat: "sitting_out" });
+    expect((await t.view())._meta.seatedTeamIds).toEqual(inHand);
+
+    // A commissioner edit from the browser (which strips _meta) cannot rewrite the hand.
+    const blob = JSON.parse(JSON.stringify(await t.view()));
+    delete blob._meta;
+    blob.teams[0].name = "Renamed House";
+    const replaced = await ops.replaceLeague(db, { leagueId: t.id, token: t.dealer.token, blob });
+    expect(replaced.status).toBe(200);
+    expect(replaced.body.view._meta.seatedTeamIds).toEqual(inHand);
+
+    // And the player who sat out before the deal has no scheme to play.
+    const scheme = await ops.submitScheme(db, {
+      leagueId: t.id, token: t.players[2].token, teamId: teams[2], scheme: { type: "noaction" },
+    });
+    expect(scheme.status).toBe(409);
+    await cleanup();
+  });
+
+  it("will not deal a hand of one", async () => {
+    const t = await makeTable(4, 1);
+    const me = await legacyOf(t.id, t.players[0].token);
+    await ops.setSeat(db, { leagueId: t.id, token: t.players[0].token, teamId: me, seat: "sitting_out" });
+    const r = await ops.dealPeriod(db, { leagueId: t.id, token: t.dealer.token, refresh: false });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/at least 2/);
+    await cleanup();
+  });
+
+  it("keeps a leaver's team for them, and lets them back only into a free seat", async () => {
+    const t = await makeTable(2, 1);
+    const [a] = t.players;
+    const aTeam = await legacyOf(t.id, a.token);
+    await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "left" });
+
+    // Their seat went to somebody else...
+    const late = await makeAccount("late-" + Math.random().toString(36).slice(2) + "@example.test");
+    expect((await ops.redeemInvite(db, { code: t.code, accountToken: late.token })).status).toBe(200);
+
+    // ...so coming back is refused, and their team is still there, still theirs.
+    const back = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "seated" });
+    expect(back.status).toBe(409);
+    expect((await t.view()).teams.map((x) => x.id)).toContain(aTeam);
+
+    // A seat comes free; now they can.
+    const lateTeam = await legacyOf(t.id, late.token);
+    await ops.setSeat(db, { leagueId: t.id, token: late.token, teamId: lateTeam, seat: "left" });
+    const again = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "seated" });
+    expect(again.status).toBe(200);
+    await cleanup();
+  });
+
+  it("has no seats to change in a season", async () => {
+    const token = await asManager(T1);
+    const r = await ops.setSeat(db, { leagueId, token, teamId: T1, seat: "sitting_out" });
+    expect(r.status).toBe(400);
+  });
+});

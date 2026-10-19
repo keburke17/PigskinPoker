@@ -21,6 +21,7 @@
  *     one; see OQ-2.
  */
 
+import { periodTeamIds } from "../engine/standings.js";
 import { stableUuid } from "./ids.js";
 import { splitColumnsFor } from "./statLine.js";
 
@@ -268,10 +269,11 @@ export function decomposeLeague(state, opts) {
       number: cur.number,
       phase: cur.phase,
       roster_locked: !!state.rosterLocked,
-      participant_team_ids:
-        cur.type === "playoff"
-          ? (state.playoffConfig.activeTeamIds || []).map(teamId)
-          : state.teams.map((t) => teamId(t.id)),
+      /* Who is in this period: the bracket, a table's seated players (issue #75), or
+       * every team. Asked of the engine so it cannot disagree with who the deal dealt. */
+      participant_team_ids: periodTeamIds(state)
+        .filter((id) => state.teams.some((t) => t.id === id))
+        .map(teamId),
       finalized_at: null,
     });
   }

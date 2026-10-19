@@ -15,6 +15,7 @@ import { describe, it, expect } from "vitest";
 import {
   finalizeCurrentPeriod,
   periodScoreRows,
+  periodTeamIds,
   periodTeams,
   projectCurrentPeriod,
   seededRng,
@@ -67,6 +68,24 @@ describe("periodTeams", () => {
     const s = dealtState(4, 9);
     s.currentPeriod = { type: "playoff", number: 1, phase: "dealt" };
     s.playoffConfig.activeTeamIds = ["team_1", "team_3"];
+    expect(periodTeams(s).map((t) => t.id)).toEqual(["team_1", "team_3"]);
+  });
+});
+
+describe("periodTeamIds", () => {
+  it("is every team, in league order, in the regular season", () => {
+    const s = dealtState(4, 9);
+    expect(periodTeamIds(s)).toEqual(s.teams.map((t) => t.id));
+  });
+
+  /* The deal is seeded and replayable, and it hands out cards in the order it is given
+   * the teams. So this order is the bracket's, NOT the league's - which is where it
+   * deliberately differs from periodTeams. */
+  it("keeps the bracket's own order in a playoff round", () => {
+    const s = dealtState(4, 9);
+    s.currentPeriod = { type: "playoff", number: 1, phase: "dealt" };
+    s.playoffConfig.activeTeamIds = ["team_3", "team_1"];
+    expect(periodTeamIds(s)).toEqual(["team_3", "team_1"]);
     expect(periodTeams(s).map((t) => t.id)).toEqual(["team_1", "team_3"]);
   });
 });
