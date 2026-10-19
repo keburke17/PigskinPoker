@@ -47,3 +47,40 @@ export function markWelcomed(accountId, leagueId) {
      * which is a great deal better than a dismiss button that can throw. */
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * OQ-31: which weekly recap this person has already seen in this league.
+ *
+ * The recap pops up once per week - the first time a manager opens the app after the
+ * finalize - and then lives on My Team. Remembered here, per device, for the same reason
+ * the welcome card is: the alternative is a column on league_members and a migration, and
+ * the worst a new phone can do is show last week's recap one extra time.
+ *
+ * `week` is a string naming the recap (season id and week number), so a new season's
+ * Week 1 is not mistaken for last season's.
+ * ------------------------------------------------------------------------- */
+const RECAP_KEY = "pigskin_recap_seen_v1";
+
+function readRecaps() {
+  try {
+    const raw = globalThis.localStorage?.getItem(RECAP_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function hasSeenRecap(accountId, leagueId, week) {
+  return readRecaps()[slot(accountId, leagueId)] === week;
+}
+
+export function markRecapSeen(accountId, leagueId, week) {
+  try {
+    const all = readRecaps();
+    all[slot(accountId, leagueId)] = week;
+    globalThis.localStorage?.setItem(RECAP_KEY, JSON.stringify(all));
+  } catch {
+    /* Non-fatal: at worst the recap pops up once more. */
+  }
+}

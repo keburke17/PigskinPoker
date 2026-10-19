@@ -21,7 +21,7 @@ import { RosterHubTab } from "../components/RosterHubTab.jsx";
 import { createPreviewLeague, PREVIEW_TEAMS, previewTeamId, RECAP_WEEKS } from "./previewLeague.js";
 import { RECAP_EXAMPLES } from "./recapExamples.js";
 import { freeRecapsByWeek } from "./freeRecap.js";
-import { RecapReminder, WeeklyRecap } from "./WeeklyRecap.jsx";
+import { RecapReminder, WeeklyRecap } from "../components/weeklyRecap.jsx";
 
 const NAV = [
   { key: "results", label: "Week" },

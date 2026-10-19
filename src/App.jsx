@@ -40,7 +40,8 @@ import { ScoreboardTab } from "./components/ScoreboardTab.jsx";
 import { RulesTab } from "./components/RulesTab.jsx";
 import { HelpTab } from "./components/HelpTab.jsx";
 import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
-import { hasBeenWelcomed, markWelcomed } from "./storage/firstRun.js";
+import { hasBeenWelcomed, hasSeenRecap, markRecapSeen, markWelcomed } from "./storage/firstRun.js";
+import { RecapReminder, WeeklyRecap } from "./components/weeklyRecap.jsx";
 import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
 import { CommissionerTab } from "./components/commissioner.jsx";
 import { MySeatCard } from "./components/table.jsx";
@@ -236,6 +237,12 @@ export default function App() {
    * presses the x, without waiting on a re-read. Declared up here with the other state
    * because the render below has early returns and hooks cannot sit after them. */
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+
+  /* The weekly recap (OQ-31), the same way: which recap was closed in this session, and
+   * which one was opened again from the strip on My Team. Both name a recap by season and
+   * week, so the next week's recap is never mistaken for one already closed. */
+  const [recapClosed, setRecapClosed] = useState(null);
+  const [recapReopened, setRecapReopened] = useState(null);
 
   /* Set by a successful redeem so the welcome card can say "you are already in" rather
    * than "you are in" (issue #26). Session-only on purpose: it describes what just
@@ -683,6 +690,23 @@ export default function App() {
     setWelcomeDismissed(true);
   };
 
+  /* The weekly recap - OQ-31. Pops up once per week, the first time this person opens the
+   * league after the finalize, and never on top of the welcome card. Written by the server
+   * (src/recap/), so a manager without a team, a commissioner who plays none, or a week
+   * before recaps existed simply has none. */
+  const recapBox = state._meta && state._meta.recaps;
+  const myRecap = myTeam && recapBox ? recapBox.byTeam[myTeam.id] || null : null;
+  const recapKey = myRecap ? String(state._meta.seasonId) + ":" + recapBox.week : null;
+  const showRecap = !!myRecap && !showWelcome && (
+    recapReopened === recapKey ||
+    (recapClosed !== recapKey && !hasSeenRecap(accountId, leagueId, recapKey))
+  );
+  const closeRecap = () => {
+    markRecapSeen(accountId, leagueId, recapKey);
+    setRecapClosed(recapKey);
+    setRecapReopened(null);
+  };
+
   /* ORDER AND LABELS, both deliberate (issue #30).
    *
    * The week comes first because the week is what people open the app for; `results` is
@@ -726,6 +750,7 @@ export default function App() {
           onGoTo={setTab}
         />
       ) : null}
+      {showRecap ? <WeeklyRecap recap={myRecap} onClose={closeRecap} onGoTo={goToTab} /> : null}
       <div className="pp-container">
         <div className="pp-header">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -780,6 +805,11 @@ export default function App() {
             * answer in Around the league, so the strip is left off it on purpose. See
             * src/components/schemeTicket.jsx. */}
           {myTeam ? <SchemeTicket state={state} team={myTeam} onOpen={() => goToTab("myteam")} /> : null}
+          {/* Regular weeks only: once the playoffs are on, last regular week's recap has
+            * had its moment and the strip would sit there all postseason. */}
+          {myRecap && tab === "myteam" && state.currentPeriod.type === "week" ? (
+            <RecapReminder recap={myRecap} onOpen={() => setRecapReopened(recapKey)} />
+          ) : null}
           {myTeam && (tab === "myteam" || tab === "hub") ? (
             <ResultStrip state={state} team={myTeam} onSeeWeek={() => goToTab("results")} />
           ) : null}

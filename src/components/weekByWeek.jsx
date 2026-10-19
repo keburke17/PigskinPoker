@@ -19,7 +19,7 @@
  */
 
 import { useState } from "react";
-import { emptyCumulative, isTable, periodLabel, periodTitle, projectCurrentPeriod, rankTeamsWithTiebreak } from "../engine/index.js";
+import { isTable, periodLabel, periodTitle, projectCurrentPeriod, standingsThrough } from "../engine/index.js";
 import { EmptyState } from "./atoms.jsx";
 import { StandingsTable } from "./standings.jsx";
 
@@ -42,36 +42,10 @@ export function resultsFor(weeklyResults, period) {
   return (weeklyResults || []).filter((r) => samePeriod(r.period, period)).slice().sort((a, b) => a.rank - b.rank);
 }
 
-/** The regular-season standings as they stood after `period`, in StandingsTable's shape. */
-export function standingsThrough(weeklyResults, period) {
-  const byTeam = new Map();
-  (weeklyResults || [])
-    .filter((r) => r.period && r.period.type === "week" && r.period.number <= period.number)
-    .slice()
-    .sort((a, b) => a.period.number - b.period.number)
-    .forEach((r) => {
-      const t = byTeam.get(r.teamId) || { teamId: r.teamId, teamName: r.teamName, cum: emptyCumulative() };
-      t.teamName = r.teamName || t.teamName;
-      const cum = t.cum;
-      cum.standingsPoints += r.standingsPoints || 0;
-      if (r.rank === 1) cum.weekWins += 1;
-      if (r.coachResult === "Win") cum.coachWins += 1;
-      cum.totalTDs += r.tds || 0;
-      cum.totalYards += r.yards || 0;
-      if (r.bestPlayer && (!cum.bestPlayer || r.bestPlayer.points > cum.bestPlayer.points)) {
-        cum.bestPlayer = { name: r.bestPlayer.name, position: r.bestPlayer.position, points: r.bestPlayer.points, periodLabel: r.periodLabel || periodLabel(r.period) };
-      }
-      byTeam.set(r.teamId, t);
-    });
-  const rows = Array.from(byTeam.values()).map((t) => ({
-    teamId: t.teamId,
-    teamName: t.teamName,
-    cum: t.cum,
-    rawScore: t.cum.standingsPoints,
-    tb: [t.cum.standingsPoints, t.cum.weekWins, t.cum.coachWins, t.cum.totalTDs, t.cum.totalYards, t.cum.bestPlayer ? t.cum.bestPlayer.points : 0],
-  }));
-  return rankTeamsWithTiebreak(rows);
-}
+/* standingsThrough moved to src/engine/standings.js (2026-10-19) so the weekly recap,
+ * written on the server, ranks a team exactly as this screen does. Re-exported here for
+ * anything that already imported it from this file. */
+export { standingsThrough };
 
 const COACH = { Win: "W", Tie: "T", Loss: "L" };
 

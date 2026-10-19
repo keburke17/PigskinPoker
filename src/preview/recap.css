@@ -1,82 +1,5 @@
-/* Weekly recap prototype - styles. Sits on top of global.css and uses only its tokens,
- * so it reads as part of the app rather than a new look. Preview-only for now. */
-
-.pp-recap{ max-width:460px; padding:18px 16px 14px; }
-.pp-recap.pp-recap-first{ border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-dim), 0 0 36px rgba(232,194,90,0.25); }
-.pp-recap.pp-recap-bottom{ border-color: var(--red-dim); }
-
-.pp-recap-headline{
-  font-family: var(--font-display); font-weight:700; font-size:22px; line-height:1.2;
-  margin:4px 36px 12px 0; color: var(--gold-bright);
-}
-.pp-recap-bottom .pp-recap-headline{ color: var(--text); }
-
-.pp-recap-line{
-  display:flex; align-items:stretch; gap:10px;
-  background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-sm);
-  padding:10px;
-}
-.pp-recap-place{
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  min-width:72px; padding:4px 8px; border-radius: var(--radius-sm);
-  background: var(--surface-3); border:1px solid var(--border);
-}
-.pp-recap-first .pp-recap-place,
-.pp-recap-top .pp-recap-place{ background: linear-gradient(180deg, var(--gold-bright), var(--gold)); border-color: var(--gold-dim); color:#1c1a08; }
-.pp-recap-bottom .pp-recap-place{ background: var(--red-dim); border-color: var(--red); }
-.pp-recap-place-num{ font-family: var(--font-display); font-weight:700; font-size:26px; line-height:1; }
-.pp-recap-place-of{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; opacity:0.8; margin-top:3px; }
-
-.pp-recap-stats{ flex:1; display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; }
-.pp-recap-stat{ display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
-.pp-recap-stat-val{ font-weight:800; font-size:17px; color: var(--text); white-space:nowrap; }
-.pp-recap-stat-lbl{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color: var(--text-faint); margin-top:2px; }
-.pp-recap-move{ font-size:11px; font-weight:800; }
-.pp-recap-move.up{ color: var(--ok); }
-.pp-recap-move.down{ color: var(--danger); }
-.pp-recap-move.flat{ color: var(--text-faint); }
-
-.pp-recap-margin{ font-size:12px; color: var(--text-dim); text-align:center; margin:6px 0 10px; font-style:italic; }
-
-.pp-recap-story{ font-size:15px; line-height:1.5; color: var(--text); margin:0 0 12px; }
-
-.pp-recap-players{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px; }
-.pp-recap-player{ border:1px solid var(--border); border-radius: var(--radius-sm); padding:8px 10px; background: var(--surface); }
-.pp-recap-player.good{ border-left:3px solid var(--ok); }
-.pp-recap-player.bad{ border-left:3px solid var(--danger); }
-.pp-recap-player-head{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color: var(--text-faint); margin-bottom:3px; }
-.pp-recap-player-name{ font-weight:700; font-size:14px; color: var(--text); line-height:1.25; }
-.pp-recap-player-pos{ font-size:10px; font-weight:800; color: var(--gold-dim); margin-left:2px; }
-.pp-recap-player-pts{ font-weight:800; font-size:16px; color: var(--gold-bright); margin-top:2px; }
-.pp-recap-player.bad .pp-recap-player-pts{ color: var(--danger); }
-.pp-recap-player-note{ font-size:12px; color: var(--text-dim); margin-top:2px; line-height:1.3; }
-
-.pp-recap-notes{ display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
-.pp-recap-note{
-  display:flex; gap:10px; align-items:flex-start;
-  border-radius: var(--radius-sm); padding:9px 10px;
-  background: var(--surface); border:1px solid var(--border);
-}
-.pp-recap-note.tone-gold{ border-color: var(--gold-dim); background: rgba(232,194,90,0.08); }
-.pp-recap-note.tone-red{ border-color: var(--red-dim); background: rgba(209,89,79,0.08); }
-.pp-recap-note.tone-blue{ border-color: rgba(88,147,212,0.45); background: rgba(88,147,212,0.08); }
-.pp-recap-note-glyph{ font-size:18px; line-height:1.2; }
-.pp-recap-note-title{ font-weight:700; font-size:13px; color: var(--gold-bright); margin-bottom:2px; }
-.pp-recap-note-text{ font-size:13px; line-height:1.45; color: var(--text-dim); }
-
-.pp-recap-foot{ font-size:11px; color: var(--text-faint); margin:10px 0 0; text-align:center; }
-
-/* The reminder on My Team once the card is closed. */
-.pp-recap-reminder{
-  display:flex; align-items:center; gap:8px; width:100%; min-height:44px;
-  border:1px solid var(--gold-dim); border-radius: var(--radius-sm);
-  background: rgba(232,194,90,0.08); color: var(--text);
-  padding:8px 10px; margin-bottom:12px; font: inherit; font-size:13px; text-align:left; cursor:pointer;
-}
-.pp-recap-reminder.pp-recap-bottom{ border-color: var(--red-dim); background: rgba(209,89,79,0.08); }
-.pp-recap-reminder-label{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color: var(--gold-dim); white-space:nowrap; }
-.pp-recap-reminder-text{ flex:1; color: var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pp-recap-reminder-link{ font-weight:700; color: var(--gold-bright); white-space:nowrap; }
+/* The recap preview's own controls - not part of the design. The recap's styles
+ * live in src/styles/global.css with the rest of the app. */
 
 /* The preview's own control bar - not part of the design being judged. */
 .pp-preview-bar{
@@ -97,11 +20,6 @@
 .pp-preview-note{
   font-size:12px; color: var(--text-faint); border:1px dashed var(--purple); border-radius: var(--radius-sm);
   padding:8px 10px; margin-bottom:12px;
-}
-@media (max-width: 420px){
-  .pp-recap-headline{ font-size:20px; }
-  .pp-recap-place{ min-width:62px; }
-  .pp-recap-stat-val{ font-size:15px; }
 }
 /* Keep the card's buttons clear of the preview bar. */
 .pp-preview-root .pp-overlay{ padding-bottom: 130px; }

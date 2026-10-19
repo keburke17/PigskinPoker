@@ -14,7 +14,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { hydrateLeague } from "./hydrate.js";
+import { hydrateLeague, recapPeriodId } from "./hydrate.js";
 import { authLinkErrorForThisPageLoad } from "./authCallback.js";
 
 /* schemes must be selected by explicit columns: the column-level grant withholds
@@ -239,6 +239,12 @@ export function createSupabaseStore(config) {
     const injuries = seasonIds.length
       ? await sb.from("player_injuries").select("*").in("season_id", seasonIds)
       : { data: [] };
+    /* OQ-31: the latest finalized week's recaps. Forgiving for the same reason - a
+     * database without the table yet costs the pop-up and nothing else. */
+    const recapPeriod = recapPeriodId(seasons.data, periods.data);
+    const recaps = recapPeriod
+      ? await sb.from("weekly_recaps").select("*").eq("period_id", recapPeriod)
+      : { data: [] };
     return {
       leagues: [league.data],
       seasons: seasons.data ?? [],
@@ -253,6 +259,7 @@ export function createSupabaseStore(config) {
       events: events.data ?? [],
       player_week_lines: weekLines.error ? [] : (weekLines.data ?? []),
       player_injuries: injuries.error ? [] : (injuries.data ?? []),
+      weekly_recaps: recaps.error ? [] : (recaps.data ?? []),
     };
   }
 

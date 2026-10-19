@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **917 passed, 39 files**. If the output says
+2. `npm test` before committing: **935 passed, 40 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -258,6 +258,8 @@ commissioner may still rename a coach in his own league; the admins' next push w
 ```
 src/
   engine/       pure game logic - no React, no I/O, fully tested
+  recap/        the weekly recap's words (OQ-31) - pure, run by the server at finalize
+  preview/      a dev-only page, /recap-preview.html, showing recaps on a demo league
   routing/      hand-written URL routing - no dependency, see the note in index.js
   storage/      ALL persistence, behind one interface
   hooks/        useLeague.js - the read/write lifecycle
@@ -267,7 +269,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          39 suites
+tests/          40 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -372,7 +374,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-917 tests. Three groups worth knowing about:
+935 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -381,7 +383,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`, `notifyDb.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 238 of the 917
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 245 of the 935
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -473,6 +475,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | **The week on a clock** | **Done, opt-in.** Two per-league switches (`leagues.auto_process_schemes`, `leagues.auto_advance_week`, both default off) let the scheme deadline and the Tuesday finalize-and-deal run themselves - Scott's request, recorded as OQ-14 and built 2026-09-07. `server/autoCycle.js` holds the rules, `netlify/functions/run-cycle-scheduled.mjs` runs hourly so the deadlines survive the daylight-saving change mid-season. Managers are now told by email, if their commissioner switched it on - OQ-6, below. |
 | **League email** | **Done, opt-in.** Three messages - a week dealt (carrying last week's result), a 12-hour scheme-deadline reminder, and schemes processed - answering OQ-6 as issue #57, built 2026-09-20. One switch per league (`leagues.notify_members`, **default false**); each member turns off each kind for themselves from any message's footer, with no sign-in. `server/notify.js` is the outbox, `notifications` is the send log that keeps a retried hourly run from mailing anybody twice, and nothing sends from a machine whose database is local. League mail has its own sending subdomain so a spam complaint cannot reach the magic links - `docs/EMAIL-SETUP.md` section 6. **Not built: a digest, anything for the commissioner, and any notification that is not email.** |
 | **Live stats feed** | **Mostly done.** The pool refreshes from nflverse depth charts, scoring splits into passing / rushing / receiving (stages 1 and 4, live since 2026-08-29), each period carries the NFL week it plays (stage 3, `server/schedule.js`), the weekly stats pull is built (stage 5, `server/stats.js`), and **it now runs on a schedule** - every three hours, for leagues that opt in (stage 7, `server/autoPull.js`, `leagues.auto_pull_stats`). **Not built: the persistent disagreement view beside each box** - stage 6 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice, and carries nflverse's real publish cadence. |
+| **Weekly recap** | **Done, free.** A short, funny write-up of each team's week - finish, standings move, the steal that backfired, the bench that outscored the lineup - popping up once when a manager next opens the league after the finalize, then kept as a strip on My Team (OQ-31, Scott 2026-10-19). Written ONCE by the server at finalize (`src/recap/`, stored in `weekly_recaps`), from fill-in-the-blank lines in `src/recap/lines.js` that never repeat in a season - `scripts/recap-season-check.mjs` checks that. Two server-owned columns feed it and are deliberately absent from `decompose.js`: `periods.scheme_moves` (what each scheme did, captured when schemes run - the only moment it is known) and `seasons.recap_deck` (the lines used so far). **Nothing in the game reads a recap.** Regular-season weeks only; no AI - Scott chose free for now, and an AI writer later would change only where the words come from. |
 | **Injury report** | **Done, display only.** The NFL's injury report on every player - a QUES / DOUBT / OUT pill and a notepad with the practice days - read every three hours for every league, with no switch (OQ-29, Scott 2026-10-17). Its own table, `player_injuries`, and **nothing deals, scores or locks from it**: it never touches `players.status`, so a Questionable or Out player is dealt exactly as before. Keeping injured players out of the deal was raised and parked as a rules question. `src/engine/injuries.js` holds the dating rules; the file has no date column, so each day is saved as it arrives. |
 | **Table mode** | **Built 2026-10, issue #75, OQ-30 (Kyle, with Scott's agreement).** A second shape of league, chosen at creation (`leagues.mode`): a dealer, 2-13 seats (`leagues.table_seats`), and each player seated, sitting out or gone (`teams.seat`). A hand is a week dealt to whoever is seated; the deal snapshots them into `periods.participant_team_ids` and that snapshot, not `teams.seat`, is who plays it. Everything a table knows reaches the engine through `_meta` (`src/engine/table.js`), so **a state without it is a season** and parity is untouched. The tally is hands won and lost; no playoffs. **Not built: the poker-table view, and gamble mode (#85).** |
 | **Backup import** | **Dropped 2026-09-07.** The commissioner's Backup tab - JSON export and restore - was removed, along with `src/storage/backup.js`. It existed to carry the Artifact league's history across, and that league was a worked example rather than real history, so there was nothing to carry. `npm run db:backup` is the only backup now, and it is Kyle's. OQ-7 records the decision and what a commissioner lost. **Since 2026-09-08 a commissioner can also DELETE a league outright** (OQ-18), which makes that the only copy of a league there is - and it is not on a schedule. |

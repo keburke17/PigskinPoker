@@ -1,12 +1,13 @@
-/* Pigskin Poker - the weekly recap pop-up. A PROTOTYPE, for Scott to look at.
+/* Pigskin Poker UI - the weekly recap pop-up. OQ-31, Scott 2026-10-19.
  *
- * The idea: when a week is finalized and the next one dealt, a manager opening the app
- * lands on a brand new roster with nothing saying how last week went. This card is what
- * they would see first - the finish, the standings move, a short funny write-up of what
- * happened, and a way through to the Week and League screens.
+ * When a week is finalized and the next one dealt, a manager opening the app used to land
+ * on a brand new roster with nothing saying how last week went. This card is what they see
+ * first now - the finish, the standings move, a short funny write-up of what happened, and
+ * a way through to the Week and League screens - once per week, the first time they open
+ * the app after the finalize. RecapReminder keeps it on My Team after that.
  *
- * Nothing in the app imports this yet. The words come from recapExamples.js, written by
- * hand; generating them from a week's real results is the part not built.
+ * The words were written by the server at finalize (src/recap/) and arrive in
+ * `state._meta.recaps`; this file only draws them. NOTHING HERE DECIDES ANYTHING.
  *
  * Built on the welcome card's overlay (pp-overlay, WelcomeOverlay.jsx) so the two read as
  * one mechanism: background tap and a 44px x both close it.
@@ -87,23 +88,25 @@ export function WeeklyRecap({ recap, onClose, onGoTo }) {
             </div>
             <div className="pp-recap-stat">
               <span className="pp-recap-stat-val">
-                {ordinal(recap.rankNow)} <span className={"pp-recap-move " + move.cls}>{move.text}</span>
+                {recap.rankNow ? ordinal(recap.rankNow) : "-"} <span className={"pp-recap-move " + move.cls}>{move.text}</span>
               </span>
               <span className="pp-recap-stat-lbl">overall</span>
             </div>
           </div>
         </div>
-        <div className="pp-recap-margin">{recap.margin}</div>
+        {recap.margin ? <div className="pp-recap-margin">{recap.margin}</div> : null}
 
         <p className="pp-recap-story">{recap.story}</p>
 
-        <div className="pp-recap-players">
-          <PlayerChip label="MVP" glyph={CP(0x1f525)} player={recap.mvp} tone="good" />
-          <PlayerChip label="Dud" glyph={CP(0x1f480)} player={recap.dud} tone="bad" />
-        </div>
+        {recap.mvp || recap.dud ? (
+          <div className="pp-recap-players">
+            {recap.mvp ? <PlayerChip label="MVP" glyph={CP(0x1f525)} player={recap.mvp} tone="good" /> : null}
+            {recap.dud ? <PlayerChip label="Dud" glyph={CP(0x1f480)} player={recap.dud} tone="bad" /> : null}
+          </div>
+        ) : null}
 
         <div className="pp-recap-notes">
-          {recap.notes.map((n, i) => {
+          {(recap.notes || []).map((n, i) => {
             const k = KIND[n.kind] || KIND.league;
             return (
               <div key={i} className={"pp-recap-note tone-" + k.tone}>

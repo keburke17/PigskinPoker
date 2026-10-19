@@ -5,10 +5,11 @@
  * but in the browser and with nothing persisted. Every week is dealt, schemed, scored and
  * finalized by the real engine, with random schemes and random stat lines.
  *
- * It also keeps what the free (template) recaps need for the last two weeks: the rosters
- * before and after schemes, every player's line - bench and free agents included, the way
- * the stats pull records them in `_meta.playerWeeks` - and an injury tag on a few players.
- * The hand-written samples in recapExamples.js do NOT come from here.
+ * It also keeps what the recap needs for each recap week - the rosters before and after
+ * schemes, and every player's line (bench and free agents too, as the stats pull records
+ * them in `_meta.playerWeeks`) with an injury tag on a few - so the preview runs the real
+ * recap code in src/recap/. The hand-written samples in recapExamples.js do NOT come from
+ * here.
  */
 
 import {
@@ -75,13 +76,14 @@ function weekLines(state, seed) {
   return lines;
 }
 
-/* A few starters carry an injury tag that week, as the injury report would show. */
-function weekInjuries(state, seed) {
+/* A few starters carry an injury tag that week, in the shape hydrate gives the injury
+ * report (`_meta.injuries`: player id -> NFL week -> report). */
+function weekInjuries(state, week, seed) {
   const rng = seededRng(seed);
   const tags = {};
   state.teams.forEach((t) => {
     ["QB", "WR", "RB", "TE", "FLEX"].forEach((slot) => {
-      if (rng() < 0.08) tags[t.roster.starters[slot]] = rng() < 0.7 ? "QUES" : "DOUBT";
+      if (rng() < 0.08) tags[t.roster.starters[slot]] = { [week]: { status: rng() < 0.7 ? "Questionable" : "Doubtful", practice: {} } };
     });
   });
   return tags;
@@ -139,7 +141,12 @@ export function createPreviewLeague({ played = 10, recapWeeks = RECAP_WEEKS, see
     if (done.error) throw new Error("recap preview: finalize failed - " + done.error);
     state = done.state;
     if (recapWeeks.includes(week)) {
-      weeks[week] = { beforeSchemes, scored, lines, injuries: weekInjuries(scored, salt + 9100 + week) };
+      /* What the server has at finalize: the feed's lines for everyone, the injury report
+       * and the NFL week, in the `_meta` shape hydrate builds. */
+      const playerWeeks = {};
+      Object.entries(lines).forEach(([pid, line]) => (playerWeeks[pid] = { [week]: line }));
+      scored._meta = { nflWeek: week, playerWeeks, injuries: weekInjuries(scored, week, salt + 9100 + week) };
+      weeks[week] = { beforeSchemes, scored };
     }
   }
 

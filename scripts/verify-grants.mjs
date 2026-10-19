@@ -24,6 +24,8 @@ const READABLE = [
   "player_week_lines",
   // OQ-29: the NFL injury report on every pool player. Display only.
   "player_injuries",
+  // OQ-31: each team's weekly recap, written at finalize. Display only.
+  "weekly_recaps",
   // Global, not league-scoped, and public on purpose - see the pool migration.
   "player_pool",
 ];

@@ -7,8 +7,8 @@
  * which blanks it can use. Anything else is said exactly as written.
  *
  * ADDING LINES is the whole maintenance of the free version, and it is safe: add a line
- * to any list and it joins the rotation. Within one week no two teams are handed the same
- * line from a list until that list runs out (freeRecap.js), so a list wants at least 12.
+ * to any list and it joins the rotation. No line is used twice in a season (write.js);
+ * scripts/recap-season-check.mjs says whether a list is long enough for a whole season.
  *
  * ASCII only, like every source file (CLAUDE.md): straight quotes, plain hyphens.
  */
@@ -125,6 +125,14 @@ export const HEADLINES = {
   "Jacked",
   "Five-Finger Discount at Your Expense",
   "Hostage Situation",
+    "Thief in the Night",
+    "Pilfered",
+    "Your Pocket Got Picked",
+    "Missing Person Report",
+    "Hands Off My Player",
+    "Ransacked",
+    "Stolen Valor",
+    "Swiped Right Off the Roster",
   ],
   bench: [
     "Your Bench Would Like a Word",
@@ -1666,6 +1674,18 @@ export const BENCH_COST = [
   "That {benchName}-for-{starterName} swap you didn't make? Worth {wouldPlace} place.",
   "{benchName} scored {benchPts} while you weren't looking. You'd have been {wouldPlace}.",
   "{starterName} ({starterPts}) vs {benchName} ({benchPts}). Wrong call. {wouldPlace} place, gone.",
+  "{benchName} scored {benchPts} on your bench. Put him in for {starterName} ({starterPts}) and you're {wouldPlace}. Lesson learned? Probably not.",
+  "The {wouldPlace} place version of your week starts {benchName} ({benchPts}) instead of {starterName} ({starterPts}). That version was one tap away.",
+  "{benchName}'s {benchPts} never counted because you sat him. {wouldPlace} place never happened because of it.",
+  "Somewhere in a parallel universe you started {benchName}, scored {benchPts} from him, and finished {wouldPlace}.",
+  "{starterName} gave you {starterPts}. {benchName}, on the bench, gave the folding chair {benchPts}. You gave up {wouldPlace}.",
+  "You had the guy. {benchName}, {benchPts} points, {wouldPlace} place. You just didn't play him.",
+  "{benchName} ({benchPts}) sat behind {starterName} ({starterPts}) all week. That's {wouldPlace} place watching from the sideline.",
+  "Your bench held {benchName} and {benchPts} points. Your lineup held {starterName} and {starterPts}. {wouldPlace} place held a grudge.",
+  "Swap {benchName} in for {starterName} and this recap opens with '{wouldPlace} place'. It doesn't.",
+  "{benchName} was the right call: {benchPts} points. {starterName} was your call: {starterPts}. {wouldPlace} place was the cost.",
+  "Lineup regret of the week: {benchName}, {benchPts} on the bench, worth a {wouldPlace} place finish.",
+  "{wouldPlace} place was sitting on your bench with {benchPts} points and {benchName} on the back of the jersey.",
 ];
 export const BENCH_NOTED = [
   "{benchName} scored {benchPts} on your bench while {starterName} scored {starterPts} in your lineup. Bench points don't count. We checked.",
