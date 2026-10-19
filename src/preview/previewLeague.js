@@ -2,14 +2,19 @@
  * dealt - the screen a manager actually opens on a Tuesday morning.
  *
  * Built from the engine the same way src/storage/demoLeague.js builds the six-team demo,
- * but in the browser and with nothing persisted. It exists so the recap pop-up has the
- * real My Team, Week and League screens behind it. Its numbers are random and do NOT
- * match the words in recapExamples.js, which are written by hand.
+ * but in the browser and with nothing persisted. Every week is dealt, schemed, scored and
+ * finalized by the real engine, with random schemes and random stat lines.
+ *
+ * It also keeps what the free (template) recaps need for the last two weeks: the rosters
+ * before and after schemes, every player's line - bench and free agents included, the way
+ * the stats pull records them in `_meta.playerWeeks` - and an injury tag on a few players.
+ * The hand-written samples in recapExamples.js do NOT come from here.
  */
 
 import {
   createDefaultState,
   dealRosters,
+  deepClone,
   emptyCumulative,
   finalizeCurrentPeriod,
   processSchemes,
@@ -33,6 +38,9 @@ export const PREVIEW_TEAMS = [
 
 export const previewTeamId = (i) => "preview_team_" + (i + 1);
 
+/** The weeks the free recaps are written for. */
+export const RECAP_WEEKS = [5, 6];
+
 function deal(state, ids, seed) {
   const res = dealRosters(state, ids, seededRng(seed));
   if (res.error) throw new Error("recap preview: deal failed - " + res.error);
@@ -43,22 +51,55 @@ function deal(state, ids, seed) {
   return state;
 }
 
-function enterStats(state, ids, seed) {
+/* One line per pool player, so the bench and free agents have points too. Roughly one in
+ * twenty skilled players gets no line at all - inactive - which scores zero. */
+function weekLines(state, seed) {
   const rng = seededRng(seed);
-  const pick = (arr) => arr[Math.floor(rng() * arr.length)];
-  ids.forEach((id) => {
-    const team = state.teams.find((t) => t.id === id);
-    const entry = {};
-    ["Coach", "QB", "WR", "RB", "TE", "FLEX"].forEach((slot) => {
-      const player = state.playerPool.find((p) => p.id === team.roster.starters[slot]);
-      if (!player) return;
-      if (player.position === "Coach") entry[slot] = { result: pick(["Win", "Win", "Loss", "Tie"]) };
-      else if (player.position === "QB") entry[slot] = { yards: String(160 + Math.floor(rng() * 200)), tds: String(Math.floor(rng() * 4)) };
-      else entry[slot] = { yards: String(Math.floor(rng() * 140)), tds: String(Math.floor(rng() * 3)) };
-    });
-    state.statsEntry[id] = entry;
+  const int = (lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
+  const lines = {};
+  state.playerPool.forEach((p) => {
+    if (p.position === "Coach") {
+      const r = rng();
+      lines[p.id] = { result: r < 0.5 ? "Win" : r < 0.94 ? "Loss" : "Tie" };
+      return;
+    }
+    if (rng() < 0.05) return;
+    if (p.position === "QB") {
+      lines[p.id] = { passYards: int(120, 360), passTds: int(0, 4), rushYards: rng() < 0.4 ? int(0, 50) : 0, rushTds: rng() < 0.1 ? 1 : 0 };
+    } else if (p.position === "RB") {
+      lines[p.id] = { rushYards: int(8, 140), rushTds: rng() < 0.45 ? int(1, 2) : 0, recYards: int(0, 45), recTds: rng() < 0.08 ? 1 : 0 };
+    } else {
+      lines[p.id] = { recYards: int(0, 140), recTds: rng() < 0.35 ? int(1, 2) : 0 };
+    }
   });
-  return state;
+  return lines;
+}
+
+/* A few starters carry an injury tag that week, as the injury report would show. */
+function weekInjuries(state, seed) {
+  const rng = seededRng(seed);
+  const tags = {};
+  state.teams.forEach((t) => {
+    ["QB", "WR", "RB", "TE", "FLEX"].forEach((slot) => {
+      if (rng() < 0.08) tags[t.roster.starters[slot]] = rng() < 0.7 ? "QUES" : "DOUBT";
+    });
+  });
+  return tags;
+}
+
+/* A scheme for every team: mostly something, sometimes nothing. */
+function randomSchemes(state, seed) {
+  const rng = seededRng(seed);
+  const schemes = {};
+  state.teams.forEach((t) => {
+    const r = rng();
+    const pos = ["QB", "WR", "RB", "TE"][Math.floor(rng() * 4)];
+    const pid = t.roster.starters[pos];
+    if (r < 0.15) return;
+    const type = r < 0.4 ? "block" : r < 0.75 ? "steal" : "redraw";
+    schemes[t.id] = { type, position: pos, playerId: pid, submittedAt: "2026-10-01T15:00:00.000Z" };
+  });
+  return schemes;
 }
 
 export function createPreviewLeague() {
@@ -72,18 +113,34 @@ export function createPreviewLeague() {
     playoffCumulative: emptyCumulative(),
   }));
   const ids = state.teams.map((t) => t.id);
+  const weeks = {};
 
   for (let week = 1; week <= 6; week++) {
     state = deal(state, ids, 4100 + week);
+    state.schemes = randomSchemes(state, 8100 + week);
+    const beforeSchemes = deepClone(state);
     state = processSchemes(state, seededRng(5100 + week));
     state.currentPeriod.phase = "stats";
     state.rosterLocked = true;
-    state = enterStats(state, ids, 6100 + week);
+    const lines = weekLines(state, 6100 + week);
+    state.teams.forEach((t) => {
+      const entry = {};
+      ["Coach", "QB", "WR", "RB", "TE", "FLEX"].forEach((slot) => {
+        const line = lines[t.roster.starters[slot]];
+        if (line) entry[slot] = line;
+      });
+      state.statsEntry[t.id] = entry;
+    });
+    const scored = deepClone(state);
     const done = finalizeCurrentPeriod(state, seededRng(7100 + week));
     if (done.error) throw new Error("recap preview: finalize failed - " + done.error);
     state = done.state;
+    if (RECAP_WEEKS.includes(week)) {
+      weeks[week] = { beforeSchemes, scored, lines, injuries: weekInjuries(scored, 9100 + week) };
+    }
   }
 
   /* Week 7, Tuesday morning: a brand new roster and nothing submitted yet. */
-  return deal(state, ids, 4107);
+  state = deal(state, ids, 4107);
+  return { state, weeks };
 }

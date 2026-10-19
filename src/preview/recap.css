@@ -83,9 +83,11 @@
   position:fixed; left:0; right:0; bottom:0; z-index:60;
   background:#000; border-top:2px solid var(--purple); color:#fff;
   padding:8px 12px calc(8px + env(safe-area-inset-bottom));
-  display:flex; align-items:center; gap:8px; font-family: var(--font-body); font-size:13px;
+  display:flex; flex-direction:column; gap:6px; font-family: var(--font-body); font-size:13px;
 }
-.pp-preview-tag{ font-size:10px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; color: var(--purple); white-space:nowrap; }
+.pp-preview-row{ display:flex; align-items:center; gap:8px; }
+.pp-preview-tag.free{ color: var(--ok); }
+.pp-preview-tag{ min-width:52px; font-size:10px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; color: var(--purple); white-space:nowrap; }
 .pp-preview-bar select{
   flex:1; min-width:0; min-height:40px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; padding:0 8px; font-size:14px;
 }
@@ -102,5 +104,5 @@
   .pp-recap-stat-val{ font-size:15px; }
 }
 /* Keep the card's buttons clear of the preview bar. */
-.pp-preview-root .pp-overlay{ padding-bottom: 84px; }
-.pp-preview-root .pp-overlay-card{ max-height: calc(100vh - 104px); }
+.pp-preview-root .pp-overlay{ padding-bottom: 130px; }
+.pp-preview-root .pp-overlay-card{ max-height: calc(100vh - 150px); }

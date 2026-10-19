@@ -1,10 +1,15 @@
 /* The weekly-recap preview: the real league screens - header, nav, My Team, Week,
  * League, Rosters - for a 12-team league on the Tuesday morning Week 7 was dealt, with
- * the recap pop-up on top and a bar at the bottom to flip between the samples.
+ * the recap pop-up on top and a bar at the bottom to flip between recaps.
  *
- * Open /recap-preview.html under `npm run dev`. Nothing here talks to a database: the
- * league is built in the browser by previewLeague.js and every button that would save
- * something does nothing.
+ * Two kinds of recap, chosen in the bar:
+ *   FREE      - written by freeRecap.js from this league's own Week 5 and Week 6, with
+ *               fill-in-the-blank lines. No AI, no account. Its numbers match the screens.
+ *   AI-STYLE  - the hand-written samples in recapExamples.js, showing what an AI writer
+ *               (a paid account) would aim for. Its numbers do NOT match the screens.
+ *
+ * Open /recap-preview.html under `npm run dev`. Nothing here talks to a database and
+ * every button that would save something does nothing.
  */
 
 import { useMemo, useState } from "react";
@@ -13,8 +18,9 @@ import { MyTeamTab } from "../components/MyTeamTab.jsx";
 import { ScoreboardTab } from "../components/ScoreboardTab.jsx";
 import { LeagueHomeTab } from "../components/LeagueHomeTab.jsx";
 import { RosterHubTab } from "../components/RosterHubTab.jsx";
-import { createPreviewLeague, PREVIEW_TEAMS, previewTeamId } from "./previewLeague.js";
+import { createPreviewLeague, PREVIEW_TEAMS, previewTeamId, RECAP_WEEKS } from "./previewLeague.js";
 import { RECAP_EXAMPLES } from "./recapExamples.js";
+import { freeRecapsFor } from "./freeRecap.js";
 import { RecapReminder, WeeklyRecap } from "./WeeklyRecap.jsx";
 
 const NAV = [
@@ -27,25 +33,39 @@ const NAV = [
 const noop = () => {};
 
 export function RecapPreview() {
-  const state = useMemo(() => createPreviewLeague(), []);
+  const league = useMemo(() => createPreviewLeague(), []);
+  const state = league.state;
+  const sets = useMemo(() => {
+    const free = RECAP_WEEKS.slice().reverse().map((w) => ({ key: "free" + w, label: "Free - Week " + w, recaps: freeRecapsFor(league, w), free: true }));
+    return [...free, { key: "ai", label: "AI-style samples", recaps: RECAP_EXAMPLES, free: false }];
+  }, [league]);
+
+  const [setIdx, setSetIdx] = useState(0);
   const [index, setIndex] = useState(0);
   const [open, setOpen] = useState(true);
   const [tab, setTab] = useState("myteam");
 
-  const recap = RECAP_EXAMPLES[index];
-  /* You are whichever team the sample is about, so the header and My Team match it. */
+  const set = sets[setIdx];
+  const recap = set.recaps[index];
+  /* You are whichever team the recap is about, so the header and My Team match it. */
   const teamIdx = Math.max(0, PREVIEW_TEAMS.indexOf(recap.team));
   const myTeam = state.teams.find((t) => t.id === previewTeamId(teamIdx));
 
   const show = (i) => {
-    setIndex((i + RECAP_EXAMPLES.length) % RECAP_EXAMPLES.length);
+    setIndex((i + set.recaps.length) % set.recaps.length);
     setTab("myteam");
     setOpen(true);
     window.scrollTo(0, 0);
   };
+  const switchSet = (i) => {
+    setSetIdx(i);
+    setIndex(0);
+    setTab("myteam");
+    setOpen(true);
+  };
 
   return (
-    <div className="pp-root pp-preview-root" style={{ paddingBottom: 90 }}>
+    <div className="pp-root pp-preview-root" style={{ paddingBottom: 130 }}>
       {open ? <WeeklyRecap recap={recap} onClose={() => setOpen(false)} onGoTo={setTab} /> : null}
 
       <div className="pp-container">
@@ -68,9 +88,9 @@ export function RecapPreview() {
         </div>
 
         <div style={{ paddingTop: 14 }}>
-          {tab !== "myteam" ? (
+          {tab !== "myteam" && !set.free ? (
             <div className="pp-preview-note">
-              Preview: this league&apos;s scores are a random demo and won&apos;t match the recap&apos;s numbers.
+              Preview: the AI-style samples were written by hand, so this league&apos;s scores won&apos;t match them. Switch to a Free set and they will.
             </div>
           ) : null}
           {tab === "myteam" ? (
@@ -86,14 +106,23 @@ export function RecapPreview() {
       </div>
 
       <div className="pp-preview-bar">
-        <span className="pp-preview-tag">Sample</span>
-        <button onClick={() => show(index - 1)} aria-label="Previous sample">{"<"}</button>
-        <select value={index} onChange={(e) => show(Number(e.target.value))} aria-label="Choose a sample recap">
-          {RECAP_EXAMPLES.map((r, i) => (
-            <option key={r.id} value={i}>{r.label}</option>
-          ))}
-        </select>
-        <button onClick={() => show(index + 1)} aria-label="Next sample">{">"}</button>
+        <div className="pp-preview-row">
+          <span className={"pp-preview-tag" + (set.free ? " free" : "")}>{set.free ? "Free" : "Paid AI"}</span>
+          <select value={setIdx} onChange={(e) => switchSet(Number(e.target.value))} aria-label="Choose which recaps">
+            {sets.map((s, i) => (
+              <option key={s.key} value={i}>{s.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="pp-preview-row">
+          <button onClick={() => show(index - 1)} aria-label="Previous recap">{"<"}</button>
+          <select value={index} onChange={(e) => show(Number(e.target.value))} aria-label="Choose a recap">
+            {set.recaps.map((r, i) => (
+              <option key={r.id} value={i}>{r.label}</option>
+            ))}
+          </select>
+          <button onClick={() => show(index + 1)} aria-label="Next recap">{">"}</button>
+        </div>
       </div>
     </div>
   );
