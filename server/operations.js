@@ -409,11 +409,19 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
     await db.from("leagues").delete().eq("id", leagueId);
     return fail(500, "Could not stock the player pool: " + (poolError?.message ?? "the pool is empty"));
   }
+  /* A season writes exactly what it always did. The table columns are only named for a
+   * table, so a season league is created the same way whether or not the table-mode
+   * migration has reached this database yet. */
   const { error: visError } = await db
     .from("leagues")
-    .update({ visibility, mode, table_seats: seatCount })
+    .update(table ? { visibility, mode, table_seats: seatCount } : { visibility })
     .eq("id", leagueId);
-  if (visError) return fail(500, visError.message);
+  if (visError) {
+    /* Nobody is a member yet, so a league left here could be reached by nobody. Same
+     * undo as the two failures below. */
+    await db.from("leagues").delete().eq("id", leagueId);
+    return fail(500, visError.message);
+  }
 
   /* THE DEALER PLAYS. A table is a home game, and the person who set it up takes a seat
    * at it like everybody else - and can sit out a hand like everybody else. Their
@@ -1006,8 +1014,9 @@ export async function submitScheme(db, { leagueId, token, teamId, scheme, expect
   const bad = guard(ctx, "submitScheme", expect, [vkey.scheme(teamId)]);
   if (bad) return bad;
   if (ctx.period.roster_locked) return fail(409, "Schemes are locked.", { reason: "locked" });
-  /* At a table, only the players dealt into this hand have a scheme to play. */
-  if (!periodTeamIds(ctx.view).includes(teamId)) {
+  /* At a table, only the players dealt into this hand have a scheme to play. A season is
+   * not asked - its scheme rules are exactly what they were. */
+  if (isTable(ctx.view) && !periodTeamIds(ctx.view).includes(teamId)) {
     return fail(409, "You are not in this hand.", { reason: "not-in-hand" });
   }
 

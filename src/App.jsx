@@ -662,11 +662,13 @@ export default function App() {
   }
 
   const isCommissioner = identity.role === "commissioner";
-  /* Whoever holds a team. That used to mean managers only, because a commissioner never
-   * had one; a table's DEALER does - they play at their own table (issue #75) - and a
-   * season's commissioner still has none, so for a season this is unchanged. */
-  const myTeam = identity.teamId ? state.teams.find((t) => t.id === identity.teamId) || null : null;
   const table = isTable(state);
+  /* A manager's team - and at a table, the DEALER's too, because they play at their own
+   * table (issue #75). A season is exactly as before: a commissioner who was once a
+   * manager can still carry a team_id, and must not grow a My Team tab because of it. */
+  const myTeam = identity.teamId && (identity.role === "manager" || table)
+    ? state.teams.find((t) => t.id === identity.teamId) || null
+    : null;
 
   /* The welcome card - issue #24 from the commissioner's side, #26 from a manager's.
    * Shown once per person per league; `hasBeenWelcomed` is the durable half and reads
@@ -693,8 +695,8 @@ export default function App() {
    * row at 375px), so the nav also wraps on narrow screens - see .pp-nav in global.css.
    * Keep new labels short anyway: two rows of pills is fine, three is a menu. */
   const NAV = [
-    { key: "results", label: "Week" },
-    ...(identity.role === "manager" || myTeam ? [{ key: "myteam", label: "My Team" }] : []),
+    { key: "results", label: table ? "Hand" : "Week" },
+    ...(identity.role === "manager" || (table && myTeam) ? [{ key: "myteam", label: "My Team" }] : []),
     { key: "home", label: table ? "Table" : "League" },
     { key: "hub", label: "Rosters" },
     { key: "rules", label: "Rules" },

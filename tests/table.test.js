@@ -172,3 +172,38 @@ describe("what is written for a hand", () => {
     expect(rows.periods[0].participant_team_ids).toHaveLength(2);
   });
 });
+
+describe("what a table says, and what a season still says", async () => {
+  const { nextStep } = await import("../src/components/guidance.js");
+  const { periodTitle, periodWord } = await import("../src/engine/index.js");
+
+  it("calls the period a hand at a table, and a week everywhere else", () => {
+    const t = tableState(3);
+    expect(periodTitle(t)).toBe("Hand 1");
+    expect(periodWord(t)).toBe("hand");
+    const s = baseState(3);
+    expect(periodTitle(s)).toBe("Week 1");
+    expect(periodWord(s)).toBe("week");
+    s.currentPeriod = { type: "playoff", number: 2, phase: "dealt" };
+    expect(periodTitle(s)).toBe("Playoff Round 2");
+  });
+
+  it("tells the dealer to deal a hand, or to find a second player first", () => {
+    expect(nextStep(tableState(3), "commissioner", null).headline).toBe("Deal Hand 1.");
+    expect(nextStep(tableState(1), "commissioner", null).headline).toBe("Get a second player to the table.");
+  });
+
+  it("tells a player who is sitting out, or was not dealt in, where they stand", () => {
+    const out = tableState(3, { seat: { team_2: SEAT.SITTING_OUT } });
+    expect(nextStep(out, "manager", out.teams[2]).headline).toBe("You are sitting out Hand 1.");
+    const dealt = dealHand(tableState(3, { seat: { team_2: SEAT.SITTING_OUT } }));
+    expect(nextStep(dealt, "manager", dealt.teams[2]).headline).toBe("You are not in Hand 1.");
+    expect(nextStep(dealt, "manager", dealt.teams[0]).detail).not.toMatch(/commissioner/);
+  });
+
+  it("leaves a season's guidance exactly as it was", () => {
+    const s = baseState(3);
+    expect(nextStep(s, "commissioner", null).headline).toBe("Deal Week 1.");
+    expect(nextStep(s, "commissioner", null).detail).toMatch(/Commissioner -> Invite/);
+  });
+});

@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { SUIT_GLYPH, formatClock, hasSplitStats, periodLabel, statLineTotals } from "../engine/index.js";
+import { SUIT_GLYPH, formatClock, hasSplitStats, periodLabel, periodTitle, statLineTotals } from "../engine/index.js";
 
 export function SuitBadge({ position }) {
   return <span className={"pp-suit-badge pp-suit-" + position} title={position}>{SUIT_GLYPH[position] || "?"}</span>;
@@ -161,7 +161,7 @@ export function phaseText(state) {
 export function PeriodBanner({ state, extra }) {
   return (
     <div className="pp-period-banner">
-      <span className="pp-period-banner-label">{periodLabel(state.currentPeriod)}</span>
+      <span className="pp-period-banner-label">{periodTitle(state)}</span>
       <span className="pp-period-banner-phase">{phaseText(state)}</span>
       {extra ? <span className="pp-period-banner-extra">{extra}</span> : null}
     </div>

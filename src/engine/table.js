@@ -21,6 +21,8 @@
  *                        the snapshot the deal took once it has been dealt
  */
 
+import { periodLabel } from "./helpers.js";
+
 export const SEAT = Object.freeze({
   SEATED: "seated",
   SITTING_OUT: "sitting_out",
@@ -136,4 +138,22 @@ export function handLabel(period) {
 /** The word for the person running the league. Same role underneath. */
 export function hostTitle(state) {
   return isTable(state) ? "Dealer" : "Commissioner";
+}
+
+/**
+ * A period's name on screen: "Hand 3" at a table, and whatever a season has always
+ * called it ("Week 3", "Playoff Round 1") everywhere else. Words only - the period
+ * itself, and every label stored with a result, is unchanged.
+ */
+export function periodTitle(state, period) {
+  const p = period || (state && state.currentPeriod);
+  if (isTable(state) && p && p.type === "week") return handLabel(p);
+  return periodLabel(p);
+}
+
+/** "hand" at a table, "week" (or "round") in a season - for running text. */
+export function periodWord(state, period) {
+  const p = period || (state && state.currentPeriod);
+  if (isTable(state)) return "hand";
+  return p && p.type === "playoff" ? "round" : "week";
 }

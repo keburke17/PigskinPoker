@@ -45,6 +45,8 @@ import {
   advanceDeadlineWords,
   autoAdvanceWeek,
   autoProcessSchemes,
+  hostTitle,
+  isTable,
   lineupLockMode,
   schemeDeadlineWords,
 } from "../engine/index.js";
@@ -54,6 +56,7 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
   const [closing, setClosing] = useState(false);
   const step = nextStep(state, role, team);
   const isCommissioner = role === "commissioner";
+  const table = isTable(state);
 
   const close = () => {
     setClosing(true);
@@ -72,11 +75,13 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
         <button className="pp-overlay-x" onClick={close} aria-label="Close">x</button>
 
         <h2 className="pp-h2" style={{ marginBottom: 4 }}>
-          {isCommissioner ? "Your league is live" : alreadyMember ? "You are already in" : "You are in"}
+          {isCommissioner ? (table ? "Your table is open" : "Your league is live") : alreadyMember ? "You are already in" : table ? "You have a seat" : "You are in"}
         </h2>
         <p className="pp-sub" style={{ marginBottom: 12 }}>
           {leagueName}
-          {team ? " - you are " + team.name : isCommissioner ? " - you are the commissioner" : ""}.
+          {table && isCommissioner
+            ? " - you deal" + (team ? ", and you play as " + team.name : "")
+            : team ? " - you are " + team.name : isCommissioner ? " - you are the commissioner" : ""}.
         </p>
 
         <div className="pp-overlay-step">
@@ -84,12 +89,12 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
           <p className="pp-sub" style={{ marginBottom: 0 }}>{step.detail}</p>
         </div>
 
-        {isCommissioner ? <CommissionerBasics state={state} /> : <ManagerBasics state={state} />}
+        {isCommissioner ? (table ? <DealerBasics state={state} /> : <CommissionerBasics state={state} />) : <ManagerBasics state={state} />}
 
         <div className="pp-overlay-actions">
           {step.tab ? (
             <button className="pp-btn pp-btn-gold" onClick={() => { onGoTo(step.tab); close(); }}>
-              {step.tab === "myteam" ? "Go to My Team" : "Go to Commissioner"}
+              {step.tab === "myteam" ? "Go to My Team" : "Go to " + hostTitle(state)}
             </button>
           ) : null}
           <button className="pp-btn" onClick={() => { onGoTo("help"); close(); }}>How this works</button>
@@ -104,19 +109,37 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
  * and cannot discover from the screen they are looking at. */
 function ManagerBasics({ state }) {
   const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
+  const table = isTable(state);
   return (
     <ul className="pp-rule-list pp-overlay-list">
+      {table ? (
+        <li><strong>Play the hands you want.</strong> You are dealt into every hand while you are seated. Sit out from My Team to skip one and keep your seat, or leave the table and give it up - your record stays yours either way.</li>
+      ) : null}
       <li><strong>Fresh roster every week.</strong> 12 random players - 6 starters (Coach, QB, WR, RB, TE, FLEX) and 6 bench. Nothing carries over, so a bad week is only a week.</li>
       <li><strong>One scheme per week.</strong> Block protects a starter, Steal takes an unprotected starter off another team, Redraw swaps a player for a random free agent. No Action is a real choice, and it is what you get if you submit nothing.</li>
       {autoProcessSchemes(state) ? (
         <li><strong>Schemes close at {schemeDeadlineWords(state)}.</strong> On the clock, like waivers - not when somebody gets round to it. Miss it and you get No Action for the week.</li>
       ) : null}
       {weekly ? (
-        <li><strong>Your lineup closes at the week&apos;s first kickoff.</strong> Usually Thursday night. Schemes close earlier{autoProcessSchemes(state) ? "" : ", when your commissioner processes the week"} - so do both while you are thinking about it.</li>
+        <li><strong>Your lineup closes at the week&apos;s first kickoff.</strong> Usually Thursday night. Schemes close earlier{autoProcessSchemes(state) ? "" : ", when your " + (table ? "dealer" : "commissioner") + " processes the week"} - so do both while you are thinking about it.</li>
       ) : (
-        <li><strong>Each player locks when his own game starts.</strong> So you can keep changing your lineup all Sunday, using anyone who has not kicked off yet. Schemes close separately{autoProcessSchemes(state) ? "" : ", when your commissioner processes the week"}.</li>
+        <li><strong>Each player locks when his own game starts.</strong> So you can keep changing your lineup all Sunday, using anyone who has not kicked off yet. Schemes close separately{autoProcessSchemes(state) ? "" : ", when your " + (table ? "dealer" : "commissioner") + " processes the week"}.</li>
       )}
       <li><strong>Only starters score.</strong> Bench players never score, whatever they do on Sunday.</li>
+    </ul>
+  );
+}
+
+/* The dealer's version (issue #75). Same cycle as a season - it is the same engine - but
+ * a table's setup is an invite rather than a team list, and a finalize records a winner
+ * rather than awarding standings points. */
+function DealerBasics({ state }) {
+  return (
+    <ul className="pp-rule-list pp-overlay-list">
+      <li><strong>Each hand is a week you drive.</strong> Deal, let players submit schemes, process the schemes, lock the rosters, enter stats, finalize. {anyClock(state) ? clockSentence(state).replace(/the week is/g, "the hand is").replace(/the next one dealt/g, "the next hand dealt") : "Nothing advances on its own."}</li>
+      <li><strong>Seats, not teams.</strong> Send one invite; everyone who redeems it sits down with a team of their own, up to your seat count. Dealer -&gt; Seats shows who is in, who is sitting out, and who has left.</li>
+      <li><strong>The door closes at the deal.</strong> Whoever is seated when you deal plays the hand. Anyone who sits down or gets up after that changes the next hand, not this one.</li>
+      <li><strong>Finalize ends the hand.</strong> It scores everyone, records who won, and opens the next hand. The table keeps a tally of hands won and lost - no standings, no playoffs.</li>
     </ul>
   );
 }

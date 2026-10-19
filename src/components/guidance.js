@@ -23,6 +23,11 @@ import {
   kickoffsFor,
   lineupLockMode,
   schemeDeadlineWords,
+  SEAT,
+  TABLE_MIN_PLAYERS,
+  isTable,
+  periodTeamIds,
+  seatOf,
 } from "../engine/index.js";
 
 /* The weekly cycle, named once. CLAUDE.md writes it as
@@ -68,10 +73,132 @@ function clockWillDeal(state) {
  * there is genuinely nothing to open, so the caller can render a button or not.
  */
 export function nextStep(state, role, team) {
+  /* A table (issue #75) gets its own wording: a dealer, players, seats and hands. A
+   * season's sentences below are untouched by it. */
+  if (isTable(state)) return role === "commissioner" ? dealerStep(state) : playerStep(state, team);
   return role === "commissioner"
     ? commissionerStep(state)
     : managerStep(state, team);
 }
+
+/* ------------------------------ table mode ------------------------------ */
+
+function dealerStep(state) {
+  const phase = state.currentPeriod.phase;
+  const hand = periodName(state);
+  if (phase === "pre-deal") {
+    const seated = periodTeamIds(state).length;
+    if (seated < TABLE_MIN_PLAYERS) {
+      return {
+        headline: "Get a second player to the table.",
+        detail: "A hand needs at least " + TABLE_MIN_PLAYERS + " players seated. Dealer " + ARROWED + " Invite makes one code for the whole table - everyone who redeems it takes a seat with a team of their own.",
+        tab: "comm",
+      };
+    }
+    return clockWillDeal(state)
+      ? {
+          headline: hand + " is dealt for you at " + advanceDeadlineWords(state) + ".",
+          detail: "Nothing to press - the clock deals it to whoever is seated then. You can still deal it now yourself if you would rather not wait.",
+          tab: "comm",
+        }
+      : {
+          headline: "Deal " + hand + ".",
+          detail: seated + " players are seated, and each gets a fresh, random 12-player hand. Anyone sitting out is not dealt in, and anyone who sits down after the deal waits for the next hand.",
+          tab: "comm",
+        };
+  }
+  if (phase === "dealt") {
+    if (state.rosterLocked) {
+      return {
+        headline: "Enter the stats, then finalize.",
+        detail: "Rosters are locked, so scheme submission is closed. Pull Stats fills every starter's boxes from the NFL week; anything you typed yourself is never overwritten.",
+        tab: "comm",
+      };
+    }
+    return autoProcessSchemes(state)
+      ? {
+          headline: "Schemes process themselves at " + schemeDeadlineWords(state) + ".",
+          detail: "Players are setting lineups and picking schemes; Dealer " + ARROWED + " Hands shows who is still out. Anyone who has not submitted by then gets No Action. You can still process early if everyone is in.",
+          tab: "comm",
+        }
+      : {
+          headline: "Wait for schemes, then process them.",
+          detail: "Players are setting lineups and picking schemes. Dealer " + ARROWED + " Hands shows who is still out. Processing resolves every block, steal and redraw at once.",
+          tab: "comm",
+        };
+  }
+  if (phase === "schemes-processed") {
+    if (autoAdvanceWeek(state)) {
+      return {
+        headline: "The hand finalizes itself on " + advanceDeadlineWords(state) + ".",
+        detail: "Once every game of the NFL week is final, the clock scores the hand, records who won and deals the next one to whoever is seated. Check the stats before then - after a finalize there is no undo.",
+        tab: "comm",
+      };
+    }
+    return {
+      headline: "Lock the rosters, then enter stats.",
+      detail: isWeekly(state)
+        ? "Schemes are resolved. Locking closes scheme submission for the weekend; lineups close on their own at " + weeklyDeadline(state) + ", so nothing is left for you to press there."
+        : "Schemes are resolved. Locking closes scheme submission for the weekend; players can still swap a bench player in until that player's own game kicks off. You can freeze one earlier by hand.",
+      tab: "comm",
+    };
+  }
+  return {
+    headline: "Finalize the hand.",
+    detail: "Finalizing scores the hand, records who won it, and opens the next one. Anyone who sat down or got up during the hand is dealt in or out from then.",
+    tab: "comm",
+  };
+}
+
+function playerStep(state, team) {
+  const phase = state.currentPeriod.phase;
+  const hand = periodName(state);
+  const seat = team ? seatOf(state, team.id) : SEAT.SEATED;
+  const inHand = !!team && periodTeamIds(state).includes(team.id);
+
+  if (seat === SEAT.LEFT && !inHand) {
+    return {
+      headline: "You have left the table.",
+      detail: "Your team and your record are kept. Rejoin from My Team whenever a seat is free.",
+      tab: "myteam",
+    };
+  }
+  if (phase === "pre-deal") {
+    return seat === SEAT.SITTING_OUT
+      ? {
+          headline: "You are sitting out " + hand + ".",
+          detail: "Your seat is held for you. Come back from My Team before the deal and you are dealt in.",
+          tab: "myteam",
+        }
+      : {
+          headline: "Nothing to do yet.",
+          detail:
+            (clockWillDeal(state)
+              ? hand + " is dealt automatically on " + advanceDeadlineWords(state) + "."
+              : "The dealer deals " + hand + " when the table is ready.") +
+            " You will get 12 players - 6 starters and 6 bench - and then you set your lineup and pick a scheme.",
+          tab: null,
+        };
+  }
+  if (!inHand) {
+    return {
+      headline: "You are not in " + hand + ".",
+      detail: seat === SEAT.SEATED
+        ? "It was dealt before you took your seat. You are in the next hand."
+        : "You were sitting out when it was dealt. Come back from My Team to be dealt into the next one.",
+      tab: "myteam",
+    };
+  }
+  /* In the hand: the same steps a season's manager has, with the dealer in place of the
+   * commissioner. */
+  const step = managerStep(state, team);
+  return {
+    ...step,
+    detail: step.detail.replace(/the commissioner/g, "the dealer").replace(/your commissioner/g, "the dealer").replace(/the week is finalized/g, "the hand is finalized"),
+  };
+}
+
+/* ------------------------------- a season ------------------------------- */
 
 function commissionerStep(state) {
   const phase = state.currentPeriod.phase;
@@ -200,6 +327,7 @@ function managerStep(state, team) {
 /* "Week 3" / "Round 2", without dragging periodLabel's import graph in here. */
 function periodName(state) {
   const p = state.currentPeriod;
+  if (isTable(state) && p.type === "week") return "Hand " + p.number;
   return (p.type === "playoff" ? "Round " : "Week ") + p.number;
 }
 

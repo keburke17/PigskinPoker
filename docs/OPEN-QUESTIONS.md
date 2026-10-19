@@ -2243,7 +2243,10 @@ that is not a table never reads it.
 
 **What it needs to go live.** `20261018000000_table_mode.sql` applied with `npm run db:push`
 - Kyle's step. It adds three columns and relaxes one rule on invites; every existing league
-is a season with every team seated, which a season never reads. Then the code merged.
+is a season with every team seated, which a season never reads. **Either order works.** A
+season never names the new columns, so the code can land first; until the migration is
+applied, creating a table is refused (and leaves nothing behind) while everything else
+works as it does today.
 
 **Not built, and recorded so nobody thinks it was forgotten:** the poker-table view (seats
 round a table, each showing the hand's points, tap a seat to see that hand once schemes have
