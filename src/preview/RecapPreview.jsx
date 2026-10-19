@@ -3,7 +3,7 @@
  * the recap pop-up on top and a bar at the bottom to flip between recaps.
  *
  * Two kinds of recap, chosen in the bar:
- *   FREE      - written by freeRecap.js from this league's own Week 5 and Week 6, with
+ *   FREE      - written by freeRecap.js from this league's own Weeks 3 to 6, with
  *               fill-in-the-blank lines. No AI, no account. Its numbers match the screens.
  *   AI-STYLE  - the hand-written samples in recapExamples.js, showing what an AI writer
  *               (a paid account) would aim for. Its numbers do NOT match the screens.
@@ -20,7 +20,7 @@ import { LeagueHomeTab } from "../components/LeagueHomeTab.jsx";
 import { RosterHubTab } from "../components/RosterHubTab.jsx";
 import { createPreviewLeague, PREVIEW_TEAMS, previewTeamId, RECAP_WEEKS } from "./previewLeague.js";
 import { RECAP_EXAMPLES } from "./recapExamples.js";
-import { freeRecapsFor } from "./freeRecap.js";
+import { freeRecapsByWeek } from "./freeRecap.js";
 import { RecapReminder, WeeklyRecap } from "./WeeklyRecap.jsx";
 
 const NAV = [
@@ -36,7 +36,8 @@ export function RecapPreview() {
   const league = useMemo(() => createPreviewLeague(), []);
   const state = league.state;
   const sets = useMemo(() => {
-    const free = RECAP_WEEKS.slice().reverse().map((w) => ({ key: "free" + w, label: "Free - Week " + w, recaps: freeRecapsFor(league, w), free: true }));
+    const byWeek = freeRecapsByWeek(league, RECAP_WEEKS);
+    const free = RECAP_WEEKS.slice().reverse().map((w) => ({ key: "free" + w, label: "Free - Week " + w, recaps: byWeek[w], free: true }));
     return [...free, { key: "ai", label: "AI-style samples", recaps: RECAP_EXAMPLES, free: false }];
   }, [league]);
 

@@ -39,7 +39,7 @@ export const PREVIEW_TEAMS = [
 export const previewTeamId = (i) => "preview_team_" + (i + 1);
 
 /** The weeks the free recaps are written for. */
-export const RECAP_WEEKS = [5, 6];
+export const RECAP_WEEKS = [3, 4, 5, 6];
 
 function deal(state, ids, seed) {
   const res = dealRosters(state, ids, seededRng(seed));
