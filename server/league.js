@@ -6,7 +6,7 @@
  * pins. A second implementation would be free to drift; this one cannot.
  */
 
-import { hydrateLeague } from "../src/storage/hydrate.js";
+import { hydrateLeague, recapPeriodId } from "../src/storage/hydrate.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { selectAll } from "../src/storage/selectAll.js";
 
@@ -93,6 +93,15 @@ export async function fetchLeagueRows(db, leagueId) {
     db.from("player_injuries").select("*").in("season_id", seasonIds).order("nfl_week").order("player_id")
   );
   rows.player_injuries = injuries.error ? [] : (injuries.data ?? []);
+
+  /* OQ-31: the latest finalized week's recaps, so a write that hands its own hydrate back
+   * does not take the pop-up away. Out of `TABLES` - persistBlob must never write or
+   * delete these - and an error is an empty list, as above. */
+  const recapPeriod = recapPeriodId(rows.seasons, rows.periods);
+  const recaps = recapPeriod
+    ? await db.from("weekly_recaps").select("*").eq("period_id", recapPeriod)
+    : { data: [] };
+  rows.weekly_recaps = recaps.error ? [] : (recaps.data ?? []);
 
   for (const t of TABLES) if (!rows[t]) rows[t] = [];
   return rows;

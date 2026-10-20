@@ -134,6 +134,35 @@ function tableMeta(league, teamRows, current, teamLegacy) {
   return { mode: "table", tableSeats: league.table_seats ?? null, seats, seatedTeamIds };
 }
 
+/**
+ * OQ-31. Which period's weekly recaps a read should fetch: the season's most recently
+ * finalized regular week, or null before the first one. Both readers (the browser's
+ * storage/supabase.js and the server's league.js) ask this before they fetch, so the
+ * league read carries one week of recaps - twelve small rows - not a season of them.
+ */
+export function recapPeriodId(seasons, periods, seasonId) {
+  const season = seasonId ? (seasons || []).find((s) => s.id === seasonId) : (seasons || [])[0];
+  if (!season) return null;
+  const done = (periods || [])
+    .filter((p) => p.season_id === season.id && p.type === "week" && p.phase === "finalized")
+    .sort((a, b) => b.number - a.number);
+  return done.length ? done[0].id : null;
+}
+
+/* weekly_recaps rows -> { week, byTeam: { [legacyTeamId]: recap } }, or null. */
+function recapsFrom(rows, periodRows, teamLegacy) {
+  if (!rows || !rows.length) return null;
+  const period = periodRows.find((p) => p.id === rows[0].period_id);
+  if (!period) return null;
+  const byTeam = {};
+  for (const r of rows) {
+    if (r.period_id !== period.id) continue;
+    const id = teamLegacy.get(r.team_id);
+    if (id && r.recap && typeof r.recap === "object") byTeam[id] = r.recap;
+  }
+  return { week: period.number, byTeam };
+}
+
 export function hydrateLeague(db, opts = {}) {
   const league = db.leagues[0];
   const season = opts.seasonId
@@ -395,6 +424,11 @@ export function hydrateLeague(db, opts = {}) {
        * promise: NOTHING DEALS, SCORES OR LOCKS FROM IT. It is the pill and the notepad on
        * a roster row. See src/engine/injuries.js. */
       injuries: injuriesFrom(db.player_injuries ?? [], season.id, playerLegacy),
+      /* OQ-31: the latest finalized week's recaps - the pop-up a manager sees once when
+       * they next open the app, and the strip on My Team after it. Written by the server
+       * at finalize and never edited. Display only: NOTHING IN THE GAME READS IT. Null
+       * before the first finalized week, and on a database without the table yet. */
+      recaps: recapsFrom(db.weekly_recaps ?? [], periodRows, teamLegacy),
       /* Whether a scheduled job may run the stats pull for this league. An operational
        * setting rather than a game rule - it says who presses the button, not what the
        * button does - so it lives on `leagues` and, like nflWeek, is deliberately not

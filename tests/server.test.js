@@ -3121,3 +3121,108 @@ gate()("table mode", () => {
     expect(r.status).toBe(400);
   });
 });
+
+/* OQ-31: the weekly recap. Written by the server at finalize, from moves it records when
+ * the schemes run, and handed to every reader in `_meta.recaps`. Nothing in the game reads
+ * it - these tests are about it being written, kept, and never getting in the way. */
+gate()("OQ-31: the weekly recap", () => {
+  beforeEach(() => resetDemo());
+
+  const periodRow = async (number) => {
+    const { data: season } = await db.from("seasons").select("id").eq("league_id", leagueId).maybeSingle();
+    const { data } = await db.from("periods").select("*").eq("season_id", season.id).eq("type", "week").eq("number", number).maybeSingle();
+    return data;
+  };
+
+  it("finalize writes one recap per team, and the league read hands them back", async () => {
+    const token = await asCommissioner();
+    const fin = await ops.finalizePeriod(db, { leagueId, token });
+    expect(fin.status).toBe(200);
+
+    const week2 = await periodRow(2);
+    const { data: rows } = await db.from("weekly_recaps").select("*").eq("period_id", week2.id);
+    const teams = fin.body.view.teams.length;
+    expect(rows.length).toBe(teams);
+    rows.forEach((r) => {
+      expect(r.league_id).toBe(leagueId);
+      expect(typeof r.recap.headline).toBe("string");
+      expect(r.recap.week).toBe(2);
+      expect(JSON.stringify(r.recap)).not.toMatch(/\{\w+\}/);
+    });
+
+    /* The demo's Week 2 schemes ran before moves were recorded, so nobody knows who sat
+     * one out - and the recap must not say anyone did. */
+    rows.forEach((r) => expect(r.recap.notes.map((n) => n.title)).not.toContain("No scheme"));
+
+    // The places and scores are the week's real result, not a second calculation.
+    const results = fin.body.view.weeklyResults.filter((r) => r.period.type === "week" && r.period.number === 2);
+    const box = fin.body.view._meta.recaps;
+    expect(box.week).toBe(2);
+    results.forEach((res) => {
+      expect(box.byTeam[res.teamId].place).toBe(res.rank);
+      expect(box.byTeam[res.teamId].score).toBe(res.rawScore);
+    });
+
+    // The deck is kept, so next week does not repeat a line.
+    const { data: season } = await db.from("seasons").select("recap_deck").eq("league_id", leagueId).maybeSingle();
+    expect(Object.keys(season.recap_deck.used || {}).length).toBeGreaterThan(0);
+
+    // And a plain re-read carries them too.
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view._meta.recaps.week).toBe(2);
+  });
+
+  it("records what a steal did when schemes run, and the next recap uses it without repeating a line", async () => {
+    const token = await asCommissioner();
+    await ops.finalizePeriod(db, { leagueId, token });                  // week 2 -> week 3
+    const dealt = await ops.dealPeriod(db, { leagueId, token, refresh: false });
+    expect(dealt.status).toBe(200);
+
+    const mgr = await asManager(T1);
+    const qb = dealt.body.view.teams.find((t) => t.id === T1).roster.starters.QB;
+    expect((await ops.submitScheme(db, {
+      leagueId, token: mgr, teamId: T1, scheme: { type: "steal", position: "QB", playerId: qb },
+    })).status).toBe(200);
+
+    const proc = await ops.processSchemes(db, { leagueId, token });
+    expect(proc.status).toBe(200);
+    const week3 = await periodRow(3);
+    const steal = (week3.scheme_moves || []).find((m) => m.teamId === T1);
+    expect(steal).toBeTruthy();
+    expect(steal.type).toBe("steal");
+    expect(steal.playerId).toBe(qb);
+    const nowQb = proc.body.view.teams.find((t) => t.id === T1).roster.starters.QB;
+    expect(steal.gotId).toBe(nowQb);
+
+    const { data: deckBefore } = await db.from("seasons").select("recap_deck").eq("league_id", leagueId).maybeSingle();
+    expect((await ops.finalizePeriod(db, { leagueId, token })).status).toBe(200);
+
+    const { data: rows } = await db.from("weekly_recaps").select("*").eq("league_id", leagueId);
+    const w2 = rows.filter((r) => r.recap.week === 2);
+    const w3 = rows.filter((r) => r.recap.week === 3);
+    expect(w3.length).toBe(w2.length);
+
+    /* No line of Week 3 was used in Week 2. Headlines and stories are whole lines (or a
+     * line with the numbers filled in), so an exact match would be a repeat. */
+    const said = new Set(w2.flatMap((r) => [r.recap.headline, ...r.recap.notes.map((n) => n.text)]));
+    w3.forEach((r) => expect(said.has(r.recap.headline)).toBe(false));
+
+    const { data: deckAfter } = await db.from("seasons").select("recap_deck").eq("league_id", leagueId).maybeSingle();
+    const count = (d) => Object.values(d.recap_deck.used || {}).reduce((n, v) => n + v.length, 0);
+    expect(count(deckAfter)).toBeGreaterThan(count(deckBefore));
+
+    // Only the latest finalized week is read, and the league read moves on with it.
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    expect(view._meta.recaps.week).toBe(3);
+  });
+
+  it("a manager can read the recaps of their own league", async () => {
+    const token = await asCommissioner();
+    await ops.finalizePeriod(db, { leagueId, token });
+    const mgr = await asManager(T2);
+    const browser = createClient(dbUrl, dbPublishable, { auth: { persistSession: false }, global: { headers: { Authorization: "Bearer " + mgr } } });
+    const { data, error } = await browser.from("weekly_recaps").select("team_id").eq("league_id", leagueId);
+    expect(error).toBeNull();
+    expect(data.length).toBeGreaterThan(0);
+  });
+});

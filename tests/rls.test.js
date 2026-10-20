@@ -117,6 +117,8 @@ gate()("RLS: what a browser holding the publishable key can READ", () => {
     "player_week_lines",
     // OQ-29: the NFL injury report on every pool player. Display only.
     "player_injuries",
+    // OQ-31: each team's weekly recap, written at finalize. Display only.
+    "weekly_recaps",
   ];
   for (const table of readable) {
     it("can select from " + table, async () => {
@@ -204,6 +206,11 @@ gate()("RLS: what it can NOT write - the whole write-security model", () => {
      * Out on every manager's screen. */
     ["player_injuries", () => ({
       season_id: ids.season, player_id: ids.player, league_id: ids.league, nfl_week: 1, game_status: "Out",
+    })],
+    /* OQ-31. Writable from a browser, it would let anyone put words in the recap every
+     * manager in a league reads. */
+    ["weekly_recaps", () => ({
+      period_id: ids.period, team_id: ids.team, league_id: ids.league, recap: { headline: "hacked" },
     })],
   ];
 
@@ -370,6 +377,10 @@ gate()("RLS: a PRIVATE league is invisible from outside", () => {
       season_id: season.id, player_id: privPlayer.id, league_id: league.id, nfl_week: 1, game_status: "Questionable",
     });
     if (privInjury.error) throw new Error("player_injuries fixture failed: " + privInjury.error.message);
+    const privRecap = await secret.from("weekly_recaps").insert({
+      period_id: period.id, team_id: team.id, league_id: league.id, recap: { headline: "Confidential" },
+    });
+    if (privRecap.error) throw new Error("weekly_recaps fixture failed: " + privRecap.error.message);
     await secret.from("roster_slots")
       .insert({ period_id: period.id, team_id: team.id, area: "starter", slot: "QB" });
     await secret.from("stat_lines")
@@ -447,6 +458,7 @@ gate()("RLS: a PRIVATE league is invisible from outside", () => {
     ["period_results", () => ({ col: "period_id", val: priv.period })],
     ["player_week_lines", () => ({ col: "league_id", val: priv.league })],
     ["player_injuries", () => ({ col: "league_id", val: priv.league })],
+    ["weekly_recaps", () => ({ col: "league_id", val: priv.league })],
   ];
 
   for (const [table, where] of hidden) {

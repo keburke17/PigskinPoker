@@ -20,6 +20,7 @@
 
 import { randomBytes } from "node:crypto";
 import { createDefaultState } from "../src/engine/index.js";
+import { recapsApply, schemeMoves, writeWeekRecaps } from "../src/recap/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { splitColumnsFor } from "../src/storage/statLine.js";
 import { planPoolRefresh, poolWriteRows } from "./pool.js";
@@ -1415,6 +1416,14 @@ function applyProcessSchemes({ by = "commissioner" } = {}) {
     const seed = newSeed();
     const blob = engineProcessSchemes(ctx.view, seededRng(seedFromString(seed)));
     blob.currentPeriod.phase = "schemes-processed";
+    /* OQ-31. The one moment both rosters exist: what each scheme did, for the weekly
+     * recap. Never allowed to stop the schemes running. See src/recap/moves.js. */
+    let moves = null;
+    try {
+      moves = schemeMoves(ctx.view, blob);
+    } catch (e) {
+      console.log("[recap] scheme moves not recorded -", e && e.message);
+    }
     blob.rosterLocked = true;
     if (by !== "commissioner") {
       const label =
@@ -1438,6 +1447,12 @@ function applyProcessSchemes({ by = "commissioner" } = {}) {
       notify: "schemes_processed",
       afterPersist: async (client) => {
         await client.from("periods").update({ scheme_seed: seed }).eq("id", ctx.period.id);
+        /* Its own write, so a database without the column yet costs the recap's scheme
+         * jokes and nothing else - never the seed above. */
+        if (moves) {
+          const saved = await client.from("periods").update({ scheme_moves: moves }).eq("id", ctx.period.id);
+          if (saved && saved.error) console.log("[recap] scheme moves not saved -", saved.error.message);
+        }
         // Schemes are retained, not deleted (OQ-9): mark them resolved so the RLS
         // gate opens and the history becomes queryable.
         await client
@@ -1481,6 +1496,7 @@ function applyFinalize({ feed, by = "commissioner" } = {}) {
           ctx.period.nfl_week + " was final.",
       });
     }
+    const recaps = weekRecaps(ctx, result.state);
     return {
       blob: result.state,
       afterPersist: async (client) => {
@@ -1488,6 +1504,7 @@ function applyFinalize({ feed, by = "commissioner" } = {}) {
           .from("periods")
           .update({ phase: "finalized", finalized_at: new Date().toISOString() })
           .eq("id", ctx.period.id);
+        if (recaps) await saveWeekRecaps(client, ctx, recaps);
         // Finalize advances to the next week, so a brand new period row now exists.
         await mapNewPeriod(client, ctx.rows.seasons[0].id, result.state.currentPeriod, {
           season: ctx.rows.seasons[0].year,
@@ -1496,6 +1513,55 @@ function applyFinalize({ feed, by = "commissioner" } = {}) {
       },
     };
   };
+}
+
+/**
+ * The weekly recap for every team, written as the week is finalized. OQ-31.
+ *
+ * NEVER ALLOWED TO STOP A FINALIZE, the same rule the email follows in runLifecycle: the
+ * standings are the thing that matters, and a recap that cannot be written is a recap
+ * nobody sees rather than a week that will not end. Pure up to here - the words are
+ * decided before anything is written - and null when this week gets none (a playoff
+ * round, a table's hand) or something went wrong.
+ */
+function weekRecaps(ctx, after) {
+  try {
+    if (!recapsApply(ctx.view) || !ctx.period) return null;
+    const season = ctx.rows.seasons[0];
+    return writeWeekRecaps({
+      before: ctx.view,
+      after,
+      moves: Array.isArray(ctx.period.scheme_moves) ? ctx.period.scheme_moves : null,
+      deckSeed: season.id,
+      deckSaved: season.recap_deck || null,
+    });
+  } catch (e) {
+    console.log("[recap] not written -", e && e.message);
+    return null;
+  }
+}
+
+/* One row per team, keyed on the database's ids rather than the view's, then the deck
+ * so next week does not repeat a line. Errors are logged and swallowed: a database
+ * without the table yet simply has no recaps. */
+async function saveWeekRecaps(client, ctx, { recaps, deck }) {
+  try {
+    const uuidOf = new Map(ctx.rows.teams.map((t) => [t.legacy_id, t.id]));
+    const leagueId = ctx.rows.leagues[0].id;
+    const rows = Object.entries(recaps)
+      .map(([teamId, recap]) => ({ period_id: ctx.period.id, team_id: uuidOf.get(teamId), league_id: leagueId, recap }))
+      .filter((r) => r.team_id);
+    if (!rows.length) return;
+    const saved = await client.from("weekly_recaps").upsert(rows, { onConflict: "period_id,team_id" });
+    if (saved && saved.error) {
+      console.log("[recap] not saved -", saved.error.message);
+      return;
+    }
+    const kept = await client.from("seasons").update({ recap_deck: deck }).eq("id", ctx.rows.seasons[0].id);
+    if (kept && kept.error) console.log("[recap] deck not saved -", kept.error.message);
+  } catch (e) {
+    console.log("[recap] not saved -", e && e.message);
+  }
 }
 
 /* startPlayoffs was here until 2026-09-07 (OQ-16).

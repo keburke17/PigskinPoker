@@ -2252,3 +2252,56 @@ works as it does today.
 round a table, each showing the hand's points, tap a seat to see that hand once schemes have
 processed) - issue #75's "later" section. And two players redeeming the last seat in the
 same instant could both get in; nothing stops it but the odds.
+
+---
+
+### OQ-31. A recap of last week when you open the app. **[ANSWERED 2026-10-19 by Scott: yes - free, from a list of lines, never repeating in a season]**
+
+Scott: when a week ends **"it just deals out the next weeks players, and the only way you
+can see how you did was by looking at the weekly scoreboard ... a team logs in and then
+they don't see anything unless they go looking for it"**. He asked for "funny write ups
+after each week" - the final score, the place, the standings move, highlights and
+lowlights, poking fun at a redraw or a steal that did nothing, at a bench that outscored
+the starters, at the team that finished last - popping up "the first time you open the app"
+after the week, with a way to the scoreboard and the standings, and readable again later.
+
+**Paid or free.** Writing each recap fresh with an AI would cost roughly $2.50 a season on
+Claude Sonnet for a 12-team league, and needs an account and a key on the hosting side. He
+chose **free for now** - "i dont want to pay anything at all quite yet since this is all a
+prototype. i want to see the response to this for a few weeks" - with "as many free version
+lines i can get to make it so it isnt repetitive at all", and funnier. Switching to an AI
+writer later changes only where the words come from; the pop-up, its timing and the stored
+recap stay as they are.
+
+**What was built.**
+
+| | |
+|---|---|
+| When it is written | once, at finalize, for every team - by the server, so everyone reads the same words and a recap never changes afterwards |
+| When it is seen | the first time each manager opens the league after the finalize; then a strip at the top of My Team ("Week 6 - 11th of 12 - Read recap") until the next week's arrives |
+| What it says | a headline, the place, score, standings points and move, a short story, an MVP and a dud, two notes on the week's biggest moments, and a jab around the league |
+| What it notices | steals, redraws and blocks (and what they netted), being robbed, a bench player who outscored a starter or a bench that outscored the lineup, a Questionable or Doubtful starter who flopped, a starter on zero, close finishes and ties, a Coach card loss that cost a place, win and bottom-three streaks, a first week win, blowouts |
+| Where the words come from | `src/recap/lines.js` - about 2,800 lines in situation lists. Adding lines is safe and is the whole upkeep |
+| Repeats | none in a season: each line is dealt once, and a spent list falls back to another list, a plain sentence of fact, or leaving the note out. `scripts/recap-season-check.mjs` plays simulated 12-team, 18-week seasons through it and reports any repeat or short list |
+
+**Display only. NOTHING IN THE GAME READS A RECAP.** It decides no rule, score or standing.
+
+**Four calls inside it, all reversible:**
+
+- **Regular-season weeks only.** Playoff rounds would want their own words ("eliminated"),
+  and a table's hands have no standings to talk about. Neither gets a recap yet.
+- **Unknown is not zero.** A league whose commissioner types the stats in has no feed line
+  for the bench, so the recap says nothing about the bench rather than call it a zero.
+  Likewise a week whose schemes ran before this existed has no record of who did what, and
+  the recap does not accuse anyone of sitting their scheme out.
+- **Everyone in a league can read everyone's recap**, like the results they describe. Each
+  manager is shown only their own.
+- **"Seen" is remembered per device**, like the welcome card - a new phone shows the latest
+  recap once more.
+
+**What it needs to go live.** `20261019000000_weekly_recaps.sql` applied with
+`npm run db:push` - Kyle's step, and it should go BEFORE the code is merged. In either
+order nothing breaks: without the migration a finalize still finalizes and the pop-up simply
+never appears (every recap write is caught and logged). But a week finalized before the
+migration gets no recap, and its scheme jokes need the moves recorded when that week's
+schemes ran.
