@@ -25,13 +25,23 @@ export function SuitBadge({ position }) {
  * club under a FLEX rank and the two facts stay distinguishable. An empty slot gets the
  * outline of a card with no pip on it, which is exactly what it is.
  */
+/*
+ * THE SUIT CAME OFF (Scott, 2026-10-19, roster-row mockups round 3). He kept the ivory
+ * card and the position colours and asked for the pip to go, with the letters made big
+ * enough for the colour to be read at a glance. So the card is the slot written large in
+ * its own ink, and nothing else - except on FLEX and the bench, where the player's real
+ * position sits small underneath, because there the slot and the position are different
+ * facts. The ink follows the SLOT now, so a FLEX card is FLEX-coloured and a bench card
+ * grey, exactly as the mockup he picked showed.
+ */
 export function PositionCard({ slot, position }) {
-  const suited = position && SUIT_GLYPH[position] ? position : null;
   const title = position ? (position === slot ? slot : slot + " - " + position) : slot;
+  const split = !!position && position !== slot;
+  const rankClass = "pp-pos-card-rank" + (slot.length > 4 ? " pp-pos-card-rank-long" : split ? " pp-pos-card-rank-split" : "");
   return (
-    <span className={"pp-pos-card " + (suited ? "pp-pos-" + suited : "pp-pos-empty")} title={title}>
-      <span className="pp-pos-card-rank">{slot}</span>
-      <span className="pp-pos-card-pip">{position ? SUIT_GLYPH[position] || "?" : ""}</span>
+    <span className={"pp-pos-card " + (position ? "pp-pos-" + slot : "pp-pos-empty")} title={title}>
+      <span className={rankClass}>{slot}</span>
+      {split ? <span className="pp-pos-card-sub">{position}</span> : null}
     </span>
   );
 }

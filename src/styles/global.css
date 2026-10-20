@@ -233,13 +233,19 @@
   font-weight:700; font-size:14px; min-width:0;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
-/* DET, PHI, KC. Mono so three letters and two letters are the same width down the card,
-   and quiet enough that the player's name is still the loud thing on the line. */
-.pp-team-chip{
-  flex:none; font-family: var(--font-mono); font-size:9.5px; font-weight:700;
-  letter-spacing:0.6px; color:var(--gold); border:1px solid var(--gold-dim);
-  border-radius:3px; padding:1px 4px; background: rgba(232,194,90,0.08);
-}
+/* DET | QB - the line under the name (2026-10-19, option A4b; see PlayerIdLine). The team
+   is bold in the text colour, a size up from the game line, so there is no mistaking his
+   team for the opponent. The position takes a LIGHT tint of its card's ink: the card's own
+   inks are deep enough for ivory and would vanish against the felt. */
+.pp-id-line{ display:flex; align-items:baseline; gap:6px; margin-top:2px; line-height:1.3; }
+.pp-id-team{ font-size:12px; font-weight:800; letter-spacing:0.4px; color:var(--text); }
+.pp-id-sep{ font-size:11px; color:var(--text-faint); }
+.pp-id-pos{ font-size:12px; font-weight:800; letter-spacing:0.5px; color:var(--text-dim); }
+.pp-id-QB{ color:#ef7a6f; }
+.pp-id-RB{ color:#5cc28f; }
+.pp-id-WR{ color:#7fb0f0; }
+.pp-id-TE{ color:#b39af0; }
+.pp-id-Coach{ color:#d8d2bf; }
 /* The "vs" / "at" in a matchup, set apart from the opponent so the three letters beside it
    read as a team and not as part of one long word. */
 .pp-vs{ color:var(--gold-dim); font-weight:700; }
@@ -248,16 +254,19 @@
 .pp-no-game{ font-style:italic; }
 .pp-roster-slot-meta{ font-size:11px; color:var(--text-faint); margin-top:3px; line-height:1.35; }
 .pp-roster-slot-stats{ font-size:11.5px; color:var(--text-dim); margin-top:2px; line-height:1.35; }
-.pp-roster-slot-pts{ font-family: var(--font-mono); font-weight:700; color:var(--gold-bright); font-size:13px; flex:none; }
+.pp-roster-slot-pts{ font-family: var(--font-mono); font-weight:700; color:var(--gold-bright); font-size:13px; flex:none; font-variant-numeric:tabular-nums; }
+/* The points column's own number is the big one (2026-10-19). The commissioner's stat
+   entry row keeps the smaller size beside its inputs. */
+.pp-roster-slot-right .pp-roster-slot-pts{ font-size:18px; line-height:1.05; white-space:nowrap; }
 /* OQ-28, option A: this week's points over the season average, hard right. The column
    is its own flex item now rather than the end of the name line, so the two numbers stack
    and line up down the whole card. */
-.pp-roster-slot-right{ flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:2px; align-self:flex-start; padding-top:1px; }
+.pp-roster-slot-right{ flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:2px; align-self:flex-start; padding-top:1px; min-width:48px; }
 .pp-roster-slot-avg{ font-family: var(--font-mono); font-size:11px; color:var(--text-dim); white-space:nowrap; }
 /* Bench and free agents: real points that count for nobody. Grey and italic so no one
    adds them up by eye and gets a different total from the one on the card. */
 .pp-pts-not-counting{ color:var(--text-faint); font-style:italic; font-weight:600; }
-.pp-locked-pill{ font-size:9px; font-weight:800; color:#ffb4a8; border:1px solid #7a2e29; border-radius:4px; padding:1px 5px; flex:none; }
+.pp-locked-pill{ font-size:9px; font-weight:800; color:#ffb4a8; border:1px solid #7a2e29; border-radius:4px; padding:1px 5px; flex:none; line-height:1.3; margin-top:1px; }
 /* OUT, IR, BYE. Never Active - a healthy player says nothing. */
 .pp-status-pill{
   font-size:9px; font-weight:800; letter-spacing:0.4px; flex:none;
@@ -319,32 +328,36 @@
 }
 .pp-inj-key b{ font-family: var(--font-mono); }
 
-/* THE SLOT AS A CARD. The rank sits top-left and the pip bottom-right, the way a card
-   in a fanned hand shows itself, on an ivory face that reads as a card on the felt
-   rather than as another coloured chip. The position keeps its own ink, so the six
-   suits stay colour-coded exactly as the badges were.
+/* THE SLOT AS A CARD. An ivory face that reads as a card on the felt, with the slot
+   written large in the position's own ink.
 
-   50px wide: the position is now the loudest thing on the row (what Scott asked for),
-   and the row's own tap target clears the 44px minimum OQ-8 measured everything under. */
+   THE SUIT CAME OFF on 2026-10-19 (Scott, roster-row mockups round 3). The pips were too
+   small for the six inks to be told apart - green, navy, purple and black all read as
+   "dark" at a glance - so the letters carry the colour now, and big. The card also came
+   down from 50px to 42 to give a long name some room back. FLEX and the bench add the
+   player's real position small underneath. */
 .pp-pos-card{
-  flex:none; width:50px; min-height:46px; box-sizing:border-box;
-  display:flex; flex-direction:column; justify-content:space-between;
-  padding:3px 4px; line-height:1;
-  border-radius:5px; border:1px solid rgba(0,0,0,0.4);
+  flex:none; width:42px; height:42px; box-sizing:border-box;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  line-height:1;
+  border-radius:6px; border:1px solid rgba(0,0,0,0.4);
   background: linear-gradient(158deg, #eae2cd 0%, #cfc5a9 100%);
   box-shadow: 0 1px 2px rgba(0,0,0,0.4);
   color: var(--pip-ink, #1a1a1a);
 }
-/* 10.5px is not a fussy number: COACH is the longest rank and at 11px it hangs over
-   the edge of the card. */
-.pp-pos-card-rank{ font-size:10.5px; font-weight:800; text-transform:uppercase; text-align:left; }
-.pp-pos-card-pip{ font-size:20px; text-align:right; }
+.pp-pos-card-rank{ font-size:17px; font-weight:900; letter-spacing:0.2px; text-transform:uppercase; }
+/* With the real position under it the rank gives up some height. COACH is the longest
+   rank there is, and at full size it runs off both edges of the card. */
+.pp-pos-card-rank-split{ font-size:13px; }
+.pp-pos-card-rank-long{ font-size:10.5px; }
+.pp-pos-card-sub{ font-size:9px; font-weight:800; opacity:0.85; }
 .pp-pos-Coach{ --pip-ink:#1a1a1a; }
 .pp-pos-QB{ --pip-ink:#9c2018; }
 .pp-pos-WR{ --pip-ink:#16345c; }
 .pp-pos-RB{ --pip-ink:#124834; }
 .pp-pos-TE{ --pip-ink:#432b70; }
 .pp-pos-FLEX{ --pip-ink:#6f4a0c; }
+.pp-pos-BN{ --pip-ink:#5d6b63; }
 /* A slot with nobody in it is the shape of a card and nothing else. */
 .pp-pos-empty{
   background:transparent; box-shadow:none; color:var(--text-faint);

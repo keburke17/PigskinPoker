@@ -16,6 +16,7 @@ import {
   playerGame,
   playerSeasonAverage,
   playerWeekLine,
+  shortPlayerName,
   teamPeriodScore,
   weekScheduleKnown,
 } from "../engine/index.js";
@@ -42,9 +43,10 @@ const DOT = " " + ICON.dot + " ";
  * game, so knowing the opponent is knowing whether he is home - and a road game at 8:20pm
  * is a different proposition from the same time at home.
  *
- * The position leads it ONLY when the slot is not already saying it - a FLEX or a bench
- * place. Shared with the commissioner's stat-entry row, which shows the same player above
- * a row of number inputs and should not describe him differently.
+ * The position used to lead it on FLEX and bench rows. Since 2026-10-19 the position and
+ * the team have a line of their own above this one (PlayerIdLine), so this line is the
+ * game and nothing else. Shared with the commissioner's stat-entry row and the free agent
+ * list, which show the same player and should not describe him differently.
  *
  * Returns NODES, not a string, because the preposition is set apart from the opponent in
  * gold - the row is read at a glance and `at` in the same weight as `DAL` reads as part of
@@ -56,7 +58,6 @@ export function slotMetaLine(state, slot, player) {
   const when = formatKickoffDay(game ? game.at : null);
   const parts = [];
 
-  if (player.position !== slot) parts.push(player.position);
   if (game && game.opp) {
     parts.push(
       <>
@@ -82,6 +83,37 @@ export function slotMetaLine(state, slot, player) {
       {part}
     </span>
   ));
+}
+
+/* WHO HE PLAYS FOR, AND WHAT HE PLAYS - "DET | QB" (Scott, 2026-10-19, option A4b).
+ *
+ * The team used to be a small gold chip on the name line, and the position was only on
+ * the card. Scott's point was that a manager reads the NAME first and then hunts for the
+ * position and the team, and on a bench row the card says BN with the real position in
+ * small print. So both get a line of their own straight under the name: the team bold,
+ * then the position in a light tint of its card's ink, so the colour matches the card
+ * while still reading on the felt. He looked at it both ways round and picked team first.
+ *
+ * A coach is written HC: "Coach" beside a coach's own name read oddly in the mockups. */
+export function PlayerIdLine({ player }) {
+  if (!player) return null;
+  return (
+    <div className="pp-id-line">
+      {player.team ? <span className="pp-id-team">{abbrFor(player.team)}</span> : null}
+      {player.team ? <span className="pp-id-sep">|</span> : null}
+      <span className={"pp-id-pos pp-id-" + player.position}>{player.position === "Coach" ? "HC" : player.position}</span>
+    </div>
+  );
+}
+
+/* The name as the row shows it - J. Goff - with the full name kept for a long press or a
+ * hover, since an initial is the one thing on the row that throws information away. */
+export function PlayerName({ player }) {
+  return (
+    <span className="pp-roster-slot-name" title={player ? player.name : undefined}>
+      {player ? shortPlayerName(player.name) : "empty slot"}
+    </span>
+  );
 }
 
 /* ONE PLAYER, THREE LINES (issue #33, and Scott's screenshot of 2026-09-07).
@@ -125,24 +157,21 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
       <PositionCard slot={slot} position={player ? player.position : null} />
       <div className="pp-roster-slot-body">
         <div className="pp-roster-slot-top">
-          {/* NAME AND TEAM TRAVEL TOGETHER (2026-09-08). The name used to be the flexible
-              element on this line, which pushed everything after it hard right - so an
-              abbreviation added beside it would have drifted to the far side of the row and
-              read as a column of its own rather than as part of the player. The wrapper
-              takes the flexing instead, and the chip stays where a shirt number would. */}
+          {/* The name line is the name, the injury pill and an OUT / IR status - nothing
+              else. The team chip moved down to PlayerIdLine and LOCKED moved under the
+              points (2026-10-19), which is what gives a long name its room back. */}
           <span className="pp-roster-slot-who">
-            <span className="pp-roster-slot-name">{player ? player.name : "empty slot"}</span>
-            {player && player.team ? <span className="pp-team-chip">{abbrFor(player.team)}</span> : null}
+            <PlayerName player={player} />
             {injury.tag}
           </span>
           {player && player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
-          {locked ? <span className="pp-locked-pill">LOCKED</span> : null}
         </div>
+        <PlayerIdLine player={player} />
         {meta ? <div className="pp-roster-slot-meta">{meta}</div> : null}
         {withStats && player ? <div className="pp-roster-slot-stats">{statLineText(state, player, line)}</div> : null}
         {injury.report}
       </div>
-      <PointsColumn pts={pts} average={average} notCounting={bench} />
+      <PointsColumn pts={pts} average={average} notCounting={bench} locked={locked} />
     </div>
   );
 }
@@ -153,25 +182,29 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
  * The average is there BEFORE a ball is thrown, deliberately: Tuesday's deal and
  * Wednesday's scheme are when "sit or start" gets decided, and that is when there are no
  * points yet to sit beside it. Nothing at all is drawn for a player with neither, so an
- * empty slot stays the shape it was. */
-export function PointsColumn({ pts, average, notCounting }) {
-  if (pts == null && !average) return null;
+ * empty slot stays the shape it was.
+ *
+ * BIGGER, AND LOCKED UNDER IT (Scott, 2026-10-19, roster-row mockups). The points are the
+ * loud number on the right now, one decimal like the average, with no "pts" after them;
+ * before a ball is thrown a dash holds their place so the average does not jump up the
+ * row. LOCKED left the name line, where it was competing with the name for room. */
+export function PointsColumn({ pts, average, notCounting, locked }) {
+  if (pts == null && !average && !locked) return null;
   return (
     <div className="pp-roster-slot-right">
-      {pts != null ? (
-        <span
-          className={"pp-roster-slot-pts" + (notCounting ? " pp-pts-not-counting" : "")}
-          title={notCounting ? "Not in the lineup - does not count toward the team's score" : undefined}
-        >
-          {pts} pt{pts === 1 ? "" : "s"}
-        </span>
-      ) : null}
+      <span
+        className={"pp-roster-slot-pts" + (notCounting || pts == null ? " pp-pts-not-counting" : "")}
+        title={notCounting ? "Not in the lineup - does not count toward the team's score" : undefined}
+      >
+        {pts != null ? Number(pts).toFixed(1) : "-"}
+      </span>
       {average ? (
         <span className="pp-roster-slot-avg" title={"Season average over " + average.games + " game" + (average.games === 1 ? "" : "s") + " played"}>
           {/* Always one decimal, so "avg 19.0" and "avg 13.6" line up down the column. */}
           avg {average.avg.toFixed(1)}
         </span>
       ) : null}
+      {locked ? <span className="pp-locked-pill">LOCKED</span> : null}
     </div>
   );
 }
