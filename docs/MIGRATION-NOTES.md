@@ -2287,3 +2287,30 @@ live coach rows of EVERY league at once - 32 per league - so past ~31 leagues a 
 `/admin` would have skipped whichever leagues fell past row 1000, and reported them as
 having no coach row. It reads through `selectAll` now. Every other read outside the two
 league loads asks for rows of one league, one period or one id.
+
+## Roster status read through bye weeks (2026-10-20)
+
+Week 7's deal, 6am Tuesday, dealt from week 5's roster statuses. A.J. Brown and Omar Cooper
+Jr. both played in week 6 and were still tagged IR in free agency; David Montgomery, inactive
+for week 6, was dealt as Active.
+
+**The cause.** The IR tag comes from nflverse's weekly roster file (`status`: ACT, RES, INA
+and so on), not from the injury report. The refresh used ONE week of that file for the whole
+league - the newest week covering at least thirty teams, a guard against the playoff weeks
+that hold only the teams still playing. Week 6 had four teams on a bye (DET, MIA, MIN, CIN),
+so it covered twenty-eight, failed the guard, and the refresh read week 5 for everybody. The
+file itself was current - republished 2:02am Eastern that morning with week 6 in it.
+
+It was never a free-data delay: any week with more than two byes put every status a full week
+behind, which is most of the middle of the season.
+
+**The fix.** `currentRosterRows` in `server/feed/nflverse.js` takes each team's OWN newest
+week. A bye now costs only that team, whose newest roster is the week before anyway, and the
+playoffs still leave no team without one. Checked against the real file from 2026-10-20:
+Brown and Cooper come out Active, Montgomery OUT (INA has always mapped to OUT - see
+`ROSTER_STATUS`). No rule moved; the deal reads the same field, just from the right week.
+
+**Not fixed by this, and worth knowing.** The pool is only refreshed when a week is dealt, so
+this week's rosters stay as dealt; the next deal reads the right week. And a player inactive
+for one game (INA) is kept out of the next deal, which is the long-standing mapping rather
+than anything new.
