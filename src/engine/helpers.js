@@ -82,3 +82,23 @@ export function makeEmptyLineup() {
     bench: [null, null, null, null, null, null], // unordered set of 6 ids, each its own position
   };
 }
+
+/* J. GOFF, NOT JARED GOFF (Scott, 2026-10-19 - the roster-row mockups, option A4b).
+ * Long names were being cut off on a phone, and Sleeper and Yahoo both answer that the
+ * same way: the first initial and the whole surname. Everything after the first word is
+ * the surname, so "Amon-Ra St. Brown" is "A. St. Brown" and "Marvin Harrison Jr." keeps
+ * his Jr.
+ *
+ * A first name that is ALREADY short is left alone rather than shortened again: "A.J.
+ * Brown" and "DK Metcalf" are how those players are known, and "A. Brown" or "D. Metcalf"
+ * would be a different name. Display only - nothing matches or stores on this. */
+export function shortPlayerName(name) {
+  const text = String(name || "").trim();
+  const space = text.indexOf(" ");
+  if (space < 1) return text;
+  const first = text.slice(0, space);
+  const rest = text.slice(space + 1).trim();
+  if (!rest) return text;
+  if (first.indexOf(".") !== -1 || (first.length <= 3 && first === first.toUpperCase())) return text;
+  return first.charAt(0) + ". " + rest;
+}
