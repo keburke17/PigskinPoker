@@ -62,6 +62,7 @@ import {
 } from "../src/engine/index.js";
 import { vkey } from "../src/storage/hydrate.js";
 import { fetchLeagueRows, hydrate, persistBlob } from "./league.js";
+import { selectAll } from "../src/storage/selectAll.js";
 import {
   generateInviteCode,
   hashInviteSecret,
@@ -2702,10 +2703,16 @@ export async function replaceLeague(db, { leagueId, token, blob }) {
 
 /** Everything the coaches screen needs to read the whole picture. */
 async function coachTables(db) {
+  /* PAGED, because the live coach rows are 32 per league across EVERY league: past ~31
+   * leagues one read would stop at PostgREST's 1000 rows and a rename would silently skip
+   * the leagues it never saw. See src/storage/selectAll.js. */
   const [template, leagues, coaches] = await Promise.all([
-    db.from("player_pool").select("legacy_id, name, nfl_team").eq("position", "Coach"),
-    db.from("leagues").select("id, name"),
-    db.from("players").select("id, league_id, name, nfl_team, retired").eq("position", "Coach").eq("active", true),
+    selectAll(() => db.from("player_pool").select("legacy_id, name, nfl_team").eq("position", "Coach").order("legacy_id")),
+    selectAll(() => db.from("leagues").select("id, name").order("id")),
+    selectAll(() =>
+      db.from("players").select("id, league_id, name, nfl_team, retired")
+        .eq("position", "Coach").eq("active", true).order("id")
+    ),
   ]);
   for (const r of [template, leagues, coaches]) {
     if (r.error) throw new Error(r.error.message);
