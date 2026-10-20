@@ -2281,3 +2281,9 @@ and both `src/storage/supabase.js` and `server/league.js` read every league tabl
 Each query is now ordered on something unique (`id`, or `nfl_week, player_id` for the two
 feed tables), because paging an unordered read can skip or repeat rows. Nothing about the
 game changed, and parity is untouched.
+
+**The head-coach screen too** (same day). `coachTables` in `server/operations.js` reads the
+live coach rows of EVERY league at once - 32 per league - so past ~31 leagues a rename on
+`/admin` would have skipped whichever leagues fell past row 1000, and reported them as
+having no coach row. It reads through `selectAll` now. Every other read outside the two
+league loads asks for rows of one league, one period or one id.
