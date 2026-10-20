@@ -2092,7 +2092,7 @@ gate()("the stats pull", () => {
     const starters = await startersOf(period.id);
     const his = await pick(period.id, starters, { typed: true });
     const { data: team } = await db
-      .from("teams").select("legacy_id").eq("id", his.team_id).single();
+      .from("teams").select("legacy_id, name").eq("id", his.team_id).single();
 
     const typed = await ops.setStatLine(db, {
       leagueId, token, teamId: team.legacy_id, slot: his.slot,
@@ -2110,7 +2110,9 @@ gate()("the stats pull", () => {
     expect(written.feed_rec_yards).toBe(91); // the feed's, beside it
     expect(written.source).toBe("manual");
 
-    const kept = r.body.report.kept.find((k) => k.slot === his.slot);
+    /* By team AND slot: the seed has typed lines on other teams too, and one in the same
+     * slot can come first in the report. */
+    const kept = r.body.report.kept.find((k) => k.slot === his.slot && k.team === team.name);
     expect(kept.differences).toContainEqual({
       field: "recYards", label: "Rec Yds", yours: 84, feed: 91,
     });

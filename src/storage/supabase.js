@@ -15,6 +15,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { hydrateLeague, recapPeriodId } from "./hydrate.js";
+import { selectAll } from "./selectAll.js";
 import { authLinkErrorForThisPageLoad } from "./authCallback.js";
 
 /* schemes must be selected by explicit columns: the column-level grant withholds
@@ -206,21 +207,23 @@ export function createSupabaseStore(config) {
        * replayable from a stable input order. server/league.js orders both the same
        * way - it has to, because a write hands its own hydrate back and the client
        * adopts it. */
-      sb.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id"),
-      sb.from("players").select("*").eq("league_id", leagueId).order("created_at").order("id"),
-      sb.from("periods").select("*").in("season_id", seasonIds),
+      selectAll(() => sb.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id")),
+      selectAll(() => sb.from("players").select("*").eq("league_id", leagueId).order("created_at").order("id")),
+      selectAll(() => sb.from("periods").select("*").in("season_id", seasonIds).order("id")),
     ]);
     const periodIds = (periods.data ?? []).map((p) => p.id);
     const inPeriods = (t, cols = "*") =>
-      periodIds.length ? sb.from(t).select(cols).in("period_id", periodIds) : Promise.resolve({ data: [] });
+      periodIds.length
+        ? selectAll(() => sb.from(t).select(cols).in("period_id", periodIds).order("id"))
+        : Promise.resolve({ data: [] });
 
     const [totals, slots, stats, schemes, results, events] = await Promise.all([
-      sb.from("team_totals").select("*").in("season_id", seasonIds),
+      selectAll(() => sb.from("team_totals").select("*").in("season_id", seasonIds).order("id")),
       inPeriods("roster_slots"),
       inPeriods("stat_lines"),
       inPeriods("schemes", SCHEME_COLS),
       inPeriods("period_results"),
-      sb.from("events").select("*").in("season_id", seasonIds),
+      selectAll(() => sb.from("events").select("*").in("season_id", seasonIds).order("id")),
     ]);
 
     for (const r of [teams, players, periods, totals, slots, stats, schemes, results, events]) {
@@ -233,11 +236,15 @@ export function createSupabaseStore(config) {
      * database without this table yet is an ordinary state, not a broken one. It costs
      * the grey numbers and nothing else. */
     const weekLines = seasonIds.length
-      ? await sb.from("player_week_lines").select("*").in("season_id", seasonIds)
+      ? await selectAll(() =>
+          sb.from("player_week_lines").select("*").in("season_id", seasonIds).order("nfl_week").order("player_id")
+        )
       : { data: [] };
     /* OQ-29: the injury report. Display only, and forgiving for the same reason. */
     const injuries = seasonIds.length
-      ? await sb.from("player_injuries").select("*").in("season_id", seasonIds)
+      ? await selectAll(() =>
+          sb.from("player_injuries").select("*").in("season_id", seasonIds).order("nfl_week").order("player_id")
+        )
       : { data: [] };
     /* OQ-31: the latest finalized week's recaps. Forgiving for the same reason - a
      * database without the table yet costs the pop-up and nothing else. */

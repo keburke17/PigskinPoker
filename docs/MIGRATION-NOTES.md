@@ -2256,3 +2256,34 @@ with `computeStarterPoints`, so a bench player's grey number is exactly what he 
 scored in the lineup. Average by games played, finished weeks only - see OQ-28.
 
 **Parity is untouched**: no engine path a week runs through changed.
+
+## Every league read is paged (2026-10-19)
+
+**Found because a fifth of the pool had no bench points or averages.** Scott, 2026-10-19:
+Bijan Robinson a free agent with no points and no average, CeeDee Lamb with points and no
+average, Josh Downs with an average and no points, Keenan Allen with neither. The feed had
+every one of their weeks under the right `gsis` id, and so did the depth charts.
+
+**The cause was the read, not the pull.** PostgREST returns at most `max_rows` rows per
+request - 1000, hosted and in `supabase/config.toml` - and truncates silently. By week 6 a
+league's `player_week_lines` is ~1300 rows (~224 players x six weeks, less byes), so every
+load dropped ~300 of them, and which 300 depended on where the upserts had left them in the
+heap. That is why the gaps looked random, and why a player could have some weeks and not
+others.
+
+**The same cap was waiting for the tables a week is played from.** `roster_slots` is 12 rows
+per team per period, so a 10-team league passes 1000 around week 9 and a 12-team league
+around week 7; `events` and `stat_lines` follow. A truncated `roster_slots` read would have
+shown managers holes in their rosters, and `persistBlob` diffs a save against that read.
+
+**The fix**: `src/storage/selectAll.js` reads a query a page at a time until a short page,
+and both `src/storage/supabase.js` and `server/league.js` read every league table through it.
+Each query is now ordered on something unique (`id`, or `nfl_week, player_id` for the two
+feed tables), because paging an unordered read can skip or repeat rows. Nothing about the
+game changed, and parity is untouched.
+
+**The head-coach screen too** (same day). `coachTables` in `server/operations.js` reads the
+live coach rows of EVERY league at once - 32 per league - so past ~31 leagues a rename on
+`/admin` would have skipped whichever leagues fell past row 1000, and reported them as
+having no coach row. It reads through `selectAll` now. Every other read outside the two
+league loads asks for rows of one league, one period or one id.
