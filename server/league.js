@@ -8,6 +8,7 @@
 
 import { hydrateLeague } from "../src/storage/hydrate.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
+import { selectAll } from "../src/storage/selectAll.js";
 
 /* Every table hydrate() needs. `schemes` is selected by explicit columns because the
  * secret key can read submitted_at but we keep the shape identical to the client's. */
@@ -47,23 +48,27 @@ export async function fetchLeagueRows(db, leagueId) {
    * from a stable input order. `id` is the tiebreak of last resort so the order is
    * total. */
   const [teams, players] = await Promise.all([
-    db.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id"),
-    db.from("players").select("*").eq("league_id", leagueId).order("created_at").order("id"),
+    selectAll(() => db.from("teams").select("*").eq("league_id", leagueId).order("created_at").order("id")),
+    selectAll(() => db.from("players").select("*").eq("league_id", leagueId).order("created_at").order("id")),
   ]);
   rows.teams = teams.data ?? [];
   rows.players = players.data ?? [];
 
-  const periods = await db.from("periods").select("*").in("season_id", seasonIds);
+  const periods = await selectAll(() => db.from("periods").select("*").in("season_id", seasonIds).order("id"));
   rows.periods = periods.data ?? [];
   const periodIds = rows.periods.map((p) => p.id);
+  const inPeriods = (t) =>
+    periodIds.length
+      ? selectAll(() => db.from(t).select("*").in("period_id", periodIds).order("id"))
+      : { data: [] };
 
   const [totals, slots, stats, schemes, results, events] = await Promise.all([
-    db.from("team_totals").select("*").in("season_id", seasonIds),
-    periodIds.length ? db.from("roster_slots").select("*").in("period_id", periodIds) : { data: [] },
-    periodIds.length ? db.from("stat_lines").select("*").in("period_id", periodIds) : { data: [] },
-    periodIds.length ? db.from("schemes").select("*").in("period_id", periodIds) : { data: [] },
-    periodIds.length ? db.from("period_results").select("*").in("period_id", periodIds) : { data: [] },
-    db.from("events").select("*").in("season_id", seasonIds),
+    selectAll(() => db.from("team_totals").select("*").in("season_id", seasonIds).order("id")),
+    inPeriods("roster_slots"),
+    inPeriods("stat_lines"),
+    inPeriods("schemes"),
+    inPeriods("period_results"),
+    selectAll(() => db.from("events").select("*").in("season_id", seasonIds).order("id")),
   ]);
   rows.team_totals = totals.data ?? [];
   rows.roster_slots = slots.data ?? [];
@@ -77,12 +82,16 @@ export async function fetchLeagueRows(db, leagueId) {
    * deal or a finalize may touch these rows. An ERROR IS AN EMPTY LIST, not a failure: a
    * database that has not had the migration applied yet must still load the league, and
    * losing the grey numbers is the right price for that. */
-  const weekLines = await db.from("player_week_lines").select("*").in("season_id", seasonIds);
+  const weekLines = await selectAll(() =>
+    db.from("player_week_lines").select("*").in("season_id", seasonIds).order("nfl_week").order("player_id")
+  );
   rows.player_week_lines = weekLines.error ? [] : (weekLines.data ?? []);
 
   /* OQ-29: the NFL injury report on the league's players - display only, and out of
    * `TABLES` and forgiving of an error for exactly the reasons player_week_lines is. */
-  const injuries = await db.from("player_injuries").select("*").in("season_id", seasonIds);
+  const injuries = await selectAll(() =>
+    db.from("player_injuries").select("*").in("season_id", seasonIds).order("nfl_week").order("player_id")
+  );
   rows.player_injuries = injuries.error ? [] : (injuries.data ?? []);
 
   for (const t of TABLES) if (!rows[t]) rows[t] = [];
