@@ -163,7 +163,7 @@ function FreeAgentRow({ state, p }) {
           </span>
           {status ? <span className="pp-status-pill">{status}</span> : null}
         </div>
-        <PlayerIdLine player={p} />
+        <PlayerIdLine player={p} state={state} />
         {meta ? <div className="pp-roster-slot-meta">{meta}</div> : null}
         {line ? <div className="pp-roster-slot-stats">{statLineText(state, p, line)}</div> : null}
         {injury.report}

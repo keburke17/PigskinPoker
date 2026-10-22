@@ -9,6 +9,7 @@
 import {
   ICON,
   abbrFor,
+  coachRecord,
   computeStarterPoints,
   formatKickoffDay,
   getPlayer,
@@ -16,6 +17,7 @@ import {
   playerGame,
   playerSeasonAverage,
   playerWeekLine,
+  recordText,
   shortPlayerName,
   teamPeriodScore,
   weekScheduleKnown,
@@ -94,14 +96,25 @@ export function slotMetaLine(state, slot, player) {
  * then the position in a light tint of its card's ink, so the colour matches the card
  * while still reading on the felt. He looked at it both ways round and picked team first.
  *
- * A coach is written HC: "Coach" beside a coach's own name read oddly in the mockups. */
-export function PlayerIdLine({ player }) {
+ * A coach is written HC: "Coach" beside a coach's own name read oddly in the mockups.
+ *
+ * A COACH'S LINE ENDS IN HIS TEAM'S RECORD - DET | HC | 5-1 (Scott, 2026-10-22, option C).
+ * An average of 1.1 on a coach meant nothing, so he has none; the record is what a
+ * manager actually wants to know about him, and it reads like a team's line in the paper. */
+export function PlayerIdLine({ player, state }) {
   if (!player) return null;
+  const record = state ? coachRecord(state, player) : null;
   return (
     <div className="pp-id-line">
       {player.team ? <span className="pp-id-team">{abbrFor(player.team)}</span> : null}
       {player.team ? <span className="pp-id-sep">|</span> : null}
       <span className={"pp-id-pos pp-id-" + player.position}>{player.position === "Coach" ? "HC" : player.position}</span>
+      {record ? <span className="pp-id-sep">|</span> : null}
+      {record ? (
+        <span className="pp-id-record" title="His team's record this season">
+          {recordText(record)}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -166,7 +179,7 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
           </span>
           {player && player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
         </div>
-        <PlayerIdLine player={player} />
+        <PlayerIdLine player={player} state={state} />
         {meta ? <div className="pp-roster-slot-meta">{meta}</div> : null}
         {withStats && player ? <div className="pp-roster-slot-stats">{statLineText(state, player, line)}</div> : null}
         {injury.report}

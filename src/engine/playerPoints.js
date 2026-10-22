@@ -59,7 +59,9 @@ export function playerWeekLine(state, player) {
  * @returns {{ avg: number, games: number } | null}
  */
 export function playerSeasonAverage(state, player) {
-  if (!player) return null;
+  /* A head coach has no average (Scott, 2026-10-22): "1.1" on a coach means nothing to
+   * anyone. His row shows his team's record instead - coachRecord, below. */
+  if (!player || player.position === "Coach") return null;
   const weeks = weeksFor(state, player.id);
   if (!weeks) return null;
 
@@ -75,4 +77,39 @@ export function playerSeasonAverage(state, player) {
     games += 1;
   }
   return games ? { avg: roundPoints(total / games), games } : null;
+}
+
+/**
+ * A head coach's team record, from the same weekly results that score him 2 / 1 / 0.
+ * Null when there are none yet.
+ *
+ * THE CURRENT WEEK COUNTS AS SOON AS ITS RESULT IS IN (Scott, 2026-10-22), unlike the
+ * average above. A finished NFL game is final, so a Lions win on Sunday reads 6-1 that
+ * night beside the 2.0 it earned, not on Tuesday after the finalize. There is no line
+ * for a game that has not finished, so nothing half-played can creep in.
+ * @returns {{ wins: number, losses: number, ties: number } | null}
+ */
+export function coachRecord(state, player) {
+  if (!player || player.position !== "Coach") return null;
+  const weeks = weeksFor(state, player.id);
+  if (!weeks) return null;
+
+  const current = currentNflWeek(state);
+  const record = { wins: 0, losses: 0, ties: 0 };
+  let games = 0;
+  for (const [w, line] of Object.entries(weeks)) {
+    if ((current != null && Number(w) > current) || !line) continue;
+    if (line.result === "Win") record.wins += 1;
+    else if (line.result === "Loss") record.losses += 1;
+    else if (line.result === "Tie") record.ties += 1;
+    else continue;
+    games += 1;
+  }
+  return games ? record : null;
+}
+
+/** 5-1, or 5-1-1 when there has been a tie - the way a standings page writes it. */
+export function recordText(record) {
+  if (!record) return "";
+  return record.wins + "-" + record.losses + (record.ties ? "-" + record.ties : "");
 }
