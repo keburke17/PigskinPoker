@@ -358,28 +358,40 @@ export async function streamCsvRows(stream, keep) {
 }
 
 /**
- * Pick the week whose rosters describe "now".
+ * Pick the rows that describe "now": each NFL team's OWN newest week.
  *
- * NOT simply the highest week in the file. Once the playoffs start the file keeps going
- * to week 22, and week 22 is two teams - taking it would leave thirty of them with no
- * roster at all and mark their starters OUT. The newest week that still covers
- * essentially the whole league is the one that means what we want it to mean.
+ * IT USED TO BE ONE WEEK FOR THE WHOLE LEAGUE - the newest week covering at least thirty
+ * teams - and bye weeks broke it. A team on a bye has no rows that week, so week 6 of 2026
+ * (Detroit, Minnesota, Cincinnati and Miami off) covered twenty-eight teams, failed the
+ * test, and the refresh read week 5 instead. Every player's status was then a week old at
+ * the one moment it matters: A.J. Brown and Omar Cooper Jr. were still RES from week 5 and
+ * stayed IR for Tuesday's deal after both had played in week 6, and David Montgomery,
+ * inactive in week 6, was dealt as Active. Any week with more than two byes did this.
+ *
+ * Per team, a bye costs only that team's freshness - its newest roster is the week before,
+ * which is the newest there is for it - and nobody else's.
+ *
+ * THE PLAYOFFS STILL COME OUT RIGHT, which is what the old thirty-team rule was for. The
+ * file runs to week 22, and week 22 is the two teams in the Super Bowl; per team, those
+ * two read week 22 and the other thirty read the last week they played, rather than
+ * thirty teams reading nothing and every starter going OUT.
+ *
+ * A player in two teams' newest rows - traded, with one team's file a week behind the
+ * other's - is taken from the newer week.
  */
-export function currentRosterWeek(rows, { minTeams = 30 } = {}) {
-  const teamsByWeek = new Map();
+export function currentRosterRows(rows) {
+  const newestByTeam = new Map();
   for (const r of rows) {
     const week = Number(r.week);
     if (!Number.isFinite(week)) continue;
-    if (!teamsByWeek.has(week)) teamsByWeek.set(week, new Set());
-    teamsByWeek.get(week).add(r.team);
+    if (!(newestByTeam.get(r.team) >= week)) newestByTeam.set(r.team, week);
   }
-  const weeks = [...teamsByWeek.keys()].sort((a, b) => b - a);
-  const full = weeks.find((w) => teamsByWeek.get(w).size >= minTeams);
-  return full ?? weeks[0] ?? null;
+  return rows.filter((r) => Number(r.week) === newestByTeam.get(r.team));
 }
 
 /**
- * Every skill-position player's roster status for the current week.
+ * Every skill-position player's roster status, each from his team's newest week.
+ * `week` is the newest week in the file, for the refresh's report.
  * @returns {{ week: number, byGsis: Map, byName: Map }}
  */
 export async function fetchRosterStatus({ season, fetchImpl = fetch } = {}) {
@@ -407,14 +419,19 @@ export async function fetchRosterStatus({ season, fetchImpl = fetch } = {}) {
           .map(wanted)
           .filter(Boolean);
 
-  const week = currentRosterWeek(rows);
-  const current = rows.filter((r) => Number(r.week) === week);
+  const current = currentRosterRows(rows);
+  let week = null;
+  for (const r of current) if (week == null || Number(r.week) > week) week = Number(r.week);
 
   const byGsis = new Map();
   const byName = new Map();
+  const keep = (map, key, r) => {
+    const had = map.get(key);
+    if (!had || Number(r.week) > Number(had.week)) map.set(key, r);
+  };
   for (const r of current) {
-    if (r.gsis) byGsis.set(String(r.gsis), r);
-    byName.set(rosterKey(r.name, r.position), r);
+    if (r.gsis) keep(byGsis, String(r.gsis), r);
+    keep(byName, rosterKey(r.name, r.position), r);
   }
   return { week, byGsis, byName };
 }

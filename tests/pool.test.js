@@ -17,7 +17,8 @@ import {
   POOL_DEPTH,
   buildPool,
   coachesFromGames,
-  currentRosterWeek,
+  currentRosterRows,
+  fetchRosterStatus,
   fetchDepthChart,
   parseCsv,
   parseCsvLine,
@@ -291,31 +292,78 @@ describe("injured starters", () => {
   });
 });
 
-/* Which week of the roster file describes "now". Not the highest one: the file runs to
- * week 22, and week 22 is the two teams left in the Super Bowl. Taking it would leave
- * thirty teams with no roster row and mark all their starters OUT. */
+/* Which rows of the roster file describe "now": each team's own newest week. It used to be
+ * one week for everybody - the newest covering thirty teams - and week 6 of 2026, with four
+ * teams on a bye, failed that test and dealt Tuesday's rosters from week 5's statuses. */
 describe("choosing the roster week", () => {
   const rowsFor = (weeks) =>
     Object.entries(weeks).flatMap(([week, teams]) =>
       Array.from({ length: teams }, (_, i) => ({ week, team: "T" + i }))
     );
+  const weekOf = (rows, team) => [...new Set(rows.filter((r) => r.team === team).map((r) => r.week))];
 
-  it("takes the newest week that still covers the league", () => {
-    expect(currentRosterWeek(rowsFor({ 1: 32, 2: 32, 3: 32 }))).toBe(3);
+  it("takes each team's newest week", () => {
+    const rows = currentRosterRows(rowsFor({ 1: 32, 2: 32, 3: 32 }));
+    expect(rows).toHaveLength(32);
+    expect(new Set(rows.map((r) => r.week))).toEqual(new Set(["3"]));
   });
 
-  it("ignores a playoff week that only has the teams still playing", () => {
-    expect(currentRosterWeek(rowsFor({ 17: 32, 18: 32, 19: 12, 22: 2 }))).toBe(18);
+  it("does not let four byes send the whole league back a week", () => {
+    // T28..T31 are on a bye in week 6: they read week 5, everybody else reads week 6.
+    const rows = currentRosterRows(rowsFor({ 5: 32, 6: 28 }));
+    expect(weekOf(rows, "T0")).toEqual(["6"]);
+    expect(weekOf(rows, "T27")).toEqual(["6"]);
+    expect(weekOf(rows, "T28")).toEqual(["5"]);
+    expect(rows).toHaveLength(32);
+  });
+
+  it("leaves no team without a roster in the playoffs", () => {
+    const rows = currentRosterRows(rowsFor({ 17: 32, 18: 32, 19: 12, 22: 2 }));
+    expect(new Set(rows.map((r) => r.team)).size).toBe(32);
+    expect(weekOf(rows, "T0")).toEqual(["22"]);
+    expect(weekOf(rows, "T20")).toEqual(["18"]);
   });
 
   it("is not fooled by the file being out of week order", () => {
     // The real 2025 file opens 16, 17, 9 - it is not sorted by anything useful.
     const rows = [...rowsFor({ 16: 32 }), ...rowsFor({ 9: 32 }), ...rowsFor({ 17: 32 })];
-    expect(currentRosterWeek(rows)).toBe(17);
+    expect(new Set(currentRosterRows(rows).map((r) => r.week))).toEqual(new Set(["17"]));
+  });
+});
+
+/* The 2026 week-6 case end to end, as nflverse's file actually had it on 2026-10-20. */
+describe("reading roster status through a bye week", () => {
+  const HEADER = "season,team,position,status,full_name,gsis_id,week,status_description_abbr";
+  const csv = (lines) => [HEADER, ...lines].join("\n");
+  const line = (team, pos, status, name, gsis, week) =>
+    ["2026", team, pos, status, name, gsis, week, ""].join(",");
+  // 28 teams play week 6; DET, MIA, MIN and CIN are on a bye.
+  const playing = ["NE", "NYJ", "HOU", "WAS", ...Array.from({ length: 24 }, (_, i) => "P" + i)];
+  const lines = [
+    ...[...playing, "DET", "MIA", "MIN", "CIN"].map((t) => line(t, "QB", "ACT", "QB " + t, "q" + t, "5")),
+    ...playing.map((t) => line(t, "QB", "ACT", "QB " + t, "q" + t, "6")),
+    line("NE", "WR", "RES", "A.J. Brown", "00-0035676", "5"),
+    line("NE", "WR", "ACT", "A.J. Brown", "00-0035676", "6"),
+    line("NYJ", "WR", "RES", "Omar Cooper Jr.", "00-0041511", "5"),
+    line("NYJ", "WR", "ACT", "Omar Cooper Jr.", "00-0041511", "6"),
+    line("HOU", "RB", "ACT", "David Montgomery", "00-0035685", "5"),
+    line("HOU", "RB", "INA", "David Montgomery", "00-0035685", "6"),
+    line("DET", "RB", "RES", "Bye Week Back", "d1", "5"),
+  ];
+  const fetchImpl = async () => ({ ok: true, text: async () => csv(lines) });
+  const player = (name, position, gsis) => ({ name, position, externalIds: { gsis } });
+
+  it("reads week 6 for the teams that played it", async () => {
+    const status = await fetchRosterStatus({ season: 2026, fetchImpl });
+    expect(status.week).toBe(6);
+    expect(statusOf(player("A.J. Brown", "WR", "00-0035676"), status)).toBe("Active");
+    expect(statusOf(player("Omar Cooper Jr.", "WR", "00-0041511"), status)).toBe("Active");
+    expect(statusOf(player("David Montgomery", "RB", "00-0035685"), status)).toBe("OUT");
   });
 
-  it("falls back to the newest week there is when none covers the league", () => {
-    expect(currentRosterWeek(rowsFor({ 1: 4, 2: 6 }))).toBe(2);
+  it("still reads a team on its bye from the week before", async () => {
+    const status = await fetchRosterStatus({ season: 2026, fetchImpl });
+    expect(statusOf(player("Bye Week Back", "RB", "d1"), status)).toBe("IR");
   });
 });
 
