@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **943 passed, 42 files**. If the output says
+2. `npm test` before committing: **946 passed, 42 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -374,7 +374,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-943 tests. Three groups worth knowing about:
+946 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical

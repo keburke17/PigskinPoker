@@ -12,9 +12,11 @@ import { fetchSeasonStats, seasonResultsFrom } from "../server/feed/nflverse.js"
 import { planSeasonLines } from "../server/stats.js";
 import {
   DEFAULT_SCORING,
+  coachRecord,
   playerSeasonAverage,
   playerWeekLine,
   playerWeekPoints,
+  recordText,
   teamPeriodScore,
 } from "../src/engine/index.js";
 import { hydrateLeague } from "../src/storage/hydrate.js";
@@ -124,11 +126,31 @@ describe("playerSeasonAverage", () => {
     expect(playerSeasonAverage({ ...stateWith({ nflWeek: 1, weeks: {} }), _meta: {} }, qb)).toBeNull();
   });
 
-  it("averages a coach on his results", () => {
+  it("gives a coach no average - his row shows the record instead", () => {
     const coach = { id: "c", position: "Coach" };
     const state = stateWith({ nflWeek: 3, weeks: { c: { 1: { result: "Win" }, 2: { result: "Loss" } } } });
-    const expected = (DEFAULT_SCORING.coachWin + DEFAULT_SCORING.coachLoss) / 2;
-    expect(playerSeasonAverage(state, coach)).toEqual({ avg: Math.round(expected * 10) / 10, games: 2 });
+    expect(playerSeasonAverage(state, coach)).toBeNull();
+  });
+});
+
+describe("coachRecord", () => {
+  const coach = { id: "c", position: "Coach" };
+
+  it("counts wins, losses and ties, including this week's as soon as it is in", () => {
+    const weeks = { c: { 1: { result: "Win" }, 2: { result: "Loss" }, 3: { result: "Tie" }, 4: { result: "Win" } } };
+    expect(coachRecord(stateWith({ nflWeek: 4, weeks }), coach)).toEqual({ wins: 2, losses: 1, ties: 1 });
+  });
+
+  it("ignores a week past the current one, and is null with no results or for a player", () => {
+    expect(coachRecord(stateWith({ nflWeek: 4, weeks: { c: { 5: { result: "Win" } } } }), coach)).toBeNull();
+    expect(coachRecord({ ...stateWith({ nflWeek: 1, weeks: {} }), _meta: {} }, coach)).toBeNull();
+    expect(coachRecord(stateWith({ nflWeek: 4, weeks: { qb: { 1: line(250, 2) } } }), qb)).toBeNull();
+  });
+
+  it("writes 5-1, and adds the ties only when there are some", () => {
+    expect(recordText({ wins: 5, losses: 1, ties: 0 })).toBe("5-1");
+    expect(recordText({ wins: 5, losses: 1, ties: 1 })).toBe("5-1-1");
+    expect(recordText(null)).toBe("");
   });
 });
 

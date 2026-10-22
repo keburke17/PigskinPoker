@@ -148,7 +148,7 @@ export function StatEntryRow({ state, team, slot, isCommissioner, onChange }) {
           </span>
           {player.status !== "Active" ? <span className="pp-status-pill">{player.status}</span> : null}
         </div>
-        <PlayerIdLine player={player} />
+        <PlayerIdLine player={player} state={state} />
         <div className="pp-roster-slot-meta">{slotMetaLine(state, slot, player)}</div>
         {injury.report}
       </div>

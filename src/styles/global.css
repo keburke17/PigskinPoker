@@ -246,6 +246,9 @@
 .pp-id-WR{ color:#7fb0f0; }
 .pp-id-TE{ color:#b39af0; }
 .pp-id-Coach{ color:#d8d2bf; }
+/* A coach's team record, DET | HC | 5-1 (2026-10-22). The same weight as the team so it reads
+   as part of the line, in mono so 10-6 and 9-7 line up down the free agent list. */
+.pp-id-record{ font-family: var(--font-mono); font-size:12px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
 /* The "vs" / "at" in a matchup, set apart from the opponent so the three letters beside it
    read as a team and not as part of one long word. */
 .pp-vs{ color:var(--gold-dim); font-weight:700; }
