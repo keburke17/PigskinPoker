@@ -11,12 +11,17 @@ import { useState } from "react";
 import {
   FA_TABS,
   ICON,
+  STARTER_SLOTS,
   allRosteredPlayerIds,
+  computeStarterPoints,
+  getPlayer,
   isOnByeThisWeek,
   isPlayerAvailable,
   playerSeasonAverage,
   playerWeekLine,
+  playerInjury,
   playerWeekPoints,
+  shortPlayerName,
   teamPeriodScore,
 } from "../engine/index.js";
 import { EmptyState, PositionCard, statLineText } from "./atoms.jsx";
@@ -72,6 +77,136 @@ export function AllRostersTab({ state, myTeam }) {
           isMine={!!myTeam && team.id === myTeam.id}
         />
       ))}
+    </div>
+  );
+}
+
+/* ============================== Roster Grid ================================ */
+
+/* THE DRAFT BOARD (Scott, 2026-10-22, five mockup rounds; style E). Every team's twelve
+ * players on one screen: a column per team, a row per slot, your team first. It is the
+ * quick glance - Full Rosters is still there for the opponent, the kickoff and the
+ * injury notepad, and the free agents stay on their own tab, which he asked for by name.
+ *
+ * THE POSITION BUTTONS ONLY LIGHT THINGS UP. Picking QB fades every box that is not a
+ * quarterback and leaves the grid where it is, so "who has a QB to spare" is read across
+ * the rows without the shape of anybody's roster changing under you.
+ *
+ * THE TEAM NAMES STAY PINNED, ON A SOLID BAR. He asked for the header to stay put while
+ * scrolling down and NOT to be see-through. That needs the grid to scroll inside its own
+ * box (a sticky header cannot stick to the page from inside a box that scrolls sideways),
+ * so the box is capped at most of the screen's height.
+ *
+ * The injury PILL rides on the name; the notepad does not, because there is no room for
+ * the report in a box this size. Full Rosters has it. */
+const GRID_FILTERS = ["ALL", "QB", "WR", "RB", "TE", "Coach"];
+
+/* The same numbers the Full Rosters rows show: a starter scores the commissioner's stat
+ * entry for his slot, a bench man scores the feed's line and does not count. */
+function gridPoints(state, team, slot, player, bench, showStats) {
+  if (!showStats || !player) return null;
+  if (bench) {
+    const line = playerWeekLine(state, player);
+    return line ? computeStarterPoints(state, line, player.position) : null;
+  }
+  const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
+  return computeStarterPoints(state, stats[slot], player.position);
+}
+
+function GridCell({ state, team, slot, pid, bench, showStats, filter, isMine }) {
+  const player = getPlayer(state, pid);
+  const hit = filter !== "ALL" && !!player && player.position === filter;
+  const dim = filter !== "ALL" && !hit;
+  const cls = "pp-grid-cell" + (isMine ? " pp-grid-mine" : "") + (hit ? " pp-grid-hit" : "") + (dim ? " pp-grid-dim" : "");
+  if (!player) return <td className={cls}><span className="pp-grid-empty">-</span></td>;
+  const injury = playerInjury(state, player);
+  const pts = gridPoints(state, team, slot, player, bench, showStats);
+  return (
+    <td className={cls}>
+      <div className="pp-grid-name" title={player.name}>
+        <span>{shortPlayerName(player.name)}</span>
+        {injury && injury.pill ? (
+          <span className={"pp-inj-pill pp-inj-" + injury.pill.toLowerCase()} title={injury.status}>{injury.pill}</span>
+        ) : null}
+      </div>
+      <PlayerIdLine player={player} state={state} />
+      {pts != null ? (
+        <div className={"pp-grid-pts" + (bench ? " pp-pts-not-counting" : "")}>{Number(pts).toFixed(1)}</div>
+      ) : null}
+    </td>
+  );
+}
+
+export function RosterGridTab({ state, myTeam }) {
+  const [filter, setFilter] = useState("ALL");
+  if (state.teams.length === 0) return <EmptyState>No teams yet.</EmptyState>;
+  const mine = myTeam ? state.teams.filter((t) => t.id === myTeam.id) : [];
+  const teams = mine.concat(state.teams.filter((t) => !myTeam || t.id !== myTeam.id));
+  if (!teams.some((t) => t.roster)) return <EmptyState>No rosters dealt yet this period.</EmptyState>;
+  const showStats = state.currentPeriod.phase !== "pre-deal";
+  const benchSize = Math.max(0, ...teams.map((t) => (t.roster ? t.roster.bench.length : 0)));
+  const count = (pos) =>
+    teams.reduce((n, t) => {
+      if (!t.roster) return n;
+      const ids = STARTER_SLOTS.map((s) => t.roster.starters[s]).concat(t.roster.bench);
+      return n + ids.filter((id) => {
+        const p = getPlayer(state, id);
+        return p && p.position === pos;
+      }).length;
+    }, 0);
+  const rows = STARTER_SLOTS.map((slot) => ({ slot, bench: false, pick: (t) => t.roster.starters[slot] }));
+  for (let i = 0; i < benchSize; i++) {
+    rows.push({ slot: "BN", bench: true, first: i === 0, pick: (t) => t.roster.bench[i] });
+  }
+  return (
+    <div>
+      <div className="pp-subnav">
+        {GRID_FILTERS.map((f) => (
+          <button key={f} className={"pp-subnav-btn" + (filter === f ? " active" : "")} onClick={() => setFilter(f)}>
+            {f === "ALL" ? "All" : f}
+            {f === "ALL" ? null : <span className="pp-grid-count">{count(f)}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="pp-grid-wrap">
+        <table className="pp-grid">
+          <thead>
+            <tr>
+              <th className="pp-grid-slot" aria-label="Slot" />
+              {teams.map((t) => {
+                const isMine = !!myTeam && t.id === myTeam.id;
+                return (
+                  <th key={t.id} className={"pp-grid-team" + (isMine ? " pp-grid-team-mine" : "")}>
+                    <span className="pp-grid-team-name">
+                      {t.name}
+                      {isMine ? <span className="pp-you-tag">You</span> : null}
+                    </span>
+                    {showStats && t.roster ? <span className="pp-grid-total">{teamPeriodScore(state, t)}</span> : null}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, r) => (
+              <tr key={r} className={row.first ? "pp-grid-bench-start" : undefined}>
+                <th className="pp-grid-slot">
+                  <PositionCard slot={row.slot} position={row.slot} />
+                  {row.first ? <span className="pp-grid-bench-label">BENCH</span> : null}
+                </th>
+                {teams.map((t) => (
+                  <GridCell
+                    key={t.id} state={state} team={t} slot={row.slot}
+                    pid={t.roster ? row.pick(t) : null}
+                    bench={row.bench} showStats={showStats} filter={filter}
+                    isMine={!!myTeam && t.id === myTeam.id}
+                  />
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
