@@ -445,6 +445,55 @@
   padding:1px 5px; margin-left:7px; vertical-align:1px;
 }
 
+/* THE ROSTER GRID (Scott, 2026-10-22, style E of five mockup rounds): name plates with
+   gold rails. Big team names with the score in a gold chip, a 2px gold rule between every
+   team, a gold line where the bench starts, and the header pinned on a SOLID bar - he
+   asked for it not to be see-through, so every pinned cell paints an opaque background.
+   The box scrolls by itself, both ways, because a header can only stick inside the box
+   that scrolls it; the slot column is pinned too, so a phone swiping sideways keeps it. */
+.pp-grid-count{ font-weight:500; color:var(--text-faint); margin-left:5px; }
+.pp-subnav-btn.active .pp-grid-count{ color:var(--gold-dim); }
+.pp-grid-wrap{
+  /* Short enough to sit whole under the app's own sticky header (about 236px on a phone,
+     OQ-8), or the pinned team names would scroll up behind it. */
+  overflow:auto; max-height:max(320px, calc(100vh - 270px));
+  border:1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+}
+.pp-grid{ border-collapse:separate; border-spacing:0; min-width:100%; font-size:12px; }
+.pp-grid th, .pp-grid td{ padding:6px 8px; text-align:left; vertical-align:top; border-bottom:1px solid rgba(169,189,175,0.2); }
+.pp-grid td + td, .pp-grid th + th{ border-left:2px solid rgba(232,194,90,0.45); }
+.pp-grid thead th{
+  position:sticky; top:0; z-index:2; background: var(--surface-2); vertical-align:bottom;
+  border-bottom:0; box-shadow: 0 3px 0 var(--gold-dim), 0 8px 12px rgba(0,0,0,0.55);
+}
+.pp-grid-team{ font-family: var(--font-display); font-size:15.5px; font-weight:700; padding:10px !important; min-width:124px; }
+.pp-grid-team-name{ display:block; line-height:1.15; color:var(--text); }
+.pp-grid-team-mine{ background: linear-gradient(180deg, #34492b, #1a3824) !important; box-shadow: 0 3px 0 var(--gold-bright), 0 8px 12px rgba(0,0,0,0.55) !important; }
+.pp-grid-team-mine .pp-grid-team-name{ color:var(--gold-bright); }
+.pp-grid-total{
+  display:inline-block; margin-top:5px; font-family: var(--font-mono); font-size:12px; font-weight:700;
+  color:var(--gold-bright); background:#08180f; border:1px solid var(--gold-dim); border-radius:999px; padding:1px 8px;
+  font-variant-numeric:tabular-nums;
+}
+.pp-grid-slot{ position:sticky; left:0; z-index:1; width:48px; background: var(--surface-2); vertical-align:middle !important; }
+.pp-grid thead .pp-grid-slot{ z-index:4; }
+.pp-grid-slot .pp-pos-card{ width:32px; height:28px; border-radius:4px; }
+.pp-grid-slot .pp-pos-card-rank{ font-size:11px; }
+.pp-grid-slot .pp-pos-card-rank-long{ font-size:7.5px; }
+.pp-grid-bench-label{ display:block; margin-top:3px; font-size:8px; font-weight:800; letter-spacing:1px; color:var(--gold-dim); }
+.pp-grid-bench-start th, .pp-grid-bench-start td{ border-top:2px solid var(--gold); }
+.pp-grid-cell{ min-width:124px; transition: opacity .15s; }
+.pp-grid-mine{ background: rgba(232,194,90,0.04); }
+.pp-grid-name{ display:flex; align-items:center; flex-wrap:wrap; gap:5px; font-weight:700; font-size:13px; color:var(--text); line-height:1.25; }
+.pp-grid-cell .pp-id-line{ margin-top:1px; }
+.pp-grid-cell .pp-id-team, .pp-grid-cell .pp-id-pos, .pp-grid-cell .pp-id-record{ font-size:11px; }
+.pp-grid-pts{ font-family: var(--font-mono); font-size:12.5px; font-weight:700; color:var(--gold-bright); margin-top:2px; font-variant-numeric:tabular-nums; }
+.pp-grid-empty{ color:var(--text-faint); }
+.pp-grid-dim{ opacity:0.2; }
+.pp-grid-hit{ background: rgba(232,194,90,0.12); box-shadow: inset 0 0 0 1px var(--gold-dim); }
+.pp-grid-mine.pp-grid-hit{ background: rgba(232,194,90,0.16); }
+@media (prefers-reduced-motion: reduce){ .pp-grid-cell{ transition:none; } }
+
 /* The headline number. Big enough to read one-thumbed on a Sunday without opening
    anything, which is the whole point of the card it sits on. */
 .pp-score-hero{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
