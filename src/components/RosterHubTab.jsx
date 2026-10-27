@@ -27,7 +27,7 @@ import { pastRosterPeriods, pastWeekState } from "./pastWeek.js";
  * league and opens first; Full Rosters is the old All Rosters, untouched, for opponents,
  * kickoffs and the injury notepad; Free Agents is unchanged. */
 /* GOING BACK A WEEK (Scott, 2026-10-27). A picker above the sub-tabs steps through every
- * finished week, then "Now". A finished week redraws the Roster Grid and Full Rosters with
+ * finished week, then the week being played. A finished week redraws the Roster Grid and Full Rosters with
  * that week's rosters, the points each player scored and every team's scheme - read from
  * what the league kept (pastWeek.js), never recalculated. Free Agents is this week only:
  * who was free in Week 3 is not something anyone can act on. Its button stays put on a
@@ -80,8 +80,10 @@ export function RosterHubTab({ state, myTeam }) {
  * weeks works the same way on both screens. */
 export function WeekPicker({ state, pages, at, onPick }) {
   const last = pages.length;
+  /* The last button is the week being played, by its number like the rest - Scott,
+   * 2026-10-27, who did not want it called "Now". */
   const label = (p) => (p.type === "playoff" ? "R" + p.number : String(p.number));
-  /* By Week 10 the strip is wider than a phone, and "Now" - where it opens - is off the
+  /* By Week 10 the strip is wider than a phone, and the current week - where it opens - is off the
    * right edge. Keep the lit button in view. */
   const strip = useRef(null);
   useEffect(() => {
@@ -102,7 +104,7 @@ export function WeekPicker({ state, pages, at, onPick }) {
         {pages.map((p, i) => (
           <button key={p.type + p.number} type="button" aria-pressed={i === at} className={"pp-wk-pick" + (i === at ? " active" : "")} onClick={() => onPick(i)}>{label(p)}</button>
         ))}
-        <button type="button" aria-pressed={at === last} className={"pp-wk-pick" + (at === last ? " active" : "")} onClick={() => onPick(last)}>Now</button>
+        <button type="button" aria-pressed={at === last} className={"pp-wk-pick" + (at === last ? " active" : "")} onClick={() => onPick(last)}>{label(state.currentPeriod)}</button>
       </div>
     </div>
   );
