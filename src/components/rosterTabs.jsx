@@ -27,13 +27,41 @@ import {
 import { EmptyState, PositionCard, statLineText } from "./atoms.jsx";
 import { PlayerIdLine, PlayerName, PointsColumn, TeamRosterBlock, slotMetaLine } from "./roster.jsx";
 import { useInjuryNotes } from "./injury.jsx";
+import { TxLines } from "./activity.jsx";
+import { isPastWeek } from "./pastWeek.js";
+import { moveChip, weekMoves } from "./weekMoves.js";
+
+/* A FINISHED WEEK CARRIES ITS SCHEMES (Scott, 2026-10-27): each team's chip - Steal,
+ * Block, Redraw, Stolen from - and the transaction lines, read back from the week's
+ * activity exactly as the Week screen's "Around the league" reads them. The week being
+ * played does not show them here; it has the Week screen for that. */
+function pastMovesByTeam(state) {
+  if (!isPastWeek(state)) return null;
+  const { any, teams } = weekMoves(state, state.currentPeriod);
+  if (!any) return null;
+  return new Map(teams.map((tm) => [tm.teamId, tm]));
+}
+
+/* The tag a grid box wears for a player who arrived by a scheme or was blocked - matched
+ * on name, since that is all the week's activity carries. */
+const GRID_TAG = { block: "BLK", stolen: "STOLE", fa: "FA" };
+function gridMoveTag(tm, player) {
+  if (!tm || !player) return null;
+  const line = tm.lines.find((l) => l.player === player.name && (l.kind === "add" || l.kind === "block"));
+  if (!line) return null;
+  if (line.kind === "block") return { label: GRID_TAG.block, cls: "pp-tx-block" };
+  return line.note.startsWith("stolen from ")
+    ? { label: GRID_TAG.stolen, cls: "pp-tx-stolen" }
+    : { label: GRID_TAG.fa, cls: "pp-tx-add" };
+}
 
 /* One team's card: the headline everybody wants, and the twelve rows only some people do.
  *
  * Collapsed by default so the whole league fits on one phone screen (issue #30 asked for
  * "compact"), with the answer - name and total - on the line you can already see. Your
  * own team opens by itself, because the one card you came for should not need a tap. */
-function TeamRosterCard({ team, state, showStats, isMine }) {
+function TeamRosterCard({ team, state, showStats, isMine, move }) {
+  const chip = move ? moveChip(move) : null;
   const [open, setOpen] = useState(isMine);
   return (
     <div className={"pp-card pp-card-tight" + (isMine ? " pp-my-card" : "")}>
@@ -42,6 +70,7 @@ function TeamRosterCard({ team, state, showStats, isMine }) {
         <span className="pp-roster-head-name">
           {team.name}
           {isMine ? <span className="pp-you-tag">You</span> : null}
+          {chip ? <span className={"pp-chip " + chip.cls}>{chip.label}</span> : null}
         </span>
         {showStats && team.roster ? (
           <span className="pp-roster-head-pts">{teamPeriodScore(state, team)}</span>
@@ -49,6 +78,12 @@ function TeamRosterCard({ team, state, showStats, isMine }) {
       </button>
       {open ? (
         <div style={{ marginTop: 8 }}>
+          {move && move.lines.length > 0 ? (
+            <div className="pp-rh-moves">
+              <div className="pp-eyebrow" style={{ marginBottom: 6 }}>Schemes</div>
+              <TxLines lines={move.lines} state={state} />
+            </div>
+          ) : null}
           <TeamRosterBlock team={team} state={state} showStats={showStats} showBench={true} showTotal={false} />
         </div>
       ) : null}
@@ -66,6 +101,7 @@ export function AllRostersTab({ state, myTeam }) {
   const mine = myTeam ? state.teams.filter((t) => t.id === myTeam.id) : [];
   const rest = state.teams.filter((t) => !myTeam || t.id !== myTeam.id);
   const showStats = state.currentPeriod.phase !== "pre-deal";
+  const moves = pastMovesByTeam(state);
   return (
     <div>
       {mine.concat(rest).map((team) => (
@@ -75,6 +111,7 @@ export function AllRostersTab({ state, myTeam }) {
           state={state}
           showStats={showStats}
           isMine={!!myTeam && team.id === myTeam.id}
+          move={moves ? moves.get(team.id) : null}
         />
       ))}
     </div>
@@ -113,7 +150,7 @@ function gridPoints(state, team, slot, player, bench, showStats) {
   return computeStarterPoints(state, stats[slot], player.position);
 }
 
-function GridCell({ state, team, slot, pid, bench, showStats, filter, isMine }) {
+function GridCell({ state, team, slot, pid, bench, showStats, filter, isMine, move }) {
   const player = getPlayer(state, pid);
   const hit = filter !== "ALL" && !!player && player.position === filter;
   const dim = filter !== "ALL" && !hit;
@@ -121,6 +158,7 @@ function GridCell({ state, team, slot, pid, bench, showStats, filter, isMine }) 
   if (!player) return <td className={cls}><span className="pp-grid-empty">-</span></td>;
   const injury = playerInjury(state, player);
   const pts = gridPoints(state, team, slot, player, bench, showStats);
+  const tag = gridMoveTag(move, player);
   return (
     <td className={cls}>
       <div className="pp-grid-name" title={player.name}>
@@ -130,6 +168,7 @@ function GridCell({ state, team, slot, pid, bench, showStats, filter, isMine }) 
         ) : null}
       </div>
       <PlayerIdLine player={player} state={state} />
+      {tag ? <span className={"pp-tx-tag pp-grid-tag " + tag.cls}>{tag.label}</span> : null}
       {pts != null ? (
         <div className={"pp-grid-pts" + (bench ? " pp-pts-not-counting" : "")}>{Number(pts).toFixed(1)}</div>
       ) : null}
@@ -144,6 +183,7 @@ export function RosterGridTab({ state, myTeam }) {
   const teams = mine.concat(state.teams.filter((t) => !myTeam || t.id !== myTeam.id));
   if (!teams.some((t) => t.roster)) return <EmptyState>No rosters dealt yet this period.</EmptyState>;
   const showStats = state.currentPeriod.phase !== "pre-deal";
+  const moves = pastMovesByTeam(state);
   const benchSize = Math.max(0, ...teams.map((t) => (t.roster ? t.roster.bench.length : 0)));
   const count = (pos) =>
     teams.reduce((n, t) => {
@@ -175,6 +215,7 @@ export function RosterGridTab({ state, myTeam }) {
               <th className="pp-grid-slot" aria-label="Slot" />
               {teams.map((t) => {
                 const isMine = !!myTeam && t.id === myTeam.id;
+                const chip = moves ? moveChip(moves.get(t.id)) : null;
                 return (
                   <th key={t.id} className={"pp-grid-team" + (isMine ? " pp-grid-team-mine" : "")}>
                     <span className="pp-grid-team-name">
@@ -182,6 +223,7 @@ export function RosterGridTab({ state, myTeam }) {
                       {isMine ? <span className="pp-you-tag">You</span> : null}
                     </span>
                     {showStats && t.roster ? <span className="pp-grid-total">{teamPeriodScore(state, t)}</span> : null}
+                    {chip ? <span className={"pp-chip pp-grid-chip " + chip.cls}>{chip.label}</span> : null}
                   </th>
                 );
               })}
@@ -200,6 +242,7 @@ export function RosterGridTab({ state, myTeam }) {
                     pid={t.roster ? row.pick(t) : null}
                     bench={row.bench} showStats={showStats} filter={filter}
                     isMine={!!myTeam && t.id === myTeam.id}
+                    move={moves ? moves.get(t.id) : null}
                   />
                 ))}
               </tr>

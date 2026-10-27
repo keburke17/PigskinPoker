@@ -232,11 +232,14 @@ export function PointsColumn({ pts, average, notCounting, locked }) {
  * the same walk over the same six slots that finalize does, so the card cannot show a
  * total the week will not award. */
 export function TeamRosterBlock({ team, state, showStats, showBench, showTotal }) {
+  /* A finished week (the Rosters tab's week picker) has nothing left to lock - every
+   * game in it is over, and LOCKED on all twelve rows would say nothing. */
+  const past = !!(state._meta && state._meta.pastWeek);
   const stats = (state.statsEntry && state.statsEntry[team.id]) || {};
   /* Locked means "cannot be moved now", which is the commissioner's manual lock OR the
    * league's lineup-lock policy having caught up with the clock - one question, asked
    * in one place. See src/engine/lineupLock.js. */
-  const locked = (pid) => !!pid && isPlayerLocked(state, pid);
+  const locked = (pid) => !!pid && !past && isPlayerLocked(state, pid);
   if (!team.roster) return <EmptyState>No roster dealt yet this period.</EmptyState>;
   return (
     <div>
