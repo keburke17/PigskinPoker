@@ -898,3 +898,10 @@
   .pp-recap-place{ min-width:62px; }
   .pp-recap-stat-val{ font-size:15px; }
 }
+
+/* The Rosters tab's week picker and a finished week's schemes (Scott, 2026-10-27). */
+.pp-rh-picker{ margin-bottom:10px; }
+.pp-rh-moves{ margin:0 0 10px; padding-bottom:10px; border-bottom:1px solid var(--border-soft); }
+.pp-roster-head-name .pp-chip{ margin-left:6px; vertical-align:middle; }
+.pp-grid-chip{ display:inline-block; margin:3px 0 0; font-size:9px; padding:1px 6px; }
+.pp-grid-tag{ display:inline-block; width:auto; padding:0 4px; margin-top:2px; font-size:8.5px; }

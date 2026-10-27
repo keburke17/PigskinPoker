@@ -220,27 +220,30 @@ export function hydrateLeague(db, opts = {}) {
         }
       : emptyCumulative();
 
-  const teams = teamRows.map((t) => {
-    const mine = slotsForCurrent.filter((r) => r.team_id === t.id);
-    let roster = null;
-    if (mine.length) {
-      const starters = {};
-      STARTER_SLOTS.forEach((slot) => {
-        const row = mine.find((r) => r.area === "starter" && r.slot === slot);
-        starters[slot] = row ? legacyOf(row.player_id, playerLegacy) : null;
+  /* One team's twelve slots in one period, or null when it was dealt nothing. Shared by
+   * the current period and the finished ones in `_meta.pastPeriods`, below. */
+  const rosterFrom = (slots, teamId) => {
+    const mine = slots.filter((r) => r.team_id === teamId);
+    if (!mine.length) return null;
+    const starters = {};
+    STARTER_SLOTS.forEach((slot) => {
+      const row = mine.find((r) => r.area === "starter" && r.slot === slot);
+      starters[slot] = row ? legacyOf(row.player_id, playerLegacy) : null;
+    });
+    const bench = [null, null, null, null, null, null];
+    mine
+      .filter((r) => r.area === "bench")
+      .forEach((r) => {
+        bench[r.bench_index] = legacyOf(r.player_id, playerLegacy);
       });
-      const bench = [null, null, null, null, null, null];
-      mine
-        .filter((r) => r.area === "bench")
-        .forEach((r) => {
-          bench[r.bench_index] = legacyOf(r.player_id, playerLegacy);
-        });
-      roster = { starters, bench };
-    }
+    return { starters, bench };
+  };
+
+  const teams = teamRows.map((t) => {
     return {
       id: t.legacy_id,
       name: t.name,
-      roster,
+      roster: rosterFrom(slotsForCurrent, t.id),
       cumulative: toCumulative(totalsFor(t.id, "regular")),
       playoffCumulative: toCumulative(totalsFor(t.id, "playoff")),
     };
@@ -277,20 +280,22 @@ export function hydrateLeague(db, opts = {}) {
     };
   };
 
-  const statsEntry = {};
-  if (current) {
+  const statsEntryFor = (periodId) => {
+    const entry = {};
     db.stat_lines
-      .filter((s) => s.period_id === current.id)
+      .filter((s) => s.period_id === periodId)
       .forEach((s) => {
         const teamKey = legacyOf(s.team_id, teamLegacy);
         if (!teamKey) return;
-        if (!statsEntry[teamKey]) statsEntry[teamKey] = {};
-        statsEntry[teamKey][s.slot] =
+        if (!entry[teamKey]) entry[teamKey] = {};
+        entry[teamKey][s.slot] =
           s.slot === "Coach" || s.coach_result != null
             ? { result: s.coach_result ?? null }
             : statLineFromRow(s);
       });
-  }
+    return entry;
+  };
+  const statsEntry = current ? statsEntryFor(current.id) : {};
 
   /* ---- unresolved schemes for the current period ---- */
   const schemes = {};
@@ -445,6 +450,32 @@ export function hydrateLeague(db, opts = {}) {
        * at finalize and never edited. Display only: NOTHING IN THE GAME READS IT. Null
        * before the first finalized week, and on a database without the table yet. */
       recaps: recapsFrom(db.weekly_recaps ?? [], periodRows, teamLegacy),
+      /* Every FINISHED period's rosters and stat lines, for the Rosters tab's week picker
+       * (Scott, 2026-10-27). The artifact wiped both at finalize; this schema has kept them
+       * since the start, and since 2026-09-08 nothing deletes them (server/league.js). A
+       * week finalized before then can come back with rosters but no stat lines, and a
+       * week imported from the artifact with neither - such a week is simply left out.
+       * Display only: in _meta because the artifact's shape has nowhere for it, and
+       * decompose must never carry it - a finished week is not the blob's to rewrite. */
+      pastPeriods: periodRows
+        .filter((p) => p.phase === "finalized" && p !== current)
+        .map((p) => {
+          const slots = db.roster_slots.filter((r) => r.period_id === p.id);
+          const rosters = {};
+          teamRows.forEach((t) => {
+            const roster = rosterFrom(slots, t.id);
+            if (roster) rosters[t.legacy_id] = roster;
+          });
+          return {
+            type: p.type,
+            number: p.number,
+            nflWeek: p.nfl_week ?? null,
+            kickoffs: p.kickoffs ?? {},
+            rosters,
+            statsEntry: statsEntryFor(p.id),
+          };
+        })
+        .filter((p) => Object.keys(p.rosters).length > 0),
       /* Whether a scheduled job may run the stats pull for this league. An operational
        * setting rather than a game rule - it says who presses the button, not what the
        * button does - so it lives on `leagues` and, like nflWeek, is deliberately not
