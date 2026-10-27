@@ -1,52 +1,39 @@
-/* Pigskin Poker UI - originally extracted verbatim from
- * LegacyProject/PigskinPokerCode.jsx lines 1716-1815, with only module boundaries
- * added: imports at the top, `export` on each declaration.
+/* Pigskin Poker UI - the Rules tab.
  *
- * SINCE EDITED, deliberately, because this screen is the rules as the league reads
- * them and it had fallen behind the game:
- *   2026-08-28 - the scoring card, for the passing / rushing / receiving split (OQ-4c).
- *   2026-09-05 - "Lineup Lock & Injury Swaps" states THIS league's lock policy rather
- *     than one of them, because the lock timing became an option (OQ-11).
- *   2026-09-06 - a Player Pool card (the live depth charts, injuries, and what a
- *     refresh may not do), the coaches line, and the tiebreaker card, which had
- *     documented six tiebreakers since the artifact while the engine applied five.
- *     That is OQ-A, now fixed, so the screen and the game finally agree.
- *   2026-09-07 - the scheme deadline and the weekly rollover, because a league can now
- *     run either on a clock (issue #52, OQ-14). "Schemes close when the commissioner
- *     processes the week" is the rule for a league that has not switched that on, and
- *     the wrong rule - in the expensive direction - for one that has.
- *   2026-09-08 - the standings-points line names the reverse ladder and says it is fixed
- *     (OQ-13, issue #48). It used to print a list of numbers without saying where they
- *     came from, which was fine while a commissioner could change them and misleading
- *     the moment he could not.
+ * Originally extracted verbatim from LegacyProject/PigskinPokerCode.jsx lines 1716-1815,
+ * then grown card by card (2026-08-28 to 2026-10-26) every time a rule moved, until it was
+ * eight cards long, repeated itself, and spent a card on how the player pool is refreshed.
  *
- * docs/RULES.md is the long form of the same thing. Change both together. */
+ * REBUILT 2026-10-27, Scott's design (mockup round "C - Quick version"): the whole game in
+ * a few numbered lines, then five sections that open on a tap - Scoring, Schemes, Roster,
+ * Standings & tiebreakers, Playoffs. It is written for someone PLAYING the league, so it
+ * says what this league does and leaves out what only the commissioner or the admins need
+ * (the pool refresh, the coach list, how ties inside a week are scored). Help carries the
+ * how-to; docs/RULES.md is still the long form.
+ *
+ * Every number and time is read from this league's settings - scoring rates, the clock,
+ * the lock rule, the team count, the playoff config - so two leagues read differently.
+ * A table (issue #75) has no standings ladder and no playoffs, and says so. */
 
+import { useState } from "react";
 import {
   ARROW,
   DEFAULT_SCORING,
   LINEUP_LOCK,
-  SUIT_CH,
+  TOP_OF_CHART_WEIGHT,
   advanceDeadlineWords,
   autoAdvanceWeek,
   autoProcessSchemes,
   currentStandingsPointsArray,
   firstKickoff,
   formatKickoff,
+  isTable,
   kickoffsFor,
   lineupLockMode,
   schemeDeadlineWords,
 } from "../engine/index.js";
 
-export function QuickRefTile({ label, value }) {
-  return (
-    <div className="pp-qr-tile">
-      <div className="pp-qr-value">{value}</div>
-      <div className="pp-qr-label">{label}</div>
-    </div>
-  );
-}
-
+/* Still used by the Help tab. */
 export function RuleCard({ title, children }) {
   return (
     <div className="pp-card pp-card-tight" style={{ marginBottom: 10 }}>
@@ -56,161 +43,195 @@ export function RuleCard({ title, children }) {
   );
 }
 
+const TIEBREAKERS = ["standings points", "week wins", "coach wins", "total TDs", "total yards", "best single-player week"];
+
+function oddsWords(weight) {
+  return weight === 2 ? "twice as likely" : weight + " times as likely";
+}
+
 export function RulesTab({ state }) {
   /* Merged over the defaults so a league whose config predates the 2026-08-28 split
    * still reads out real numbers rather than blanks - the same fallback the engine
    * uses when it scores. */
   const cfg = Object.assign({}, DEFAULT_SCORING, state.scoringConfig);
+  const table = isTable(state);
+  const word = table ? "hand" : "week";
+  const boss = table ? "dealer" : "commissioner";
   const teamCount = state.teams.length || 0;
-  const spArr = currentStandingsPointsArray(state, teamCount || 1);
+  const ladder = currentStandingsPointsArray(state, teamCount || 1);
+  const pc = state.playoffConfig || {};
+  const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
+  const first = firstKickoff(kickoffsFor(state));
+  const schemeClock = autoProcessSchemes(state);
+  const dealClock = autoAdvanceWeek(state);
+  const [open, setOpen] = useState("scoring");
+
+  const yardsSummary = cfg.rushYardsPerPoint === cfg.recYardsPerPoint
+    ? cfg.passYardsPerPoint + " pass yds / " + cfg.rushYardsPerPoint + " rush-rec yds a point"
+    : cfg.passYardsPerPoint + " pass / " + cfg.rushYardsPerPoint + " rush / " + cfg.recYardsPerPoint + " rec yds a point";
+
+  let playoffSummary = null;
+  let playoffLine = null;
+  if (!table) {
+    if (pc.started) {
+      playoffSummary = "Underway - " + pc.bracketSize + " teams";
+      playoffLine = <>The playoffs are underway: <strong>{pc.bracketSize}</strong> teams, {pc.advancement.join(" " + ARROW + " ")}.</>;
+    } else if (pc.startNflWeek != null) {
+      playoffSummary = "Top " + pc.bracketSize + ", NFL Week " + pc.startNflWeek;
+      playoffLine = <>Top <strong>{pc.bracketSize}</strong> make the playoffs in <strong>NFL Week {pc.startNflWeek}</strong>.</>;
+    } else {
+      playoffSummary = "No start week set yet";
+      playoffLine = <>Playoffs: your commissioner has not set a start week yet.</>;
+    }
+  }
+
+  const quick = [
+    dealClock
+      ? <>Every <strong>{advanceDeadlineWords(state)}</strong> you&apos;re dealt a new <strong>random</strong> 12-man roster.</>
+      : <>Every {word} your {boss} deals you a new <strong>random</strong> 12-man roster.</>,
+    schemeClock
+      ? <>Pick one scheme - Block, Steal or Redraw. Schemes process <strong>{schemeDeadlineWords(state)}</strong>.</>
+      : <>Pick one scheme - Block, Steal or Redraw. Schemes process when your {boss} runs them.</>,
+    <>To Steal or Redraw, you <strong>drop a player at the same position</strong> you&apos;re going after. Drop a WR, get a WR.</>,
+    <>Who you steal is <strong>random</strong>. Who you redraw is <strong>random</strong>. Blocks go first, then every steal and redraw runs in a <strong>random order</strong>.</>,
+    weekly
+      ? <>Set your 6 starters. Every lineup locks at <strong>the {word}&apos;s first kickoff</strong>.</>
+      : <>Set your 6 starters. Each locks at <strong>his own kickoff</strong>.</>,
+    table
+      ? <>Top score <strong>wins the hand</strong>. The table keeps a tally of hands won and lost.</>
+      : <>Win the week for <strong>{ladder[0]} standings point{ladder[0] === 1 ? "" : "s"}</strong>; last place gets 1.</>,
+    playoffLine,
+  ].filter(Boolean);
+
+  const sections = [
+    {
+      id: "scoring",
+      title: "Scoring",
+      summary: yardsSummary,
+      body: [
+        "Passing: 1 pt per " + cfg.passYardsPerPoint + " yards, " + cfg.pointsPerPassTD + " per TD",
+        "Rushing: 1 pt per " + cfg.rushYardsPerPoint + " yards, " + cfg.pointsPerRushTD + " per TD",
+        "Receiving: 1 pt per " + cfg.recYardsPerPoint + " yards, " + cfg.pointsPerRecTD + " per TD",
+        "Head coach: Win " + cfg.coachWin + ", Tie " + cfg.coachTie + ", Loss " + cfg.coachLoss + " - his NFL team's result",
+        "Partial yards count (58 yds at 1 per 10 = 5.8). Bench never scores.",
+        "Return yards, two-point conversions and fumble-recovery TDs score nothing.",
+      ],
+    },
+    {
+      id: "schemes",
+      title: "Schemes",
+      summary: "Block, Steal or Redraw - " + (schemeClock ? "process " + schemeDeadlineWords(state) : "one a " + word),
+      body: [
+        <><strong>Block</strong> - protect one starter from steals.</>,
+        <><strong>Steal</strong> - drop a player, take a random unblocked starter at that same position from another team.</>,
+        <><strong>Redraw</strong> - drop a player, get a random free agent at that same position.</>,
+        "You always drop the position you're going after - drop an RB, get an RB.",
+        "Blocks run first. Then every steal and redraw runs in a random order, so picking early gets you nothing.",
+        "Coaches can't be schemed. Nobody sees your pick.",
+        schemeClock ? "Nothing in by " + schemeDeadlineWords(state) + " means No Action." : null,
+      ],
+    },
+    {
+      id: "roster",
+      title: "Roster",
+      summary: "6 starters, 6 bench - max 2 QB, TE, HC",
+      body: [
+        "Starters: HC, QB, WR, RB, TE, FLEX",
+        "Bench: one more of each, plus one more WR or RB",
+        <>Max <strong>2 QBs, 2 TEs and 2 coaches</strong> per roster.</>,
+        <>FLEX is always dealt a WR or RB, but you can <strong>start a TE there</strong> - so you can play both your TEs.</>,
+        "Each NFL team's top healthy RB and WR is " + oddsWords(TOP_OF_CHART_WEIGHT) + " to be dealt.",
+        "Players on a bye, OUT or IR aren't dealt.",
+        "Swaps go through the bench.",
+        weekly
+          ? "Every lineup locks at the " + word + "'s first kickoff" + (first ? " - " + formatKickoff(first) + "." : ".")
+          : "Each player locks when his own game kicks off, so a Sunday-night starter can still come in at 7pm.",
+        "Your " + boss + " can also lock a player by hand - for a late scratch, say.",
+      ],
+    },
+    table
+      ? {
+          id: "standings",
+          title: "Winning a hand",
+          summary: "Top score takes it",
+          body: [
+            "The top score wins the hand.",
+            "The table keeps a tally of hands won and lost - no standings points, no playoffs.",
+          ],
+        }
+      : {
+          id: "standings",
+          title: "Standings & tiebreakers",
+          summary: ladder[0] + " for a win, down to 1",
+          body: [
+            "Weekly finish pays " + ladder.join(", ") + ". Ties share the higher number.",
+            "Your season is the sum of those points.",
+            "Tiebreakers: " + TIEBREAKERS.join(", ") + ".",
+          ],
+        },
+    table
+      ? null
+      : {
+          id: "playoffs",
+          title: "Playoffs",
+          summary: playoffSummary,
+          body: [
+            pc.started || pc.startNflWeek == null
+              ? null
+              : "Top " + pc.bracketSize + " after the regular season. Starts NFL Week " + pc.startNflWeek + ".",
+            pc.startNflWeek == null && !pc.started
+              ? "Your commissioner sets the start week; until then there are no playoffs."
+              : (pc.advancement || []).join(" teams, then ") + (pc.advancement && pc.advancement[pc.advancement.length - 1] === 1 ? " champion." : " teams."),
+            "Same weekly cycle, scored round by round.",
+            "Miss the cut and your season is over.",
+          ],
+        },
+  ].filter(Boolean);
+
   return (
     <div>
-      <div className="pp-card">
-        <h2 className="pp-h2" style={{ marginBottom: 10 }}>Quick Reference</h2>
-        <div className="pp-qr-grid">
-          <QuickRefTile label={"pt per " + cfg.passYardsPerPoint + " pass yds"} value={"1 : " + cfg.passYardsPerPoint} />
-          <QuickRefTile label={"pt per " + cfg.rushYardsPerPoint + " rush yds"} value={"1 : " + cfg.rushYardsPerPoint} />
-          <QuickRefTile label={"pt per " + cfg.recYardsPerPoint + " rec yds"} value={"1 : " + cfg.recYardsPerPoint} />
-          <QuickRefTile label="TD: pass / rush / rec" value={cfg.pointsPerPassTD + " / " + cfg.pointsPerRushTD + " / " + cfg.pointsPerRecTD} />
-          <QuickRefTile label="Coach W / T / L" value={cfg.coachWin + " / " + cfg.coachTie + " / " + cfg.coachLoss} />
-          <QuickRefTile label="Max TEs per team" value="2" />
-          <QuickRefTile label={"Std pts (1st " + ARROW + " last)"} value={spArr.join(", ")} />
-          <QuickRefTile label="Roster size" value="6 starters + 6 bench" />
-        </div>
+      <div className="pp-rules-head">
+        <h2 className="pp-h2" style={{ marginBottom: 2 }}>The game in 60 seconds</h2>
+        {state.leagueName ? <div className="pp-sub">{state.leagueName}</div> : null}
       </div>
 
-      <RuleCard title={SUIT_CH.spade + " The Weekly Deal"}>
-        <li>Every week (or playoff round), each team gets a fresh, random 12-player roster - nothing carries over.</li>
-        {autoAdvanceWeek(state) ? (
-          <li><strong>The week is scored and the next one dealt at {advanceDeadlineWords(state)}</strong>, once every game of the NFL week is final. The first week of a season, and every playoff round, still wait for the commissioner.</li>
-        ) : null}
-        <li>6 starters: Coach, QB, WR, RB, TE, FLEX.</li>
-        <li>6 bench: one more of each (Coach, QB, WR, RB, TE), plus one more WR or RB.</li>
-        <li>FLEX is always dealt a WR or RB - never a TE.</li>
-        <li>After the deal you can start a WR, RB or TE in your FLEX - so you can play both your TEs.</li>
-        <li>Every team still has exactly 2 TEs, same as QB and Coach - the deal never hands out a third.</li>
-        <li>The bench isn't tied to a slot - it's just 6 players, each shown under their real position.</li>
-      </RuleCard>
+      <div className="pp-card pp-card-tight">
+        <ol className="pp-rules-quick">
+          {quick.map((line, i) => (
+            <li key={i}>
+              <span className="pp-rules-num">{i + 1}</span>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
 
-      <RuleCard title={SUIT_CH.heart + " Play Schemes"}>
-        <li>Each week, every manager picks one action: <strong>Block</strong>, <strong>Steal</strong>, <strong>Redraw</strong>, or <strong>No Action</strong>.</li>
-        <li><strong>Block</strong> - protect one of your own starters from being stolen this week.</li>
-        <li><strong>Steal</strong> - drop a player of a chosen position, take a random unprotected player of that same position from another team's starters.</li>
-        <li><strong>Redraw</strong> - drop a player of a chosen position, get a random free-agent replacement at that exact position.</li>
-        <li>Coach can never be selected for a scheme.</li>
-        <li>Replacements are always the exact same position as what was dropped - never flexible.</li>
-        <li>Dropped players go straight back into the free-agent pool, even mid-processing.</li>
-        <li>Steals resolve in random order - no submission-order advantage.</li>
-        <li>Schemes are never shown to other managers - only the resulting roster.</li>
-        {autoProcessSchemes(state) ? (
-          <li><strong>Schemes are processed at {schemeDeadlineWords(state)}</strong>, on the clock. Submit nothing by then and you play No Action.</li>
-        ) : (
-          <li>Schemes are processed when the commissioner presses the button - there is no clock on it.</li>
-        )}
-      </RuleCard>
+      <div className="pp-eyebrow pp-rules-eyebrow">The details - tap to open</div>
 
-      <RuleCard title={SUIT_CH.diamond + " Scoring"}>
-        <li>Yards count by type, each at its own rate: 1 point per {cfg.passYardsPerPoint} passing yards, 1 per {cfg.rushYardsPerPoint} rushing, 1 per {cfg.recYardsPerPoint} receiving.</li>
-        <li>Every yard counts for the fraction of a point it earns, and your total is rounded to one decimal. Nothing is rounded down and thrown away.</li>
-        <li>Each type still converts at its own rate, so 15 rushing and 15 receiving yards is 1.5 plus 1.5 - which is 3.</li>
-        <li>Touchdowns: {cfg.pointsPerPassTD} for passing, {cfg.pointsPerRushTD} for rushing, {cfg.pointsPerRecTD} for receiving.</li>
-        <li>Only passing, rushing and receiving count. Return yards, two-point conversions and fumble-recovery TDs are worth nothing.</li>
-        <li>A starter who doesn't play scores 0 - same as anyone else who puts up nothing.</li>
-        <li>Coach: {cfg.coachWin} pts for a Win, {cfg.coachTie} for a Tie, {cfg.coachLoss} for a Loss.</li>
-        <li>Only starters score - bench players never score, regardless of stats.</li>
-      </RuleCard>
-
-      <RuleCard title={SUIT_CH.club + " Standings & Tiebreakers"}>
-        <li>Teams are ranked by that week's score and earn standings points by finish, on a <strong>reverse ladder</strong>: the winner of the week takes one point per team in the league, and each place below takes one fewer, down to 1 for last.</li>
-        {teamCount > 0 ? (
-          <li>This league has {teamCount} team{teamCount === 1 ? "" : "s"}, so the ladder is {spArr.join(", ")} (1st {ARROW} last). It always matches the team count, so it grows when a team joins - and it is fixed, with no setting behind it.</li>
-        ) : (
-          <li>This league has no teams yet, so there is no ladder to show. It always matches the team count, and it is fixed - there is no setting behind it.</li>
-        )}
-        <li>Ties share the higher value.</li>
-        <li>Season standings = sum of weekly standings points, not raw weekly scores.</li>
-        <li>Tiebreaker order, in this order: {["Standings Points", "Week Wins", "Coach Wins", "Total TDs", "Total Yards", "Best single-player score in a week"].join(" " + ARROW + " ")}.</li>
-        <li>Best single-player score tracks the player's name, points, and week - and updates whenever a later week beats it. Your Coach counts, if he ever gets you the most points in a week.</li>
-        <li>A tie inside a single week uses the same six tiebreakers, on season-to-date totals - so it goes to whoever is already ahead in the season.</li>
-        <li>Teams level on all six share a rank, and the next rank is skipped.</li>
-      </RuleCard>
-
-      <RuleCard title={SUIT_CH.star + " Playoffs"}>
-        <li>The commissioner sets the NFL week the playoffs start in, how many teams make it, and how they advance - and the bracket starts itself when that week arrives. There is no button to press on the day.</li>
-        <li>Only the teams in the bracket are dealt a roster. Miss the cut and your season is over.</li>
-        <li>Once playoffs start, regular-season standings freeze, and the bracket settings lock for the season.</li>
-        <li>Playoff rounds use the same cycle: {["deal", "schemes", "stats", "finalize"].join(" " + ARROW + " ")}.</li>
-        <li>Same tiebreaker order applies, but scoped to that round only.</li>
-        <li>Playoff periods are called "Round N" - regular season stays "Week N."</li>
-        {state.playoffConfig.started ? (
-          <li>Current bracket: {state.playoffConfig.bracketSize} teams, advancement {state.playoffConfig.advancement.join(" " + ARROW + " ")}.</li>
-        ) : state.playoffConfig.startNflWeek != null ? (
-          <li>This league: the top {state.playoffConfig.bracketSize} teams, starting in NFL week {state.playoffConfig.startNflWeek}, advancing {state.playoffConfig.advancement.join(" " + ARROW + " ")}.</li>
-        ) : (
-          <li>This league has not set a playoff week yet, so the playoffs will not start. The commissioner sets it under Commish {ARROW} Playoffs.</li>
-        )}
-      </RuleCard>
-
-      <RuleCard title="Coaches">
-        <li><strong>The Coach card is really the team.</strong> It scores the NFL team's result that week - Win, Tie or Loss - and the coach's name has nothing to do with the points. His name is on the card because it is more fun that way.</li>
-        <li>Coaches can never be stolen, redrawn, or blocked.</li>
-        <li>They only move between your own starting lineup and bench.</li>
-        <li>No feed writes a coach's name. The game's admins keep one list of all 32 and correct it by hand, so a wrong name is a typo to report rather than anything that can cost you a point.</li>
-      </RuleCard>
-
-      <RuleCard title="The Player Pool">
-        <li>Your league has its own pool. Marking a player OUT is a statement about this league - it never reaches anyone else's.</li>
-        <li>The pool is built from the live NFL depth charts: each NFL team's current QB, 2 RBs, 2 WRs and TE, plus its head coach.</li>
-        <li>The commissioner refreshes it before dealing, and only before dealing - there are no rosters to disturb yet.</li>
-        <li>A refresh adds new starters and retires players who are no longer rostered. Retired means marked OUT, never deleted, so past weeks still make sense.</li>
-        <li>Injuries come from the weekly roster file: a player on reserve is marked IR, anyone else off the active roster is marked OUT.</li>
-        <li>An injured starter is skipped and the next healthy man takes the slot, so every NFL team still contributes a full QB / 2 RB / 2 WR / TE.</li>
-        <li>A refresh never overwrites the commissioner: a player he added, or a status he set by hand, is left alone.</li>
-        <li>Only Active players are dealt - OUT, IR and BYE are all skipped.</li>
-        <li><strong>A player whose NFL team is on a bye is not dealt either</strong>, and cannot be stolen or redrawn. He comes back automatically the week his team plays again.</li>
-        <li><strong>Each NFL team's top healthy RB and WR is twice as likely to be dealt</strong> as its other RB or WR. If the top man is hurt, the next one up gets the better odds. QBs, TEs, coaches and redraws stay even, and a player the commissioner added by hand gets the normal odds.</li>
-        <li>Once you're dealt, you're dealt. A player who gets hurt or whose coach is fired mid-week still finishes your week; the change shows up at the next deal.</li>
-      </RuleCard>
-
-      <LineupLockCard state={state} />
+      {sections.map((s) => {
+        const isOpen = open === s.id;
+        return (
+          <div key={s.id} className="pp-card pp-rules-section">
+            <button
+              type="button"
+              className="pp-rules-toggle"
+              aria-expanded={isOpen}
+              onClick={() => setOpen(isOpen ? null : s.id)}
+            >
+              <span>
+                <span className="pp-rules-title">{s.title}</span>
+                <span className="pp-rules-summary">{s.summary}</span>
+              </span>
+              <span className="pp-rules-mark" aria-hidden="true">{isOpen ? "-" : "+"}</span>
+            </button>
+            {isOpen ? (
+              <ul className="pp-rules-body">
+                {s.body.filter(Boolean).map((line, i) => <li key={i}>{line}</li>)}
+              </ul>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
-
-/* What this league does about lineup changes, in its own terms.
- *
- * Written from the setting rather than describing both, because a rules screen that
- * lists the options is a rules screen nobody can act on: a manager wants to know
- * whether he can still move his receiver at four o'clock, not what leagues in general
- * do. The kickoff line is there for the same reason - the deadline is a time, so it
- * says the time.
- */
-export function LineupLockCard({ state }) {
-  const mode = lineupLockMode(state);
-  const kickoffs = kickoffsFor(state);
-  const first = firstKickoff(kickoffs);
-  const known = Object.keys(kickoffs).length > 0;
-
-  return (
-    <RuleCard title="Lineup Lock & Injury Swaps">
-      <li>After schemes are processed, the commissioner can lock rosters for the weekend, which closes further scheme submission.{autoProcessSchemes(state) ? " In this league that happens on its own at " + schemeDeadlineWords(state) + ", when the schemes are processed." : ""}</li>
-      {mode === LINEUP_LOCK.WEEKLY ? (
-        <>
-          <li><strong>This league locks every lineup at the week's first kickoff</strong>{first ? " - " + formatKickoff(first) + " this week" : ""}. What you have in your lineup then is what plays.</li>
-          <li>Injuries and inactives announced after that are your bad luck, the same as starting a player who is ruled out.</li>
-        </>
-      ) : (
-        <>
-          <li><strong>This league locks each player when his own game starts.</strong> You can keep changing your lineup all day, using players whose games have not kicked off yet.</li>
-          <li>So a one o'clock starter is frozen at one o'clock, and a Sunday-night receiver can still come in at seven.</li>
-        </>
-      )}
-      {!known ? <li>Kickoff times have not been read for this week, so only the commissioner's own locks apply.</li> : null}
-      <li>The commissioner can lock any individual player by hand at any time - for a late scratch, say - and that lock always holds.</li>
-      <li>Lineup swaps always route a starter through the bench - you can never directly swap two starters.</li>
-    </RuleCard>
-  );
-}
-
-/* =============================== Commissioner ================================ */
-

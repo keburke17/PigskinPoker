@@ -191,11 +191,23 @@
 .pp-table-wide{ min-width: 560px; font-size:12.5px; }
 .pp-table-wide th{ white-space:nowrap; }
 
-.pp-qr-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; }
-@media (min-width: 520px){ .pp-qr-grid{ grid-template-columns: repeat(3, 1fr); } }
-.pp-qr-tile{ background: rgba(0,0,0,0.2); border:1px solid var(--border-soft); border-radius: var(--radius-sm); padding:10px; text-align:center; }
-.pp-qr-value{ font-family: var(--font-mono); font-weight:700; font-size:15px; color: var(--gold-bright); }
-.pp-qr-label{ font-size:10.5px; color: var(--text-faint); margin-top:3px; text-transform:uppercase; letter-spacing:0.4px; }
+/* The Rules tab (2026-10-27, Scott's "quick version"): numbered lines, then sections that
+   open on a tap. Each toggle is a full-width button at least 48px tall, so it clears the
+   44px touch minimum OQ-8 found the rest of the app missing. */
+.pp-rules-head{ padding: 2px 2px 10px; }
+.pp-rules-quick{ margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:12px; }
+.pp-rules-quick li{ display:flex; gap:12px; align-items:flex-start; font-size:15px; line-height:1.4; color:var(--text); }
+.pp-rules-quick strong{ color:var(--gold-bright); }
+.pp-rules-num{ width:26px; height:26px; flex-shrink:0; border-radius:50%; background:var(--gold); color:var(--bg); font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; }
+.pp-rules-eyebrow{ padding: 18px 2px 8px; }
+.pp-rules-section{ padding:0; margin-bottom:10px; overflow:hidden; }
+.pp-rules-toggle{ width:100%; min-height:48px; display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 14px; background:transparent; border:none; color:var(--text); cursor:pointer; text-align:left; font:inherit; }
+.pp-rules-toggle > span:first-child{ display:flex; flex-direction:column; gap:2px; }
+.pp-rules-title{ font-family:var(--font-display); font-weight:700; font-size:16px; }
+.pp-rules-summary{ font-size:13px; color:var(--text-dim); }
+.pp-rules-mark{ color:var(--gold); font-size:20px; font-weight:700; width:20px; text-align:center; flex-shrink:0; }
+.pp-rules-body{ margin:0; padding:0 14px 14px; list-style:none; display:flex; flex-direction:column; gap:6px; font-size:14px; line-height:1.45; color:var(--text-dim); }
+.pp-rules-body strong{ color:var(--text); }
 
 .pp-rule-list{ margin:0; padding-left:18px; list-style:none; }
 .pp-rule-list li{ position:relative; padding-left:2px; margin-bottom:7px; font-size:13px; color: var(--text-dim); line-height:1.45; }
