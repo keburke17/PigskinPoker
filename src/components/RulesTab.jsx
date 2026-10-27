@@ -85,9 +85,10 @@ export function RulesTab({ state }) {
           <li><strong>The week is scored and the next one dealt at {advanceDeadlineWords(state)}</strong>, once every game of the NFL week is final. The first week of a season, and every playoff round, still wait for the commissioner.</li>
         ) : null}
         <li>6 starters: Coach, QB, WR, RB, TE, FLEX.</li>
-        <li>6 bench: one more of each (Coach, QB, WR, RB, TE), plus one more FLEX-eligible player.</li>
-        <li>FLEX can only be a WR or RB - never a TE.</li>
-        <li>Because of that, every team is capped at 2 TEs total, same as QB and Coach.</li>
+        <li>6 bench: one more of each (Coach, QB, WR, RB, TE), plus one more WR or RB.</li>
+        <li>FLEX is always dealt a WR or RB - never a TE.</li>
+        <li>After the deal you can start a WR, RB or TE in your FLEX - so you can play both your TEs.</li>
+        <li>Every team still has exactly 2 TEs, same as QB and Coach - the deal never hands out a third.</li>
         <li>The bench isn't tied to a slot - it's just 6 players, each shown under their real position.</li>
       </RuleCard>
 

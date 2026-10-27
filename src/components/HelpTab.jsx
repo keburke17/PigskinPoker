@@ -172,7 +172,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>Block</strong> - protect one of your starters from being stolen.</li>
         <li><strong>Steal</strong> - drop a player at a position, take a random unprotected starter at that position from another team.</li>
         <li><strong>Redraw</strong> - drop a player at a position, take a random free agent at that same position.</li>
-        <li><strong>FLEX</strong> - a starting slot that takes a WR or a RB, never a TE.</li>
+        <li><strong>FLEX</strong> - a starting slot dealt a WR or a RB. After the deal you can move a WR, RB or TE into it.</li>
         <li><strong>Standings points</strong> - what you earn for your finishing place in a week. The season table sums these, not raw scores.</li>
         <li><strong>Period</strong> - a week in the regular season, a round in the playoffs.</li>
         <li><strong>Phase</strong> - where the current period is in its cycle: not dealt, schemes open, rosters locked, stats in progress.</li>

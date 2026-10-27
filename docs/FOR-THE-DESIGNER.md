@@ -176,7 +176,7 @@ directly:
 - *"Where is the tiebreak logic?"*
 - *"What happens if two teams tie on raw score in the same week?"*
 - *"Add a bonus point for a 100-yard rushing game"*
-- *"Why does the FLEX slot never get a TE?"*
+- *"Why is the FLEX never dealt a TE?"*
 
 Because `CLAUDE.md` lives in the repo, it stays current as the project changes, and
 anyone who clones it gets the same briefing. It also says who you are and how you like to

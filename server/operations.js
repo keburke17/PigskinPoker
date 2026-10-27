@@ -60,6 +60,7 @@ import {
   tableDealProblem,
   seedFromString,
   seededRng,
+  slotAcceptsPosition,
 } from "../src/engine/index.js";
 import { vkey } from "../src/storage/hydrate.js";
 import { fetchLeagueRows, hydrate, persistBlob } from "./league.js";
@@ -974,6 +975,14 @@ export async function swapLineupSlot(db, { leagueId, token, teamId, slot, benchI
   const clockLock = kickoffLock(ctx);
   const refusal = clockLock(starter.player_id) || clockLock(bench.player_id);
   if (refusal) return fail(409, refusal, { reason: "locked", view: ctx.view });
+
+  /* Each player must fit the slot he lands in: the bench player in the starter's slot,
+   * and the starter back into the bench, which takes anyone. Until OQ-33 only the screen
+   * checked this, so a hand-made request could start a QB in the FLEX. */
+  const incoming = ctx.rows.players.find((p) => p.id === bench.player_id);
+  if (incoming && !slotAcceptsPosition(slot, incoming.position)) {
+    return fail(400, incoming.name + " is a " + incoming.position + " and can't play " + slot + ".");
+  }
 
   const a = await db
     .from("roster_slots")
