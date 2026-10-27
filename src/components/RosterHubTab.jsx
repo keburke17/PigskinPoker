@@ -4,7 +4,7 @@
  * lost its third sub-tab - see below.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { periodTitle } from "../engine/index.js";
 import { PeriodBanner } from "./atoms.jsx";
 import { AllRostersTab, FreeAgentsTab, RosterGridTab } from "./rosterTabs.jsx";
@@ -30,7 +30,9 @@ import { pastRosterPeriods, pastWeekState } from "./pastWeek.js";
  * finished week, then "Now". A finished week redraws the Roster Grid and Full Rosters with
  * that week's rosters, the points each player scored and every team's scheme - read from
  * what the league kept (pastWeek.js), never recalculated. Free Agents is this week only:
- * who was free in Week 3 is not something anyone can act on. */
+ * who was free in Week 3 is not something anyone can act on. Its button stays put on a
+ * past week and brings you back to now, because a tab that vanished read as a tab that
+ * had been removed (Scott, 2026-10-27). */
 export function RosterHubTab({ state, myTeam }) {
   const [sub, setSub] = useState("grid");
   /* null is "now", so a fresh deal moves the screen on by itself. */
@@ -38,7 +40,6 @@ export function RosterHubTab({ state, myTeam }) {
   const pages = pastRosterPeriods(state);
   const at = picked !== null && picked < pages.length ? picked : pages.length;
   const past = at < pages.length ? pastWeekState(state, pages[at]) : null;
-  const shown = sub === "fa" && past ? "grid" : sub;
   const view = past || state;
   return (
     <div>
@@ -48,19 +49,29 @@ export function RosterHubTab({ state, myTeam }) {
           state={state}
           pages={pages}
           at={at}
-          onPick={(i) => setPicked(i >= pages.length ? null : i)}
+          onPick={(i) => {
+            setPicked(i >= pages.length ? null : i);
+            /* Free Agents is this week only, so going back a week from it opens the grid. */
+            if (i < pages.length && sub === "fa") setSub("grid");
+          }}
         />
       ) : null}
       <div className="pp-subnav">
-        <button className={"pp-subnav-btn" + (shown === "grid" ? " active" : "")} onClick={() => setSub("grid")}>Roster Grid</button>
-        <button className={"pp-subnav-btn" + (shown === "rosters" ? " active" : "")} onClick={() => setSub("rosters")}>Full Rosters</button>
-        {past ? null : (
-          <button className={"pp-subnav-btn" + (shown === "fa" ? " active" : "")} onClick={() => setSub("fa")}>Free Agents</button>
-        )}
+        <button className={"pp-subnav-btn" + (sub === "grid" ? " active" : "")} onClick={() => setSub("grid")}>Roster Grid</button>
+        <button className={"pp-subnav-btn" + (sub === "rosters" ? " active" : "")} onClick={() => setSub("rosters")}>Full Rosters</button>
+        <button
+          className={"pp-subnav-btn" + (sub === "fa" ? " active" : "")}
+          onClick={() => {
+            setSub("fa");
+            setPicked(null);
+          }}
+        >
+          Free Agents
+        </button>
       </div>
-      {shown === "grid" && <RosterGridTab state={view} myTeam={myTeam} />}
-      {shown === "rosters" && <AllRostersTab state={view} myTeam={myTeam} />}
-      {shown === "fa" && <FreeAgentsTab state={state} />}
+      {sub === "grid" && <RosterGridTab state={view} myTeam={myTeam} />}
+      {sub === "rosters" && <AllRostersTab state={view} myTeam={myTeam} />}
+      {sub === "fa" && <FreeAgentsTab state={state} />}
     </div>
   );
 }
@@ -70,6 +81,13 @@ export function RosterHubTab({ state, myTeam }) {
 export function WeekPicker({ state, pages, at, onPick }) {
   const last = pages.length;
   const label = (p) => (p.type === "playoff" ? "R" + p.number : String(p.number));
+  /* By Week 10 the strip is wider than a phone, and "Now" - where it opens - is off the
+   * right edge. Keep the lit button in view. */
+  const strip = useRef(null);
+  useEffect(() => {
+    const el = strip.current && strip.current.querySelector(".pp-wk-pick.active");
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [at]);
   return (
     <div className="pp-card pp-card-tight pp-rh-picker">
       <div className="pp-wk-head">
@@ -80,7 +98,7 @@ export function WeekPicker({ state, pages, at, onPick }) {
         </div>
         <button type="button" className="pp-wk-btn" onClick={() => onPick(at + 1)} disabled={at === last} aria-label="Next week">{">"}</button>
       </div>
-      <div className="pp-wk-strip">
+      <div className="pp-wk-strip" ref={strip}>
         {pages.map((p, i) => (
           <button key={p.type + p.number} type="button" aria-pressed={i === at} className={"pp-wk-pick" + (i === at ? " active" : "")} onClick={() => onPick(i)}>{label(p)}</button>
         ))}
