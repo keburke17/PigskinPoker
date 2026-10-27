@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import * as ops from "../server/operations.js";
 import { fetchLeagueRows, hydrate } from "../server/league.js";
+import { slotAcceptsPosition } from "../src/engine/index.js";
 
 const SEED_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), "..", "supabase", "seed.sql"
@@ -1750,9 +1751,20 @@ gate()("the lineup lock", () => {
       .from("teams").select("id").eq("league_id", leagueId).eq("legacy_id", teamLegacy).single();
     const { data: slots } = await db
       .from("roster_slots").select("*").eq("period_id", periodId).eq("team_id", team.id);
-    const { data: players } = await db.from("players").select("id, name, nfl_team").eq("league_id", leagueId);
+    const { data: players } = await db.from("players").select("id, name, nfl_team, position").eq("league_id", leagueId);
     const byId = new Map(players.map((p) => [p.id, p]));
     return slots.map((r) => ({ ...r, player: byId.get(r.player_id) ?? null }));
+  };
+
+  /** A starter and a bench player who may legally swap (OQ-33: the server now checks). */
+  const fittingPair = (roster, ok = () => true) => {
+    for (const starter of roster.filter((r) => r.area === "starter" && r.player && ok(r))) {
+      const bench = roster.find(
+        (r) => r.area === "bench" && r.player && ok(r) && slotAcceptsPosition(starter.slot, r.player.position)
+      );
+      if (bench) return { starter, bench };
+    }
+    return {};
   };
 
   it("defaults every league to gametime, and lets the commissioner choose weekly", async () => {
@@ -1808,8 +1820,7 @@ gate()("the lineup lock", () => {
      * on neither that team nor each other's - the late-window swap the whole policy
      * exists to allow. */
     const kicked = qb.player.nfl_team;
-    const openStarter = roster.find((r) => r.area === "starter" && r.player && r.player.nfl_team !== kicked);
-    const openBench = roster.find((r) => r.area === "bench" && r.player && r.player.nfl_team !== kicked);
+    const { starter: openStarter, bench: openBench } = fittingPair(roster, (r) => r.player.nfl_team !== kicked);
     expect(openStarter && openBench).toBeTruthy();
     await setKickoffs(period.id, { [kicked]: past() });
 
@@ -1846,8 +1857,7 @@ gate()("the lineup lock", () => {
     await openForSwaps(period.id);
     await setMode("weekly");
     const roster = await rosterOf(period.id, T1);
-    const starter = roster.find((r) => r.area === "starter" && r.player);
-    const bench = roster.find((r) => r.area === "bench" && r.player);
+    const { starter, bench } = fittingPair(roster);
     /* One team's game has started; nobody else's has. Under gametime this swap would be
      * allowed - that is the difference between the two leagues. */
     await setKickoffs(period.id, { "Kansas City Chiefs": past(), "Green Bay Packers": future() });
@@ -1865,8 +1875,7 @@ gate()("the lineup lock", () => {
     await openForSwaps(period.id);
     await setMode("weekly");
     const roster = await rosterOf(period.id, T1);
-    const starter = roster.find((r) => r.area === "starter" && r.player);
-    const bench = roster.find((r) => r.area === "bench" && r.player);
+    const { starter, bench } = fittingPair(roster);
     await setKickoffs(period.id, { "Kansas City Chiefs": future() });
 
     const token = await asManager(T1);
@@ -1882,8 +1891,7 @@ gate()("the lineup lock", () => {
     await setMode("weekly");
     await setKickoffs(period.id, null);
     const roster = await rosterOf(period.id, T1);
-    const starter = roster.find((r) => r.area === "starter" && r.player);
-    const bench = roster.find((r) => r.area === "bench" && r.player);
+    const { starter, bench } = fittingPair(roster);
 
     const token = await asManager(T1);
     const r = await ops.swapLineupSlot(db, {
@@ -1904,6 +1912,36 @@ gate()("the lineup lock", () => {
     const r = await ops.swapLineupSlot(db, { leagueId, token, teamId: T1, slot: "WR", benchIndex: 0 });
     expect(r.status).toBe(409);
     expect(r.body.reason).toBe("locked");
+  });
+
+  it("OQ-33: a bench TE can be started in the FLEX", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setKickoffs(period.id, {});
+    const roster = await rosterOf(period.id, T1);
+    const benchTe = roster.find((r) => r.area === "bench" && r.player?.position === "TE");
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, { leagueId, token, teamId: T1, slot: "FLEX", benchIndex: benchTe.bench_index });
+    expect(r.status).toBe(200);
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === "FLEX").player_id).toBe(benchTe.player_id);
+  });
+
+  it("refuses a player who does not fit the slot - a QB cannot start in the FLEX", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setKickoffs(period.id, {});
+    const roster = await rosterOf(period.id, T1);
+    const flex = roster.find((r) => r.slot === "FLEX");
+    const benchQb = roster.find((r) => r.area === "bench" && r.player?.position === "QB");
+
+    const token = await asManager(T1);
+    const r = await ops.swapLineupSlot(db, { leagueId, token, teamId: T1, slot: "FLEX", benchIndex: benchQb.bench_index });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/can't play FLEX/);
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === "FLEX").player_id).toBe(flex.player_id);
   });
 
   it("reads the week's kickoff times when it deals, and hands them to the browser", async () => {

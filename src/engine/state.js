@@ -82,6 +82,17 @@ export function findTeamHoldingPlayer(state, playerId) {
   return state.teams.find((t) => teamRosterPlayerIds(t).includes(playerId)) || null;
 }
 
+/* Who may be moved into the FLEX after the deal. The deal itself still only puts a WR
+ * or an RB there (deal.js); a manager may then start a TE in it. Scott, 2026-10-26,
+ * OQ-33. The artifact said "never a TE" - adding "TE" here is the whole rules change. */
+export const FLEX_POSITIONS = ["WR", "RB", "TE"];
+
+/** Whether a player at `position` may sit in starter `slot`. */
+export function slotAcceptsPosition(slot, position) {
+  if (slot === "FLEX") return FLEX_POSITIONS.includes(position);
+  return slot === position;
+}
+
 export function slotForPlayer(team, playerId) {
   const r = team.roster;
   for (const slot of POSITIONS.concat(["FLEX"])) {

@@ -103,13 +103,15 @@ Starters, one of each:
 - **WR**
 - **RB**
 - **TE**
-- **FLEX** - a WR or an RB. **Never a TE.**
+- **FLEX** - dealt a WR or an RB, never a TE. **After the deal a manager may start a WR,
+  an RB or a TE there** (OQ-33, Scott 2026-10-26), so a team can play both its tight ends.
 
-Bench: one more Coach, QB, WR, RB and TE, plus one more FLEX-eligible player (again a WR or
+Bench: one more Coach, QB, WR, RB and TE, plus one more flex player (again dealt as a WR or
 an RB). The bench is not slotted - it is simply six players, each shown at his real position.
 
-**Because FLEX excludes tight ends, every team is capped at 2 TEs**, the same cap as QB and
-Coach. That is a consequence of the FLEX rule, not a separate rule.
+**Every team is capped at 2 TEs**, the same cap as QB and Coach. Before OQ-33 that followed
+from the FLEX refusing tight ends; it now follows from the deal, which hands out exactly
+two, and from every scheme swapping a TE for a TE.
 
 **Only starters score.** A bench player can put up 200 yards and it is worth nothing.
 

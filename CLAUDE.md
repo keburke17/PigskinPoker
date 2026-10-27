@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **955 passed, 42 files**. If the output says
+2. `npm test` before committing: **961 passed, 42 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -224,6 +224,12 @@ in a league that is actually being played is worse than a bug everyone has adapt
   with no ranks falls back to the plain shuffle, which is why parity did not move - **do not
   "simplify" that fallback away**, it is what keeps the artifact's deal reproducible.
   `TOP_OF_CHART_WEIGHT` is the dial; 1 restores the even deal exactly.
+- **A TE may START in the FLEX, but the deal never PUTS one there** (`FLEX_POSITIONS` /
+  `slotAcceptsPosition` in `src/engine/state.js`). **OQ-33, Scott 2026-10-26.** The flex and
+  the bench flex are still dealt a WR or RB, so every team still holds exactly 2 TEs; a
+  manager may swap his bench TE into the FLEX afterwards. `swapLineupSlot` enforces it on the
+  server. **Do not "match" the deal to the swap rule**, and do not read the artifact's "never
+  a TE" as the rule.
 
 ### One rule IS an option now, and it is the only one
 
@@ -381,7 +387,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-955 tests. Three groups worth knowing about:
+961 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -390,7 +396,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`, `notifyDb.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 245 of the 955
+  (started for you by `npm run dev`) and **skip themselves silently without it** - 247 of the 961
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

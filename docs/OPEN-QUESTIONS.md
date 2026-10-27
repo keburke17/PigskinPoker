@@ -2348,3 +2348,29 @@ way.
 1 puts the even shuffle back exactly, down to the random numbers it draws, and 1.5 or 3 are
 just as easy. Weeks already dealt are never touched by changing it. Parity is untouched, because the
 artifact's pool carries no depth ranks and a deal with none falls back to the old shuffle.
+
+### OQ-33. A TE in the FLEX. **[ANSWERED 2026-10-26 by Scott: yes - after the deal, not in it]**
+
+The FLEX used to take a WR or an RB and never a TE, which is also why every team was capped
+at two tight ends. Scott asked to keep the cap and keep the deal exactly as it is - the
+FLEX and the bench flex are still dealt a WR or an RB - but to let a manager **move a TE
+into the FLEX afterwards**, so a team can start both of its tight ends.
+
+**What it does to the league.** A manager with a strong TE pair can start both, benching a
+WR or RB. Nothing else moves:
+
+- **The 2-TE cap holds.** The deal hands out exactly two, and every scheme swaps a TE for a
+  TE, so no roster ever reaches three.
+- **Steals.** A TE starting in the FLEX is a target for anyone stealing a TE, the same as
+  one in the TE slot. The stolen TE lands where the thief's dropped TE was; the team robbed
+  gets a free-agent TE in the FLEX, because replacements always match the position taken.
+- **Redraws and blocks** work on a FLEX TE the same as on any other starter.
+- **Scoring** is unchanged: a yard is a yard at every position.
+
+**Enforced on the server too.** Until now only the lineup screen checked who fits which
+slot; `swapLineupSlot` accepted any swap, so a hand-made request could already start a QB
+in the FLEX. It now refuses a player who does not fit the slot he lands in.
+
+**Reversible in one line.** `FLEX_POSITIONS` in `src/engine/state.js` - take `"TE"` out
+and the old rule is back. Parity is untouched: the artifact's engine never checked a swap,
+and the deal did not change.

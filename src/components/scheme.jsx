@@ -25,6 +25,7 @@ import {
   nowStamp,
   periodLabel,
   playerLabel,
+  slotAcceptsPosition,
   teamRosterPlayerIds,
 } from "../engine/index.js";
 import { EmptyState } from "./atoms.jsx";
@@ -32,7 +33,7 @@ import { EmptyState } from "./atoms.jsx";
 export function eligibleBenchForSlot(state, team, slot) {
   return team.roster.bench
     .map((pid, idx) => ({ pid, idx, player: getPlayer(state, pid) }))
-    .filter((b) => b.player && (slot === "FLEX" ? (b.player.position === "WR" || b.player.position === "RB") : b.player.position === slot));
+    .filter((b) => b.player && slotAcceptsPosition(slot, b.player.position));
 }
 
 export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) {

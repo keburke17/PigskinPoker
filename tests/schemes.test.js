@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { processSchemes, seededRng } from "../src/engine/index.js";
+import { FLEX_POSITIONS, getPlayer, processSchemes, seededRng, slotAcceptsPosition } from "../src/engine/index.js";
 import { dealtState, emptyFreeAgents, rosteredIds, starter, team } from "./helpers/fixtures.js";
 
 const scheme = (type, position, playerId) => ({
@@ -197,5 +197,75 @@ describe("processSchemes", () => {
     const a = processSchemes(s, seededRng(55));
     const b = processSchemes(s, seededRng(55));
     expect(JSON.stringify(a.teams)).toBe(JSON.stringify(b.teams));
+  });
+});
+
+/* OQ-33, Scott 2026-10-26: the FLEX is still DEALT a WR or an RB, but a manager may start a
+ * TE there afterwards. These pin both halves, and what a scheme does to a FLEX TE. */
+describe("a TE in the FLEX", () => {
+  const tePositions = (t) =>
+    Object.values(t.roster.starters).concat(t.roster.bench).filter(Boolean);
+
+  /** Swap team's bench TE into its FLEX, the way the lineup screen would. */
+  const startBothTes = (s, id) => {
+    const r = team(s, id).roster;
+    const benchTe = r.bench.findIndex((pid) => getPlayer(s, pid)?.position === "TE");
+    const flex = r.starters.FLEX;
+    r.starters.FLEX = r.bench[benchTe];
+    r.bench[benchTe] = flex;
+  };
+
+  it("the FLEX takes a WR, RB or TE, and every other slot only its own position", () => {
+    expect(FLEX_POSITIONS).toEqual(["WR", "RB", "TE"]);
+    ["WR", "RB", "TE"].forEach((p) => expect(slotAcceptsPosition("FLEX", p)).toBe(true));
+    ["QB", "Coach"].forEach((p) => expect(slotAcceptsPosition("FLEX", p)).toBe(false));
+    expect(slotAcceptsPosition("TE", "TE")).toBe(true);
+    expect(slotAcceptsPosition("TE", "WR")).toBe(false);
+    expect(slotAcceptsPosition("QB", "TE")).toBe(false);
+  });
+
+  it("the deal still never puts a TE in the FLEX, and still deals each team exactly 2", () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const s = dealtState(12, seed);
+      s.teams.forEach((t) => {
+        expect(["WR", "RB"]).toContain(getPlayer(s, t.roster.starters.FLEX).position);
+        expect(["WR", "RB"]).toContain(getPlayer(s, t.roster.bench[5]).position);
+        const tes = tePositions(t).filter((pid) => getPlayer(s, pid).position === "TE");
+        expect(tes.length).toBe(2);
+      });
+    }
+  });
+
+  it("a FLEX TE can be stolen, and the team robbed gets a free-agent TE in the FLEX", () => {
+    const s = dealtState(2, 9);
+    startBothTes(s, "team_1");
+    const flexTe = starter(s, "team_1", "FLEX");
+    const dropped = starter(s, "team_0", "TE");
+    s.schemes = {
+      team_0: scheme("steal", "TE", dropped),
+      // Blocking the TE slot leaves the FLEX TE as the only target.
+      team_1: scheme("block", "TE", starter(s, "team_1", "TE")),
+    };
+    const next = processSchemes(s, seededRng(3));
+
+    expect(starter(next, "team_0", "TE")).toBe(flexTe);
+    const replacement = getPlayer(next, starter(next, "team_1", "FLEX"));
+    expect(replacement.position).toBe("TE");
+    expect(replacement.id).not.toBe(flexTe);
+    next.teams.forEach((t) => {
+      const tes = tePositions(t).filter((pid) => getPlayer(next, pid).position === "TE");
+      expect(tes.length).toBe(2);
+    });
+  });
+
+  it("redrawing a FLEX TE brings back a free-agent TE in the FLEX", () => {
+    const s = dealtState(2, 9);
+    startBothTes(s, "team_0");
+    const flexTe = starter(s, "team_0", "FLEX");
+    s.schemes = { team_0: scheme("redraw", "TE", flexTe) };
+    const next = processSchemes(s, seededRng(3));
+    const replacement = getPlayer(next, starter(next, "team_0", "FLEX"));
+    expect(replacement.position).toBe("TE");
+    expect(replacement.id).not.toBe(flexTe);
   });
 });

@@ -2333,3 +2333,13 @@ the deal makes is unchanged: same pool, same counts, same refusals. **With nobod
 falls back to the old Fisher-Yates shuffle**, so the artifact's pool, the demo league and
 every hand-built pool deal byte-for-byte as before - which is why `tests/parity.test.js`
 passes unmodified.
+
+## A TE may start in the FLEX (2026-10-26, OQ-33)
+
+A rules change, Scott's. The deal is unchanged; a manager may now swap a TE into the FLEX
+after it. See OQ-33 for what that does to steals and the 2-TE cap.
+
+**The rule moved into the engine.** It used to live inline in `eligibleBenchForSlot`
+(`src/components/scheme.jsx`), lifted from the artifact. It is now `slotAcceptsPosition`
+and `FLEX_POSITIONS` in `src/engine/state.js`, read by that screen and by
+`swapLineupSlot` in `server/operations.js`, which until now accepted any swap at all.
