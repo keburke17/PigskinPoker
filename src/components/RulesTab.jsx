@@ -167,6 +167,7 @@ export function RulesTab({ state }) {
         <li>A refresh never overwrites the commissioner: a player he added, or a status he set by hand, is left alone.</li>
         <li>Only Active players are dealt - OUT, IR and BYE are all skipped.</li>
         <li><strong>A player whose NFL team is on a bye is not dealt either</strong>, and cannot be stolen or redrawn. He comes back automatically the week his team plays again.</li>
+        <li><strong>Each NFL team's top healthy RB and WR is twice as likely to be dealt</strong> as its other RB or WR. If the top man is hurt, the next one up gets the better odds. QBs, TEs, coaches and redraws stay even, and a player the commissioner added by hand gets the normal odds.</li>
         <li>Once you're dealt, you're dealt. A player who gets hurt or whose coach is fired mid-week still finishes your week; the change shows up at the next deal.</li>
       </RuleCard>
 

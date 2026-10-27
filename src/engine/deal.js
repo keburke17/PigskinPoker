@@ -15,6 +15,15 @@
  * The question is asked in ONE place, `isPlayerAvailable` - see src/engine/availability.js
  * for why it is derived from the schedule rather than written onto anybody's status, and
  * for the two cases where "we do not know" deliberately deals the player anyway.
+ *
+ * AND A SECOND - SCOTT'S RULING OF 2026-10-26 (OQ-32): each NFL team's top healthy RB and
+ * WR that week is TWICE AS LIKELY to be dealt as anyone else at his position. "Top
+ * healthy" is the best depth-chart rank among the players who can be dealt this week, so
+ * when a team's RB1 is out his RB2 gets the better odds. QB, TE and Coach are untouched -
+ * the pool carries one of each per NFL team, so every one of them is already the top man
+ * - and so are redraws. A player the commissioner added by hand has no depth-chart rank
+ * and takes the normal odds. `TOP_OF_CHART_WEIGHT` is the whole dial: set it to 1 and the
+ * deal is exactly the even shuffle it was before, down to the random numbers it draws.
  */
 
 import { defaultRng } from "./rng.js";
@@ -31,6 +40,42 @@ const shortfall = (state, position, count) => {
   );
 };
 
+/* OQ-32. How much likelier a team's top healthy RB or WR is to be dealt than anyone else. */
+export const TOP_OF_CHART_WEIGHT = 2;
+const WEIGHTED_POSITIONS = new Set(["RB", "WR"]);
+
+/** The ids of each NFL team's best-ranked player among `players` (one position, all
+ * dealable). Players without a depth-chart rank neither get the odds nor take them away. */
+export function topOfChartIds(state, players) {
+  const ranks = (state._meta && state._meta.depthRanks) || {};
+  const best = new Map();
+  for (const p of players) {
+    const rank = ranks[p.id];
+    if (!Number.isFinite(rank)) continue;
+    const held = best.get(p.team);
+    if (!held || rank < held.rank) best.set(p.team, { rank, ids: [p.id] });
+    else if (rank === held.rank) held.ids.push(p.id);
+  }
+  return new Set([...best.values()].flatMap((b) => b.ids));
+}
+
+/* The pile is dealt from the END, so the players most likely to go first sort last. Each
+ * player draws a key of rng()^(1/weight) and the pile is ordered by it - the standard way
+ * to shuffle with weights, one random number per player. With nobody weighted it falls
+ * back to the plain shuffle, so a league without depth ranks (parity, the demo, every
+ * hand-built pool) deals byte-for-byte as it always has. */
+function dealPile(state, pos, players, rng) {
+  const ids = players.map((p) => p.id);
+  const top = WEIGHTED_POSITIONS.has(pos) && TOP_OF_CHART_WEIGHT !== 1
+    ? topOfChartIds(state, players)
+    : new Set();
+  if (top.size === 0) return shuffle(ids, rng);
+  return ids
+    .map((id) => ({ id, key: Math.pow(rng(), 1 / (top.has(id) ? TOP_OF_CHART_WEIGHT : 1)) }))
+    .sort((a, b) => a.key - b.key)
+    .map((x) => x.id);
+}
+
 export function dealRosters(state, teamIds, rng = defaultRng) {
   const pool = state.playerPool;
   const canPlay = (p, pos) => p.position === pos && isPlayerAvailable(state, p);
@@ -44,8 +89,8 @@ export function dealRosters(state, teamIds, rng = defaultRng) {
   const available = {
     Coach: shuffle(activeByPos.Coach.map((p) => p.id), rng),
     QB: shuffle(activeByPos.QB.map((p) => p.id), rng),
-    WR: shuffle(activeByPos.WR.map((p) => p.id), rng),
-    RB: shuffle(activeByPos.RB.map((p) => p.id), rng),
+    WR: dealPile(state, "WR", activeByPos.WR, rng),
+    RB: dealPile(state, "RB", activeByPos.RB, rng),
     TE: shuffle(activeByPos.TE.map((p) => p.id), rng),
   };
   const need = {

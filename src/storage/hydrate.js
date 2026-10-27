@@ -96,6 +96,16 @@ function playerWeeksFrom(rows, seasonId, playerLegacy) {
   return out;
 }
 
+/* OQ-32. players rows -> { [legacyPlayerId]: depthRank }, leaving out anyone without one. */
+function depthRanksFrom(playerRows) {
+  const out = {};
+  for (const p of playerRows) {
+    const rank = Number(p.depth_rank);
+    if (p.depth_rank != null && Number.isFinite(rank) && rank >= 1) out[p.legacy_id] = rank;
+  }
+  return out;
+}
+
 /* OQ-29. player_injuries rows -> { [legacyPlayerId]: { [nflWeek]: report } }. */
 function injuriesFrom(rows, seasonId, playerLegacy) {
   const out = {};
@@ -412,6 +422,12 @@ export function hydrateLeague(db, opts = {}) {
       lineupLock: normalizeLineupLock(season.lineup_lock),
       kickoffs: current?.kickoffs ?? {},
       kickoffsReadAt: current?.kickoffs_read_at ?? null,
+      /* OQ-32: where each player sits on his NFL team's depth chart - player id -> rank,
+       * from the last pool refresh. The deal reads it to give each team's top healthy RB
+       * and WR better odds; see src/engine/deal.js. In _meta for the reason kickoffs is:
+       * the artifact's shape has no field for it, and `depth_rank` is the feed's column,
+       * which decompose deliberately does not carry. A player added by hand has none. */
+      depthRanks: depthRanksFrom(playerRows),
       /* OQ-28: every pool player's feed line, by NFL week - player id -> week -> a stat
        * line in the same view shape statsEntry uses, so the engine scores it with the
        * same function. In _meta for the reason nflWeek is: the artifact's shape has no

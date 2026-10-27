@@ -2305,3 +2305,46 @@ order nothing breaks: without the migration a finalize still finalizes and the p
 never appears (every recap write is caught and logged). But a week finalized before the
 migration gets no recap, and its scheme jokes need the moves recorded when that week's
 schemes ran.
+
+### OQ-32. Better odds for each team's top RB and WR in the deal. **[ANSWERED 2026-10-26 by Scott: 2-to-1, RB and WR only]**
+
+Until now every Active player at a position was equally likely to be dealt: a team's RB1
+and RB2 went into one shuffled pile together. Scott asked for **"the #1 for the week"** at
+RB and WR to have better odds of landing on a roster, settled on **2-to-1**, and chose to
+leave **"TE and QB the same"** - the pool holds one of each per NFL team, so every one of
+them is already the top man.
+
+**What it does to the league.** Simulated over 20,000 twelve-team deals on the real pool:
+
+| | Even (before) | 2-to-1 |
+|---|---|---|
+| Chance a given top RB/WR is dealt | 56% | 69% |
+| Chance any other RB/WR is dealt | 56% | 44% |
+| Top RB/WRs per roster, of 6 | 3.0 | 3.7 |
+| Rosters with 0-1 of them | 10% | 3% |
+| Rosters with 5-6 of them | 10% | 25% |
+
+Rosters get a little stronger and a little more alike. It is a nudge, not a lock: a bad
+hand still happens, and some big names still go undealt in any given week.
+
+**"The #1 for the week" means the top HEALTHY one.** It is the best depth-chart rank among
+the players who can actually be dealt that week, per NFL team and position - so when
+Houston's RB1 is out, his RB2 (Woody Marks, week 8) gets the odds, not the RB3 who filled
+the second spot. A commissioner marking a player OUT moves the odds to the next man the same
+way.
+
+**Three calls inside it:**
+
+- **A player added by hand takes the normal odds.** He has no depth-chart rank, so the game
+  cannot tell whether he is a team's top man; he neither gets the better odds nor takes them
+  from the charted player above him. Scott agreed, 2026-10-26. A "#1" checkbox on the add
+  form was offered and not wanted.
+- **Redraws stay even.** A redraw still picks any free agent at the position at random. With
+  more top players dealt, the free agents left lean slightly towards the backups, so a redraw
+  is a touch weaker than it was.
+- **A table's hands deal the same way**, since a hand is a week dealt.
+
+**Reversible in one line.** `TOP_OF_CHART_WEIGHT` in `src/engine/deal.js` is the whole dial:
+1 puts the even shuffle back exactly, down to the random numbers it draws, and 1.5 or 3 are
+just as easy. Weeks already dealt are never touched by changing it. Parity is untouched, because the
+artifact's pool carries no depth ranks and a deal with none falls back to the old shuffle.
