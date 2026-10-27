@@ -2314,3 +2314,22 @@ Brown and Cooper come out Active, Montgomery OUT (INA has always mapped to OUT -
 this week's rosters stay as dealt; the next deal reads the right week. And a player inactive
 for one game (INA) is kept out of the next deal, which is the long-standing mapping rather
 than anything new.
+
+## Top-of-chart RBs and WRs dealt at 2-to-1 (2026-10-26, OQ-32)
+
+A rules change, Scott's. Each NFL team's top healthy RB and WR is now twice as likely to be
+dealt as anyone else at his position. See OQ-32 for the numbers and the calls inside it.
+
+**How the rank reaches the deal.** `players.depth_rank` has been written by the pool refresh
+since 2026-08-28 and read by nothing. `hydrate.js` now carries it as `_meta.depthRanks`
+(legacy player id -> rank), for the same reason `kickoffs` lives there: the artifact's state
+shape has no field for it, and it is the feed's column, which `decompose.js` deliberately
+does not write back. A player with no rank is simply absent from the map.
+
+**How the deal uses it.** `dealPile` in `src/engine/deal.js` orders the RB and WR piles by
+`rng() ^ (1 / weight)` - a weighted shuffle drawing one random number per player - with
+weight 2 for each team's best-ranked dealable player (`topOfChartIds`). Every other check
+the deal makes is unchanged: same pool, same counts, same refusals. **With nobody ranked it
+falls back to the old Fisher-Yates shuffle**, so the artifact's pool, the demo league and
+every hand-built pool deal byte-for-byte as before - which is why `tests/parity.test.js`
+passes unmodified.

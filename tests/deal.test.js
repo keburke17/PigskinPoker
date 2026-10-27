@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { dealRosters, seededRng } from "../src/engine/index.js";
+import { dealRosters, seededRng, topOfChartIds } from "../src/engine/index.js";
 import { baseState } from "./helpers/fixtures.js";
+import { hydrateLeague } from "../src/storage/hydrate.js";
+import { decomposeLeague } from "../src/storage/decompose.js";
 
 const ids = (s) => s.teams.map((t) => t.id);
 
@@ -139,5 +141,123 @@ describe("dealRosters", () => {
     expect(res).not.toHaveProperty("rosters");
     // and the caller's state is untouched
     expect(s.teams.every((t) => t.roster === null)).toBe(true);
+  });
+});
+
+/* OQ-32, Scott 2026-10-26: each NFL team's top healthy RB and WR is twice as likely to be
+ * dealt. The ranks reach the engine on _meta.depthRanks, from the pool refresh. */
+describe("dealRosters - the top of the depth chart (OQ-32)", () => {
+  /** Rank every player 1, 2, 3... within his NFL team and position, in pool order. */
+  const ranked = (s) => {
+    const seen = {};
+    const depthRanks = {};
+    for (const p of s.playerPool) {
+      const key = p.team + "|" + p.position;
+      seen[key] = (seen[key] || 0) + 1;
+      depthRanks[p.id] = seen[key];
+    }
+    return { ...s, _meta: { ...(s._meta || {}), depthRanks } };
+  };
+  const dealtIds = (rosters) =>
+    Object.values(rosters).flatMap((r) => [...Object.values(r.starters), ...r.bench]);
+
+  it("deals exactly as before when no player has a depth-chart rank", () => {
+    const s = baseState(6);
+    const plain = dealRosters(s, ids(s), seededRng(5));
+    const empty = dealRosters({ ...s, _meta: { depthRanks: {} } }, ids(s), seededRng(5));
+    expect(empty).toEqual(plain);
+  });
+
+  it("leaves QB, TE and Coach alone - ranks there change nothing", () => {
+    const s = baseState(6);
+    const r = ranked(s);
+    const onlyOthers = Object.fromEntries(
+      Object.entries(r._meta.depthRanks).filter(([id]) => {
+        const pos = s.playerPool.find((p) => p.id === id).position;
+        return pos !== "RB" && pos !== "WR";
+      })
+    );
+    const plain = dealRosters(s, ids(s), seededRng(8));
+    const withRanks = dealRosters({ ...s, _meta: { depthRanks: onlyOthers } }, ids(s), seededRng(8));
+    expect(withRanks).toEqual(plain);
+  });
+
+  it("still deals every team a full, legal 12 with nobody twice", () => {
+    const s = ranked(baseState(12));
+    for (let seed = 0; seed < 20; seed++) {
+      const { rosters, error } = dealRosters(s, ids(s), seededRng(seed));
+      expect(error).toBeUndefined();
+      const all = dealtIds(rosters);
+      expect(all).toHaveLength(12 * 12);
+      expect(all.every(Boolean)).toBe(true);
+      expect(new Set(all).size).toBe(all.length);
+    }
+  });
+
+  it("gives the top of each team's chart the better odds, and nobody else", () => {
+    const base = baseState(12);
+    const s = ranked(base);
+    const top = new Set(
+      [...topOfChartIds(s, s.playerPool.filter((p) => p.position === "RB")),
+       ...topOfChartIds(s, s.playerPool.filter((p) => p.position === "WR"))]
+    );
+    const rate = (state) => {
+      const hits = { top: 0, rest: 0 };
+      const skill = state.playerPool.filter((p) => p.position === "RB" || p.position === "WR");
+      const nTop = skill.filter((p) => top.has(p.id)).length;
+      const nRest = skill.length - nTop;
+      const N = 400;
+      for (let seed = 0; seed < N; seed++) {
+        const { rosters } = dealRosters(state, ids(state), seededRng(seed));
+        for (const id of dealtIds(rosters)) {
+          const p = state.playerPool.find((x) => x.id === id);
+          if (p.position !== "RB" && p.position !== "WR") continue;
+          if (top.has(id)) hits.top++;
+          else hits.rest++;
+        }
+      }
+      return { top: hits.top / (N * nTop), rest: hits.rest / (N * nRest) };
+    };
+    const even = rate(base);
+    const weighted = rate(s);
+    expect(Math.abs(even.top - even.rest)).toBeLessThan(0.04);
+    expect(weighted.top - weighted.rest).toBeGreaterThan(0.15);
+  });
+
+  it("hands the odds to the next man when the top of the chart cannot be dealt", () => {
+    const s = baseState(6);
+    const rbs = s.playerPool.filter((p) => p.position === "RB" && p.team === "Arizona Cardinals");
+    const [first, second] = rbs;
+    const depthRanks = { [first.id]: 1, [second.id]: 2 };
+    expect([...topOfChartIds({ _meta: { depthRanks } }, rbs)]).toEqual([first.id]);
+    // RB1 hurt: he is not in the dealable list, so RB2 is the top healthy back this week.
+    expect([...topOfChartIds({ _meta: { depthRanks } }, [second])]).toEqual([second.id]);
+  });
+
+  it("reads the ranks off the players table, leaving out anyone without one", () => {
+    const player = (legacy, depth_rank) => ({
+      id: "u-" + legacy, league_id: "L", legacy_id: legacy, name: legacy, position: "RB",
+      nfl_team: "Buffalo Bills", status: "Active", active: true, depth_rank,
+    });
+    const v = hydrateLeague({
+      leagues: [{ id: "L", name: "Test" }],
+      seasons: [{ id: "S", league_id: "L", year: 2026, lineup_lock: "gametime" }],
+      teams: [], periods: [], team_totals: [], roster_slots: [], stat_lines: [],
+      schemes: [], period_results: [], events: [],
+      players: [player("rb1", 1), player("rb2", 2), player("added", null)],
+    });
+    expect(v._meta.depthRanks).toEqual({ rb1: 1, rb2: 2 });
+    // and it stays a server-owned column: an ordinary write never carries it back
+    const db = decomposeLeague(v, { leagueKey: "test", year: 2026, hashCode: (c) => "h:" + c });
+    expect(JSON.stringify(db.players)).not.toContain("depth_rank");
+  });
+
+  it("gives a player added by hand the normal odds, and does not let him take them away", () => {
+    const charted = { id: "a", team: "Houston Texans", position: "RB" };
+    const byHand = { id: "b", team: "Houston Texans", position: "RB" };
+    const elsewhere = { id: "c", team: "Seattle Seahawks", position: "RB" };
+    const state = { _meta: { depthRanks: { a: 2, c: 1 } } };
+    expect([...topOfChartIds(state, [charted, byHand, elsewhere])].sort()).toEqual(["a", "c"]);
+    expect([...topOfChartIds(state, [byHand])]).toEqual([]);
   });
 });

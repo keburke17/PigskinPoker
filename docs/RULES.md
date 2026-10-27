@@ -138,6 +138,13 @@ Two things follow, and both are deliberate:
   would be far worse than the problem. Same principle as the lineup lock: never act on a
   guess.
 
+**Each NFL team's top healthy RB and WR is twice as likely to be dealt** as anyone else at
+his position (Scott's ruling, 2026-10-26, OQ-32). "Top healthy" is the best depth-chart rank
+among the players who can be dealt that week, so when a team's RB1 is out his RB2 gets the
+odds. QB, TE and Coach stay even - the pool holds one of each per NFL team, so each is
+already the top man - and so do redraws. A player the commissioner added by hand has no
+depth-chart rank and takes the normal odds.
+
 If the pool cannot fill every team - too few Coaches, say - the deal is refused with a
 message saying so, rather than dealing partial rosters. That message names the byes when
 byes are the reason, because "not enough available QBs (26)" in front of a pool screen
