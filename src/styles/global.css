@@ -407,6 +407,8 @@
   border:1px solid var(--border-soft); border-radius:var(--radius-sm);
   padding:7px 10px; margin:6px 0 2px 0;
 }
+/* The league switcher sits in the account bar, so it is sized to it rather than to a form. */
+.pp-league-switch{ width:auto; max-width:100%; font-size:12.5px; padding:5px 8px; }
 .pp-account-bar-good{ border-color:rgba(98,199,140,0.45); color:var(--ok); }
 .pp-account-bar-bad{ border-color:#7a2e29; color:#ffb4a8; }
 

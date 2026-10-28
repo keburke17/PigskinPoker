@@ -216,7 +216,53 @@ export function statLineText(state, player, line) {
  * It renders nothing until the account check has settled, so it cannot flicker into
  * view and back out on every load.
  */
-export function AccountBar({ account, accountChecked }) {
+export function AccountBar({ account, accountChecked, leagues = [], currentLeagueId = null, onSwitchLeague, onAllLeagues }) {
   if (!accountChecked || !account) return null;
-  return <div className="pp-account-bar"><span>Signed in as {account.email}</span></div>;
+  return (
+    <div className="pp-account-bar">
+      <span>Signed in as {account.email}</span>
+      <LeagueSwitcher
+        leagues={leagues}
+        currentLeagueId={currentLeagueId}
+        onSwitchLeague={onSwitchLeague}
+        onAllLeagues={onAllLeagues}
+      />
+    </div>
+  );
+}
+
+/* Moving between leagues WITHOUT signing out (Scott, 2026-10-28). The account was always
+ * one email across every league and the landing page already listed them all - but the
+ * only way back to that list from inside a league was Log Out, which meant a fresh magic
+ * link every time. This is the Sleeper / Yahoo dropdown: every league you are in, by the
+ * team you hold there.
+ *
+ * It rides in the account bar rather than a row of its own, because the sticky header is
+ * already most of a phone screen (OQ-8). A native select, so the phone draws its own
+ * picker and the touch target is the platform's rather than ours.
+ *
+ * Drawn only with two or more leagues: with one there is nowhere to switch to. The last
+ * option, "All leagues", is the landing page - Create a league and Redeem an invite. */
+const ALL_LEAGUES = "__all__";
+
+export function LeagueSwitcher({ leagues, currentLeagueId, onSwitchLeague, onAllLeagues }) {
+  if (!onSwitchLeague || !leagues || leagues.length < 2) return null;
+  const label = (l) => l.name + " - " + (l.role === "commissioner" ? "Commissioner" : l.teamName || "Manager");
+  return (
+    <select
+      className="pp-select pp-league-switch"
+      aria-label="Switch league"
+      value={currentLeagueId ?? ""}
+      onChange={(e) => {
+        const id = e.target.value;
+        if (id === ALL_LEAGUES) onAllLeagues?.();
+        else if (id && id !== currentLeagueId) onSwitchLeague(id);
+      }}
+    >
+      {leagues.map((l) => (
+        <option key={l.id} value={l.id}>{label(l)}</option>
+      ))}
+      <option value={ALL_LEAGUES}>All leagues...</option>
+    </select>
+  );
 }

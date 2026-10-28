@@ -165,12 +165,17 @@ export default function App() {
     if (store.setLeagueId(routeLeagueId)) retryLoad();
   }, [routeLeagueId, store, retryLoad]);
 
-  /* The landing page's data. Only fetched when actually on the landing page - there is
-   * no reason to ask "which leagues am I in" while someone is looking at one. */
+  /* Which leagues am I in. The landing page lists them, and since 2026-10-28 the league
+   * switcher in the header does too, so it is read inside a league as well - it used to
+   * be skipped there, which left Log Out as the only way to another league.
+   *
+   * Keyed on route.name, not the league id, so moving from one league to the next does
+   * not re-ask; arriving back at the landing page does, which is what picks up a league
+   * just created or joined. */
   const [myLeagues, setMyLeagues] = useState([]);
   const [leaguesLoading, setLeaguesLoading] = useState(false);
   useEffect(() => {
-    if (route.name === "league" || !account) return;
+    if (!account) { setMyLeagues([]); return; }
     let cancelled = false;
     setLeaguesLoading(true);
     store.myLeagues()
@@ -771,6 +776,10 @@ export default function App() {
           <AccountBar
             account={account}
             accountChecked={accountChecked}
+            leagues={myLeagues}
+            currentLeagueId={routeLeagueId}
+            onSwitchLeague={onOpenLeague}
+            onAllLeagues={() => go({ name: "landing" })}
           />
           {conflict ? (
             <ErrorBanner
