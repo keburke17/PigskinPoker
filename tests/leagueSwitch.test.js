@@ -32,6 +32,9 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { isAmbiguousRead, viewLeagueId } from "../src/storage/types.js";
 import { createSupabaseStore } from "../src/storage/supabase.js";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AccountBar, LeagueSwitcher } from "../src/components/atoms.jsx";
 
 const LEAGUE = "8ea81188-8bb6-5aae-bef2-fba50410aa24";
 
@@ -114,5 +117,52 @@ describe("the store names its league from the moment it is built", () => {
     await store.whoami();
 
     expect(sent[0].params.leagueId).toBe(null);
+  });
+});
+
+/* The switcher in the header (2026-10-28). Before it, Log Out was the only way from one
+ * league to another, and signing back in costs a magic link. No DOM here, so the select's
+ * own onChange is called directly - that is the whole of what a pick does. */
+describe("the league switcher", () => {
+  const leagues = [
+    { id: "a", name: "Sunday Crew", role: "manager", teamName: "Gridiron Gang" },
+    { id: "b", name: "Weekly Table", role: "commissioner" },
+  ];
+
+  it("lists every league by the team held there, with the current one chosen", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(LeagueSwitcher, { leagues, currentLeagueId: "b", onSwitchLeague: () => {} }),
+    );
+    expect(html).toContain("Sunday Crew - Gridiron Gang");
+    expect(html).toContain("Weekly Table - Commissioner");
+    expect(html).toContain("All leagues...");
+    expect(html).toMatch(/<option value="b" selected="">/);
+  });
+
+  it("draws nothing with one league, since there is nowhere to switch to", () => {
+    const el = LeagueSwitcher({ leagues: leagues.slice(0, 1), currentLeagueId: "a", onSwitchLeague: () => {} });
+    expect(el).toBeNull();
+  });
+
+  it("moves to the league picked, and to the landing page for All leagues", () => {
+    const went = [];
+    let home = 0;
+    const el = LeagueSwitcher({ leagues, currentLeagueId: "a", onSwitchLeague: (id) => went.push(id), onAllLeagues: () => { home++; } });
+    el.props.onChange({ target: { value: "b" } });
+    el.props.onChange({ target: { value: "a" } }); // already here - no reload
+    el.props.onChange({ target: { value: "__all__" } });
+    expect(went).toEqual(["b"]);
+    expect(home).toBe(1);
+  });
+
+  it("rides in the account bar, which still says whose account it is", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AccountBar, {
+        account: { email: "scott@example.test" }, accountChecked: true,
+        leagues, currentLeagueId: "a", onSwitchLeague: () => {},
+      }),
+    );
+    expect(html).toContain("Signed in as scott@example.test");
+    expect(html).toContain('aria-label="Switch league"');
   });
 });
