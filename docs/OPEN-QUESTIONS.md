@@ -2412,5 +2412,19 @@ and the playoffs never read who owns a team. What changes is how a league fills 
 team until someone links one - a one-row change to `league_members.team_id` on the live
 database, which is Kyle's.
 
-**Found on the way, not fixed:** My Team's Rename button saves through the commissioner's
-whole-league write, so it works for a commissioner and is refused for a manager.
+**Found on the way, not fixed:** My Team's Rename button is broken for managers - OQ-35.
+
+### OQ-35. My Team's Rename button is refused for a manager. **[OPEN - Scott 2026-10-29: parked, to be fixed in its own session]**
+
+Found while building OQ-34. A manager sees Rename on My Team, but pressing it fails: the
+button saves through `onRenameMyTeam` in `src/App.jsx`, which calls `ops.mutate` - the
+commissioner's whole-league write (`replaceLeague` in `server/operations.js`), refused to
+anyone who is not a commissioner. So it works for a commissioner and nobody else.
+
+It matters more since OQ-34, because a manager who leaves the team name blank on the join
+screen starts with the front of their email address and has no working way to change it.
+The commissioner can rename any team under Commish -> Teams in the meantime.
+
+The likely shape of a fix is a small server route that renames ONE team, allowed for that
+team's own manager and for a commissioner - the same `canActForTeam` check `swapLineupSlot`
+and `submitScheme` use.
