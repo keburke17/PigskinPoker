@@ -42,8 +42,6 @@ const ROUTES = {
   revokeInvite: (db, p) => ops.revokeInvite(db, p),
   listMembers: (db, p) => ops.listMembers(db, p),
   setMemberRole: (db, p) => ops.setMemberRole(db, p),
-  /* Which team is the commissioner's own, for one who also plays. */
-  setMyTeam: (db, p) => ops.setMyTeam(db, p),
   setLeagueVisibility: (db, p) => ops.setLeagueVisibility(db, p),
 
   /* The one route that removes a league rather than changing one. Commissioner-only and

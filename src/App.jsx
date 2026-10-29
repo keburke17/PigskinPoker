@@ -276,9 +276,9 @@ export default function App() {
     return r;
   };
 
-  const onRedeemInvite = async (code) => {
+  const onRedeemInvite = async (code, teamName = null) => {
     setLoginError(null);
-    const r = await store.redeemInvite?.(code);
+    const r = await store.redeemInvite?.(code, teamName);
     if (!r || r.ok === false) {
       setLoginError(r?.message || "Could not redeem that code.");
       return;
@@ -293,14 +293,6 @@ export default function App() {
      * back on a code they have already spent. */
     const landing = r.role === "manager" ? "myteam" : DEFAULT_TAB;
     go({ name: "league", leagueId: r.leagueId, tab: landing }, { replace: true });
-  };
-
-  /* A commissioner who plays says which team is theirs (null: none). The server changes
-   * only their own membership; the identity follows so My Team appears or goes at once. */
-  const onSetMyTeam = async (teamId) => {
-    const r = await store.setMyTeam?.(teamId);
-    if (r && r.ok !== false) setIdentity({ ...identity, teamId: teamId ?? null });
-    return r;
   };
 
   const onCreateLeague = async (name, opts = {}) => {
@@ -684,8 +676,8 @@ export default function App() {
   const isCommissioner = identity.role === "commissioner";
   const table = isTable(state);
   /* A manager's team - and a commissioner's too, when they play: the dealer at a table
-   * (issue #75), or a season commissioner who made the league with a team or picked one
-   * under Commish -> Teams. A commissioner with no team has no My Team tab. */
+   * (issue #75), or a season commissioner, who gets a team when they create the league
+   * (OQ-34). A commissioner with no team - a league made before that - has no My Team. */
   const myTeam = identity.teamId
     ? state.teams.find((t) => t.id === identity.teamId) || null
     : null;
@@ -851,7 +843,6 @@ export default function App() {
               onSetNotifyMembers={onSetNotifyMembers}
               onSetSeat={onSetSeat}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
-              myTeamId={myTeam ? myTeam.id : null} onSetMyTeam={onSetMyTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               submittedTeamIds={submittedTeamIds}

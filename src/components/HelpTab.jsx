@@ -92,7 +92,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
 
       {isCommissioner ? (
         <RuleCard title="Running a week, as commissioner">
-          <li><strong>First time only:</strong> add your teams (Commissioner {ARROW} Teams), then send invites (Commissioner {ARROW} Invite). Optionally refresh the player pool, set your scoring rates, and set which NFL week this period plays.</li>
+          <li><strong>First time only:</strong> send your invite link (Commissioner {ARROW} Invite) - everyone who opens it names their own team, up to 12, and your own team is there from the start. Optionally refresh the player pool, set your scoring rates, and set which NFL week this period plays.</li>
           <li><strong>1. Deal.</strong> Commissioner {ARROW} Weeks {ARROW} Deal Rosters. Needs at least one team.{autoWeek ? " Done for you at " + advanceDeadline + " from week two onwards." : ""}</li>
           <li><strong>2. Wait for schemes.</strong> The same panel lists who is in and who is still out. Managers can keep changing theirs until you move.</li>
           <li><strong>3. Process Schemes.</strong> Resolves every block, steal and redraw at once. {autoSchemes ? "This runs itself at " + schemeDeadline + "; press it earlier if everyone is in." : "This is the real scheme deadline - there is no clock, so tell your league when you intend to press it."}</li>

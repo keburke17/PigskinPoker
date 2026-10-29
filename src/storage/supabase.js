@@ -426,13 +426,14 @@ export function createSupabaseStore(config) {
     /* These three are about an ACCOUNT rather than a league, so they carry the account
      * token in the body. `call` would send it as the Authorization header, which the
      * server reads as a league session - correct everywhere else, wrong here. */
-    /* `opts` is issue #75's table: { mode: "table", seats, teamName }. Left out, it is a
-     * season, exactly as before. A season commissioner who plays sends
-     * { playing: true, teamName } and gets a team of their own. */
+    /* `opts` is issue #75's table: { mode: "table", seats, teamName }. A season sends
+     * { teamName } - its commissioner gets a team too (OQ-34). */
     createLeague: (name, year, visibility, opts = {}) =>
       callWithAccount("createLeague", { name, year, visibility, ...opts }),
     myLeagues: () => callWithAccount("myLeagues", {}),
-    redeemInvite: (code) => callWithAccount("redeemInvite", { code }),
+    /* `teamName` names the team an open invite makes for you; ignored when the invite
+     * hands over an existing team. */
+    redeemInvite: (code, teamName = null) => callWithAccount("redeemInvite", { code, teamName }),
 
     /* The site-admin screen (issue #40). Account-scoped for the same reason: the head
      * coaches are ONE list shared by every league, so there is no league to be a
@@ -449,8 +450,6 @@ export function createSupabaseStore(config) {
     revokeInvite: (inviteId) => call("revokeInvite", { inviteId }),
     listMembers: () => call("listMembers", {}),
     setMemberRole: (userId, role) => call("setMemberRole", { userId, role }),
-    /* A commissioner who plays: which team is theirs (legacy id), or null for none. */
-    setMyTeam: (teamId) => call("setMyTeam", { teamId }),
     setLeagueVisibility: (visibility) => call("setLeagueVisibility", { visibility }),
 
     /* Deleting takes the league and everything in it, so it carries the name the

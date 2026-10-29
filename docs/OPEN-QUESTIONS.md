@@ -2375,29 +2375,42 @@ in the FLEX. It now refuses a player who does not fit the slot he lands in.
 and the old rule is back. Parity is untouched: the artifact's engine never checked a swap,
 and the deal did not change.
 
-### OQ-34. A season commissioner with a team of their own. **[ANSWERED 2026-10-29 by Scott: yes - at creation by default, and pickable in a league already playing]**
+### OQ-34. Joining a season league the way you join a table. **[ANSWERED 2026-10-29 by Scott: the commissioner gets a team, one invite link fills the league, 12 teams at most]**
 
-At a table the dealer has always sat down with a team and a My Team tab. A season
-commissioner did not: they managed their own team through Commish -> Manage Rosters,
-because the app deliberately hid My Team from any commissioner outside a table. Scott runs
-a live season league and plays in it, and asked for the same thing a dealer has.
+A table always filled itself: the dealer sits down with a team, sends one invite, and
+everyone who redeems it gets a team of their own. A season did not. Its commissioner had
+no team and no My Team tab, typed every team in by hand, and made one invite per team.
+Scott asked for a season to work like a table:
 
-**What it does to the league.** Nothing about the game. Dealing, schemes, scoring,
-standings and the playoffs do not read who owns a team, and a commissioner could already
-act for every team. What changes is who sees which screen:
+> when you create a new season long league, the commissioner creates the league and
+> automatically gets a team himself. ... the commissioner will be able to send an invite
+> link to whoever wants to play. They click the link, put in an email, create a team.
+> Done. They're in.
 
-- **Creating a season league** now asks "I'm playing too - give me a team", ticked by
-  default. Ticked, the league is born with one team - named on the form, or after the
-  email address - tied to the commissioner's membership. Unticked, it is made exactly as
-  before, with no teams.
-- **A league already playing**: Commish -> Teams has a "This is my team" button on every
-  team, and "Not my team" on the one that is. It changes the commissioner's own
-  membership row and nothing else - no team, roster or week is touched.
-- **A commissioner with a team gets everything a manager does for it**: the My Team tab,
-  the weekly recap pop-up, and - if the league's email is on - the manager emails for that
-  team. A commissioner with no team sees the app exactly as before.
-- **One side effect worth knowing.** A manager later promoted to commissioner keeps their
-  team, and now keeps their My Team tab with it. That used to be hidden on purpose; "Not my
-  team" is the way to drop it.
+**What it does to the league.** No game rule moves - dealing, schemes, scoring, standings
+and the playoffs never read who owns a team. What changes is how a league fills up:
 
-Not at a table, where your team is your seat. `setMyTeam` in `server/operations.js`.
+- **The commissioner plays.** Creating a season makes their team, named on the form (or
+  after their email address), tied to their membership. They get My Team, the weekly
+  recap and - if league email is on - the manager emails, like anyone else, and still
+  manage every team as commissioner.
+- **One invite link.** Commish -> Invite makes a link that names no team. Whoever redeems
+  it signs in, types a team name (or leaves it blank for their email's), and lands on My
+  Team.
+- **12 teams at most** (`SEASON_TEAMS_MAX` in `src/engine/table.js`). Scott: the pool's
+  QBs and TEs have to stretch across every roster in a week with teams on a bye. The link
+  and the commissioner's Add Team both stop at 12; a league that already had more keeps
+  them. Tables stay at 2-13 for now - Scott wants those at 12 too, later.
+- **The link closes when Week 1 is dealt.** The standings ladder is worth as many points
+  as there are teams, so a team arriving in Week 6 would change what every later week is
+  worth. The commissioner can still add a team by hand.
+- **The team-specific invite survives, out of the way** ("Other Invites"), for the one job
+  only it does: handing an existing team to a new manager mid-season. So does the invite
+  for a second commissioner.
+
+**Leagues made before this** keep working exactly as they did. Their commissioner has no
+team until someone links one - a one-row change to `league_members.team_id` on the live
+database, which is Kyle's.
+
+**Found on the way, not fixed:** My Team's Rename button saves through the commissioner's
+whole-league write, so it works for a commissioner and is refused for a manager.

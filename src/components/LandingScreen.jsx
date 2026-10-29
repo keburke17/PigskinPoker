@@ -44,9 +44,9 @@ export function LandingScreen({
   const [leagueMode, setLeagueMode] = useState("season");
   const [seats, setSeats] = useState(6);
   const [myTeamName, setMyTeamName] = useState("");
-  /* A season commissioner plays by default, the way a dealer does - untick to run the
-   * league from the side. */
-  const [playing, setPlaying] = useState(true);
+  /* The name of the team an open invite makes for you (OQ-34). Blank is fine: it starts
+   * as the front of your email address. Ignored by an invite for an existing team. */
+  const [joinTeamName, setJoinTeamName] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export function LandingScreen({
 
   const redeem = async () => {
     setBusy(true);
-    await onRedeemInvite(code);
+    await onRedeemInvite(code, joinTeamName.trim() || null);
     setBusy(false);
   };
 
@@ -72,7 +72,7 @@ export function LandingScreen({
       leagueName,
       leagueMode === "table"
         ? { mode: "table", seats, teamName: myTeamName.trim() || null }
-        : playing ? { playing: true, teamName: myTeamName.trim() || null } : {}
+        : { teamName: myTeamName.trim() || null }
     );
     setBusy(false);
   };
@@ -171,9 +171,16 @@ export function LandingScreen({
               />
             </div>
             {signedIn ? (
-              <button className="pp-btn pp-btn-gold" disabled={!code.trim() || busy} onClick={redeem}>
-                {busy ? "Joining..." : "Join League"}
-              </button>
+              <>
+                <div className="pp-field">
+                  <label className="pp-label">Your Team Name</label>
+                  <input className="pp-input" type="text" value={joinTeamName} onChange={(e) => setJoinTeamName(e.target.value)} placeholder="Name your team" maxLength={40} />
+                  <span className="pp-sub" style={{ display: "block", marginTop: 4 }}>Leave it blank and it starts as the front of your email address.</span>
+                </div>
+                <button className="pp-btn pp-btn-gold" disabled={!code.trim() || busy} onClick={redeem}>
+                  {busy ? "Joining..." : "Join League"}
+                </button>
+              </>
             ) : (
               /* The code is kept in the box across sign-in, so nobody has to find the
                  text message again after tapping the magic link. */
@@ -244,25 +251,15 @@ export function LandingScreen({
                     </div>
                   </>
                 ) : (
-                  <>
-                    <div className="pp-field">
-                      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input type="checkbox" checked={playing} onChange={(e) => setPlaying(e.target.checked)} />
-                        <span>I'm playing too - give me a team</span>
-                      </label>
-                    </div>
-                    {playing ? (
-                      <div className="pp-field">
-                        <label className="pp-label">Your Team Name</label>
-                        <input className="pp-input" type="text" value={myTeamName} onChange={(e) => setMyTeamName(e.target.value)} placeholder="The Commish" />
-                      </div>
-                    ) : null}
-                  </>
+                  <div className="pp-field">
+                    <label className="pp-label">Your Team Name</label>
+                    <input className="pp-input" type="text" value={myTeamName} onChange={(e) => setMyTeamName(e.target.value)} placeholder="The Commish" />
+                  </div>
                 )}
                 <div className="pp-hint">
                   {leagueMode === "table"
                     ? "You will be its dealer, and you take one of the seats yourself. Tables are private - people join with an invite you send them."
-                    : "You will be its commissioner" + (playing ? ", with a team of your own on My Team" : "") + ". New leagues are private - only members can see them - and you can change that later."}
+                    : "You will be its commissioner, and you play in it with a team of your own. Then send your invite link to everyone else - up to 12 teams. New leagues are private - only members can see them."}
                 </div>
                 <button className="pp-btn pp-btn-gold" style={{ marginTop: 8 }} disabled={!leagueName.trim() || busy} onClick={create}>
                   {busy ? "Creating..." : leagueMode === "table" ? "Open The Table" : "Create League"}
