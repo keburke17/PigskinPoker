@@ -295,6 +295,14 @@ export default function App() {
     go({ name: "league", leagueId: r.leagueId, tab: landing }, { replace: true });
   };
 
+  /* A commissioner who plays says which team is theirs (null: none). The server changes
+   * only their own membership; the identity follows so My Team appears or goes at once. */
+  const onSetMyTeam = async (teamId) => {
+    const r = await store.setMyTeam?.(teamId);
+    if (r && r.ok !== false) setIdentity({ ...identity, teamId: teamId ?? null });
+    return r;
+  };
+
   const onCreateLeague = async (name, opts = {}) => {
     setLoginError(null);
     const r = await store.createLeague?.(name, undefined, undefined, opts);
@@ -675,10 +683,10 @@ export default function App() {
 
   const isCommissioner = identity.role === "commissioner";
   const table = isTable(state);
-  /* A manager's team - and at a table, the DEALER's too, because they play at their own
-   * table (issue #75). A season is exactly as before: a commissioner who was once a
-   * manager can still carry a team_id, and must not grow a My Team tab because of it. */
-  const myTeam = identity.teamId && (identity.role === "manager" || table)
+  /* A manager's team - and a commissioner's too, when they play: the dealer at a table
+   * (issue #75), or a season commissioner who made the league with a team or picked one
+   * under Commish -> Teams. A commissioner with no team has no My Team tab. */
+  const myTeam = identity.teamId
     ? state.teams.find((t) => t.id === identity.teamId) || null
     : null;
 
@@ -725,7 +733,7 @@ export default function App() {
    * Keep new labels short anyway: two rows of pills is fine, three is a menu. */
   const NAV = [
     { key: "results", label: table ? "Hand" : "Week" },
-    ...(identity.role === "manager" || (table && myTeam) ? [{ key: "myteam", label: "My Team" }] : []),
+    ...(identity.role === "manager" || myTeam ? [{ key: "myteam", label: "My Team" }] : []),
     { key: "home", label: table ? "Table" : "League" },
     { key: "hub", label: "Rosters" },
     { key: "rules", label: "Rules" },
@@ -843,6 +851,7 @@ export default function App() {
               onSetNotifyMembers={onSetNotifyMembers}
               onSetSeat={onSetSeat}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
+              myTeamId={myTeam ? myTeam.id : null} onSetMyTeam={onSetMyTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               submittedTeamIds={submittedTeamIds}

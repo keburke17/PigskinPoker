@@ -343,7 +343,7 @@ export async function whoami(db, { leagueId, token }) {
  * a league whose owner is "whoever holds this string" is the thing this phase exists to
  * get away from.
  */
-export async function createLeague(db, { accountToken, name, year, visibility = "members", mode = "season", seats = null, teamName = null }) {
+export async function createLeague(db, { accountToken, name, year, visibility = "members", mode = "season", seats = null, teamName = null, playing = false }) {
   const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to create a league.");
 
@@ -360,7 +360,9 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   if (table && !(Number.isInteger(seatCount) && seatCount >= TABLE_SEATS_MIN && seatCount <= TABLE_SEATS_MAX)) {
     return fail(400, "A table has " + TABLE_SEATS_MIN + " to " + TABLE_SEATS_MAX + " seats.");
   }
-  const dealerTeamName = table ? cleanTeamName(teamName) || defaultTeamName(user) : null;
+  /* A dealer always plays. A season commissioner plays if they say so - the create form
+   * asks, ticked by default - and otherwise runs the league from the side, as before. */
+  const ownTeamName = table || playing === true ? cleanTeamName(teamName) || defaultTeamName(user) : null;
 
   const seasonYear = Number(year) || new Date().getFullYear();
 
@@ -428,19 +430,23 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
 
   /* THE DEALER PLAYS. A table is a home game, and the person who set it up takes a seat
    * at it like everybody else - and can sit out a hand like everybody else. Their
-   * membership is still the commissioner role underneath; it simply has a team too. */
-  let dealerTeamId = null;
-  if (table) {
-    const made = await insertTableTeam(db, leagueId, dealerTeamName);
+   * membership is still the commissioner role underneath; it simply has a team too.
+   *
+   * A SEASON COMMISSIONER WHO PLAYS gets the same: a team made here and tied to their
+   * membership, so they have a My Team tab like any manager. Commissioner powers are
+   * unchanged - they still act for every team. */
+  let ownTeamId = null;
+  if (ownTeamName) {
+    const made = await insertTeam(db, leagueId, ownTeamName);
     if (made.error) {
       await db.from("leagues").delete().eq("id", leagueId);
-      return fail(500, "Could not seat you at the table: " + made.error);
+      return fail(500, (table ? "Could not seat you at the table: " : "Could not make your team: ") + made.error);
     }
-    dealerTeamId = made.id;
+    ownTeamId = made.id;
   }
 
   const { error: memberError } = await db.from("league_members").insert({
-    league_id: leagueId, user_id: user.id, role: "commissioner", team_id: dealerTeamId,
+    league_id: leagueId, user_id: user.id, role: "commissioner", team_id: ownTeamId,
   });
   if (memberError) {
     /* Without a commissioner row the league would exist and be reachable by nobody -
@@ -470,7 +476,9 @@ const defaultTeamName = (user) => {
   return (local || "Player").slice(0, 30);
 };
 
-async function insertTableTeam(db, leagueId, name) {
+/* Also the season commissioner's own team: `seat` is a table's column, and a season never
+ * reads it, so the default it is born with is harmless there. */
+async function insertTeam(db, leagueId, name) {
   /* The legacy id is the team's identity everywhere the engine looks - the same
    * "team_" + hex shape the commissioner's Add Team makes in the browser. */
   const legacy = "team_" + randomBytes(5).toString("hex");
@@ -707,7 +715,7 @@ export async function redeemInvite(db, { code, accountToken }) {
     const view = rows ? hydrate(rows) : null;
     if (!view || !isTable(view)) return fail(410, "That invite has no team to give you - ask for a new one.");
     if (seatsFree(view) < 1) return fail(409, "That table is full - every seat is taken.", { reason: "full" });
-    const made = await insertTableTeam(db, invite.league_id, defaultTeamName(user));
+    const made = await insertTeam(db, invite.league_id, defaultTeamName(user));
     if (made.error) return fail(500, made.error);
     teamId = made.id;
   }
@@ -772,6 +780,40 @@ export async function setMemberRole(db, { leagueId, token, userId, role }) {
     .eq("id", target.id);
   if (error) return fail(500, error.message);
   return good({ role });
+}
+
+/**
+ * Which team is the commissioner's own - the one their My Team tab shows.
+ *
+ * A season commissioner acts for every team either way; this only says which one is
+ * theirs, for a commissioner who also plays. `teamId` is the legacy id the UI uses, and
+ * null means "I don't play". It changes the caller's OWN membership row and nobody
+ * else's. Two members may share a team - a multi-use invite already allows it - so a
+ * team another manager holds is not refused.
+ *
+ * Not at a table: there your team is your seat, made when you sat down.
+ */
+export async function setMyTeam(db, { leagueId, token, teamId = null }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (isTable(ctx.view)) return fail(400, "At a table your team is your seat.");
+
+  let teamUuid = null;
+  if (teamId != null) {
+    const team = ctx.rows.teams.find((t) => t.legacy_id === teamId);
+    if (!team) return fail(404, "That team is not in this league.");
+    teamUuid = team.id;
+  }
+  const { error } = await db
+    .from("league_members")
+    .update({ team_id: teamUuid })
+    .eq("league_id", leagueId)
+    .eq("user_id", ctx.session.userId);
+  if (error) return fail(500, error.message);
+  return good({ teamId: teamId ?? null });
 }
 
 /** Who is in this league. Commissioner only - it is a list of real people. */

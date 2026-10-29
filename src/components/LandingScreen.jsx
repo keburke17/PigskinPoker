@@ -44,6 +44,9 @@ export function LandingScreen({
   const [leagueMode, setLeagueMode] = useState("season");
   const [seats, setSeats] = useState(6);
   const [myTeamName, setMyTeamName] = useState("");
+  /* A season commissioner plays by default, the way a dealer does - untick to run the
+   * league from the side. */
+  const [playing, setPlaying] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -67,7 +70,9 @@ export function LandingScreen({
     setBusy(true);
     await onCreateLeague(
       leagueName,
-      leagueMode === "table" ? { mode: "table", seats, teamName: myTeamName.trim() || null } : {}
+      leagueMode === "table"
+        ? { mode: "table", seats, teamName: myTeamName.trim() || null }
+        : playing ? { playing: true, teamName: myTeamName.trim() || null } : {}
     );
     setBusy(false);
   };
@@ -238,11 +243,26 @@ export function LandingScreen({
                       <input className="pp-input" type="text" value={myTeamName} onChange={(e) => setMyTeamName(e.target.value)} placeholder="The House" />
                     </div>
                   </>
-                ) : null}
+                ) : (
+                  <>
+                    <div className="pp-field">
+                      <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input type="checkbox" checked={playing} onChange={(e) => setPlaying(e.target.checked)} />
+                        <span>I'm playing too - give me a team</span>
+                      </label>
+                    </div>
+                    {playing ? (
+                      <div className="pp-field">
+                        <label className="pp-label">Your Team Name</label>
+                        <input className="pp-input" type="text" value={myTeamName} onChange={(e) => setMyTeamName(e.target.value)} placeholder="The Commish" />
+                      </div>
+                    ) : null}
+                  </>
+                )}
                 <div className="pp-hint">
                   {leagueMode === "table"
                     ? "You will be its dealer, and you take one of the seats yourself. Tables are private - people join with an invite you send them."
-                    : "You will be its commissioner. New leagues are private - only members can see them - and you can change that later."}
+                    : "You will be its commissioner" + (playing ? ", with a team of your own on My Team" : "") + ". New leagues are private - only members can see them - and you can change that later."}
                 </div>
                 <button className="pp-btn pp-btn-gold" style={{ marginTop: 8 }} disabled={!leagueName.trim() || busy} onClick={create}>
                   {busy ? "Creating..." : leagueMode === "table" ? "Open The Table" : "Create League"}

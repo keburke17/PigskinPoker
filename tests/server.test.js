@@ -815,6 +815,61 @@ gate()("creating a league", () => {
     await cleanupLeagues("Founders League");
   });
 
+  it("gives a season commissioner who plays a team of their own, tied to their membership", async () => {
+    /* The create form ticks "I'm playing too" by default. Left out, the league is made
+     * exactly as before - the test above. */
+    const { token: jwt } = await makeAccount("player-commish@example.test");
+    const r = await ops.createLeague(db, { accountToken: jwt, name: "Playing Commish", year: 2031, playing: true, teamName: "The Commish" });
+    expect(r.status).toBe(200);
+
+    const { data: teams } = await db.from("teams").select("id, name").eq("league_id", r.body.leagueId);
+    expect(teams.map((t) => t.name)).toEqual(["The Commish"]);
+    const { data: member } = await db
+      .from("league_members").select("role, team_id").eq("league_id", r.body.leagueId).single();
+    expect(member).toEqual({ role: "commissioner", team_id: teams[0].id });
+
+    const me = await ops.whoami(db, { leagueId: r.body.leagueId, token: jwt });
+    expect(me.body.role).toBe("commissioner");
+    expect(me.body.teamId).toBeTruthy();
+
+    await cleanupLeagues("Playing Commish");
+  });
+
+  it("lets a commissioner say which team is theirs, change it, and clear it - their own row only", async () => {
+    const { token: jwt } = await makeAccount("claimer@example.test");
+    const r = await ops.createLeague(db, { accountToken: jwt, name: "Claimed League", year: 2031 });
+    const leagueId = r.body.leagueId;
+    const { error } = await db.from("teams").insert([
+      { league_id: leagueId, name: "Alpha", legacy_id: "team_alpha" },
+      { league_id: leagueId, name: "Beta", legacy_id: "team_beta" },
+    ]);
+    expect(error).toBeNull();
+    const whose = async () => (await ops.whoami(db, { leagueId, token: jwt })).body.teamId;
+
+    expect(await whose()).toBeNull();
+    expect((await ops.setMyTeam(db, { leagueId, token: jwt, teamId: "team_alpha" })).status).toBe(200);
+    expect(await whose()).toBe("team_alpha");
+    expect((await ops.setMyTeam(db, { leagueId, token: jwt, teamId: "team_beta" })).status).toBe(200);
+    expect(await whose()).toBe("team_beta");
+    expect((await ops.setMyTeam(db, { leagueId, token: jwt, teamId: "team_nope" })).status).toBe(404);
+    expect(await whose()).toBe("team_beta");
+    expect((await ops.setMyTeam(db, { leagueId, token: jwt, teamId: null })).status).toBe(200);
+    expect(await whose()).toBeNull();
+
+    await cleanupLeagues("Claimed League");
+  });
+
+  it("refuses setMyTeam to a manager, and at a table", async () => {
+    // A manager's team is set by the invite they redeemed, not by them.
+    const manager = await asManager(T1);
+    expect((await ops.setMyTeam(db, { leagueId, token: manager, teamId: T2 })).status).toBe(403);
+
+    const { token: jwt } = await makeAccount("table-claimer@example.test");
+    const t = await ops.createLeague(db, { accountToken: jwt, name: "Claim Table", year: 2033, mode: "table", seats: 4 });
+    expect((await ops.setMyTeam(db, { leagueId: t.body.leagueId, token: jwt, teamId: null })).status).toBe(400);
+    await cleanupLeagues("Claim Table");
+  });
+
   it("stocks the pool from the player_pool template, not from JavaScript", async () => {
     /* The pool used to be shipped as 223 rows of JSON on every league creation, built
      * from src/data/teamRows.js. It is a table now, copied in one statement - so a

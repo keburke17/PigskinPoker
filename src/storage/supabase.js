@@ -427,7 +427,8 @@ export function createSupabaseStore(config) {
      * token in the body. `call` would send it as the Authorization header, which the
      * server reads as a league session - correct everywhere else, wrong here. */
     /* `opts` is issue #75's table: { mode: "table", seats, teamName }. Left out, it is a
-     * season, exactly as before. */
+     * season, exactly as before. A season commissioner who plays sends
+     * { playing: true, teamName } and gets a team of their own. */
     createLeague: (name, year, visibility, opts = {}) =>
       callWithAccount("createLeague", { name, year, visibility, ...opts }),
     myLeagues: () => callWithAccount("myLeagues", {}),
@@ -448,6 +449,8 @@ export function createSupabaseStore(config) {
     revokeInvite: (inviteId) => call("revokeInvite", { inviteId }),
     listMembers: () => call("listMembers", {}),
     setMemberRole: (userId, role) => call("setMemberRole", { userId, role }),
+    /* A commissioner who plays: which team is theirs (legacy id), or null for none. */
+    setMyTeam: (teamId) => call("setMyTeam", { teamId }),
     setLeagueVisibility: (visibility) => call("setLeagueVisibility", { visibility }),
 
     /* Deleting takes the league and everything in it, so it carries the name the

@@ -40,7 +40,7 @@ import { MyTeamTab } from "./MyTeamTab.jsx";
 import { ConfirmButton, EmptyState, ErrorBanner, SuitBadge, Tag, TypedConfirm } from "./atoms.jsx";
 import { LiveStatsTab } from "./stats.jsx";
 
-export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam }) {
+export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam, myTeamId, onSetMyTeam }) {
   const [newName, setNewName] = useState("");
   return (
     <div>
@@ -51,7 +51,7 @@ export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam })
           <button className="pp-btn pp-btn-gold" disabled={!newName.trim()} onClick={() => { onAddTeam(newName.trim()); setNewName(""); }}>Add</button>
         </div>
       </div>
-      {state.teams.map((t) => <CommTeamRow key={t.id} team={t} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam} />)}
+      {state.teams.map((t) => <CommTeamRow key={t.id} team={t} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam} mine={t.id === myTeamId} onSetMyTeam={onSetMyTeam} />)}
       {state.teams.length === 0 ? (
         <EmptyState>
           {/* Named the Weeks tab until 2026-09-08. It does not any more: this panel is
@@ -73,19 +73,26 @@ export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam })
  * onto a new code at the same time. Membership is a `league_members` row now - invite
  * one person, remove one person - so neither control has anything to act on.
  */
-export function CommTeamRow({ team, onRenameTeam, onRemoveTeam }) {
+export function CommTeamRow({ team, onRenameTeam, onRemoveTeam, mine, onSetMyTeam }) {
   const [name, setName] = useState(team.name);
 
   return (
     <div className="pp-card pp-card-tight">
       <div className="pp-field" style={{ marginBottom: 6 }}>
-        <label className="pp-label">Team Name</label>
+        <label className="pp-label">Team Name{mine ? " - My Team" : ""}</label>
         <div style={{ display: "flex", gap: 6 }}>
           <input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} />
           <button className="pp-btn pp-btn-sm" onClick={() => onRenameTeam(team.id, name)}>Save</button>
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {/* A commissioner who plays picks the team that is theirs, and it becomes their
+          * My Team tab. Picking another moves it; they still manage every team here. */}
+        {onSetMyTeam ? (
+          mine
+            ? <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => onSetMyTeam(null)}>Not my team</button>
+            : <button className="pp-btn pp-btn-sm" onClick={() => onSetMyTeam(team.id)}>This is my team</button>
+        ) : null}
         <ConfirmButton label={"Remove " + team.name} confirmLabel="Yes, remove team" danger onConfirm={() => onRemoveTeam(team.id)} />
       </div>
     </div>
@@ -1495,6 +1502,8 @@ export function CommSetupScreen(props) {
           onAddTeam={props.onAddTeam}
           onRenameTeam={props.onRenameTeam}
           onRemoveTeam={props.onRemoveTeam}
+          myTeamId={props.myTeamId}
+          onSetMyTeam={props.onSetMyTeam}
         />
       )}
       <CommInvitePanel
@@ -1570,6 +1579,8 @@ export function CommissionerTab(props) {
           onAddTeam={props.onAddTeam}
           onRenameTeam={props.onRenameTeam}
           onRemoveTeam={props.onRemoveTeam}
+          myTeamId={props.myTeamId}
+          onSetMyTeam={props.onSetMyTeam}
           invites={props.invites}
           onCreateInvite={props.onCreateInvite}
           onRevokeInvite={props.onRevokeInvite}
@@ -1601,7 +1612,7 @@ export function CommissionerTab(props) {
         />
       )}
       {openSub === "seats" && <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} />}
-      {openSub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
+      {openSub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} myTeamId={props.myTeamId} onSetMyTeam={props.onSetMyTeam} />}
       {openSub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onRefreshInjuries={props.onRefreshInjuries} injuryReport={props.injuryReport} onSetAutoCycle={props.onSetAutoCycle} onSetNotifyMembers={props.onSetNotifyMembers} />}
       {openSub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
       {openSub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}

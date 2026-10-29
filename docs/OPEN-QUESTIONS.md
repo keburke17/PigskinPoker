@@ -2374,3 +2374,30 @@ in the FLEX. It now refuses a player who does not fit the slot he lands in.
 **Reversible in one line.** `FLEX_POSITIONS` in `src/engine/state.js` - take `"TE"` out
 and the old rule is back. Parity is untouched: the artifact's engine never checked a swap,
 and the deal did not change.
+
+### OQ-34. A season commissioner with a team of their own. **[ANSWERED 2026-10-29 by Scott: yes - at creation by default, and pickable in a league already playing]**
+
+At a table the dealer has always sat down with a team and a My Team tab. A season
+commissioner did not: they managed their own team through Commish -> Manage Rosters,
+because the app deliberately hid My Team from any commissioner outside a table. Scott runs
+a live season league and plays in it, and asked for the same thing a dealer has.
+
+**What it does to the league.** Nothing about the game. Dealing, schemes, scoring,
+standings and the playoffs do not read who owns a team, and a commissioner could already
+act for every team. What changes is who sees which screen:
+
+- **Creating a season league** now asks "I'm playing too - give me a team", ticked by
+  default. Ticked, the league is born with one team - named on the form, or after the
+  email address - tied to the commissioner's membership. Unticked, it is made exactly as
+  before, with no teams.
+- **A league already playing**: Commish -> Teams has a "This is my team" button on every
+  team, and "Not my team" on the one that is. It changes the commissioner's own
+  membership row and nothing else - no team, roster or week is touched.
+- **A commissioner with a team gets everything a manager does for it**: the My Team tab,
+  the weekly recap pop-up, and - if the league's email is on - the manager emails for that
+  team. A commissioner with no team sees the app exactly as before.
+- **One side effect worth knowing.** A manager later promoted to commissioner keeps their
+  team, and now keeps their My Team tab with it. That used to be hidden on purpose; "Not my
+  team" is the way to drop it.
+
+Not at a table, where your team is your seat. `setMyTeam` in `server/operations.js`.
