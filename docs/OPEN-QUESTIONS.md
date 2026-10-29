@@ -2409,8 +2409,7 @@ and the playoffs never read who owns a team. What changes is how a league fills 
   for a second commissioner.
 
 **Leagues made before this** keep working exactly as they did. Their commissioner has no
-team until someone links one - a one-row change to `league_members.team_id` on the live
-database, which is Kyle's.
+team, and so no My Team, until someone links one - OQ-36.
 
 **Found on the way, not fixed:** My Team's Rename button is broken for managers - OQ-35.
 
@@ -2428,3 +2427,23 @@ The commissioner can rename any team under Commish -> Teams in the meantime.
 The likely shape of a fix is a small server route that renames ONE team, allowed for that
 team's own manager and for a commissioner - the same `canActForTeam` check `swapLineupSlot`
 and `submitScheme` use.
+
+### OQ-36. A commissioner of a league made before OQ-34 has no My Team. **[OPEN - Scott 2026-10-29: parked, to be fixed in its own session]**
+
+OQ-34 gives a commissioner a team when they CREATE a season league. A league created
+before it - including Scott's live league - is untouched: its commissioner manages their
+own team through Commish -> Manage Rosters and has no My Team tab, because their
+`league_members` row has no `team_id`.
+
+My Team itself needs no further code: since OQ-34 it shows for any member whose
+membership has a team. What is missing is a way to say which team is the commissioner's.
+Two shapes, for whoever picks this up:
+
+- **For Scott's league only:** Kyle sets `league_members.team_id` on Scott's row in the
+  live database to his team's id. One row; nothing else touched. Needs Scott to say which
+  team is his.
+- **For every older league:** a one-time way for a commissioner with no team to say
+  which team is theirs. A "This is my team" button was built and then removed on
+  2026-10-29 - Scott did not want a button in the normal flow - so whatever replaces it
+  should only appear for a commissioner who has no team.
+
