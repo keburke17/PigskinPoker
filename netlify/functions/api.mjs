@@ -60,6 +60,7 @@ const ROUTES = {
 
   setStatLine: (db, p) => ops.setStatLine(db, p),
   swapLineupSlot: (db, p) => ops.swapLineupSlot(db, p),
+  swapStarterSlots: (db, p) => ops.swapStarterSlots(db, p),
   submitScheme: (db, p) => ops.submitScheme(db, p),
   schemeStatus: (db, p) => ops.schemeStatus(db, p),
   toggleSlotLock: (db, p) => ops.toggleSlotLock(db, p),

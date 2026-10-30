@@ -342,6 +342,7 @@ export default function App() {
 
   /* ---- manager actions: one row each, not the whole league ---- */
   const onSwap = (teamId, slot, benchIdx) => ops.swapLineupSlot(teamId, slot, benchIdx);
+  const onMoveStarter = (teamId, fromSlot, toSlot, benchIdx) => ops.swapStarterSlots(teamId, fromSlot, toSlot, benchIdx);
   const onSubmitScheme = (teamId, scheme) => ops.submitScheme(teamId, scheme);
   const onRenameMyTeam = (teamId, name) => {
     const trimmed = (name || "").trim();
@@ -825,7 +826,7 @@ export default function App() {
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} /> : null}
           {tab === "myteam" && myTeam && (
-            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
+            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}
@@ -846,7 +847,7 @@ export default function App() {
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               submittedTeamIds={submittedTeamIds}
-              onSwap={onSwap} onSubmitScheme={onSubmitScheme}
+              onSwap={onSwap} onMoveStarter={onMoveStarter} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer} onRenamePlayer={onRenamePlayer} onRestorePlayer={onRestorePlayer}
               onRefreshPool={onRefreshPool} poolReport={poolReport}
               onSetNflWeek={onSetNflWeek}

@@ -21,6 +21,7 @@ import { loadIdentity, saveIdentity } from "../storage/index.js";
 import { isAmbiguousRead } from "../storage/types.js";
 import { createWriteQueue } from "../storage/writeQueue.js";
 import { vkey } from "../storage/hydrate.js";
+import { moveStarter, unmoveStarter } from "../engine/index.js";
 
 const MAX_LOAD_ATTEMPTS = 3;
 
@@ -360,6 +361,42 @@ export function useLeague(store) {
     [store, immediate, applySwapLocally]
   );
 
+  /** Two starters trading places, or the three-way TE-to-FLEX move (OQ-34). Drawn at
+   * once and undone on a refusal, exactly as swapLineupSlot above - except that a
+   * three-way move is not its own inverse, so the undo is unmoveStarter. Manual locks
+   * only, for the same reason given on applySwapLocally. */
+  const moveSeq = useRef(0);
+  const applyStarterMoveLocally = useCallback((teamId, fromSlot, toSlot, benchIndex, undo) => {
+    setView((prev) => {
+      const team = prev?.teams?.find((t) => t.id === teamId);
+      if (!team || !team.roster) return prev;
+      const r = team.roster;
+      const locks = prev.lockedPlayerIds || {};
+      const ids = [r.starters[fromSlot], r.starters[toSlot], benchIndex == null ? null : r.bench[benchIndex]];
+      if (ids.some((id) => id && locks[id])) return prev;
+      const roster = (undo ? unmoveStarter : moveStarter)(r, fromSlot, toSlot, benchIndex);
+      return { ...prev, teams: prev.teams.map((t) => (t.id !== teamId ? t : { ...t, roster })) };
+    });
+  }, []);
+
+  const swapStarterSlots = useCallback(
+    (teamId, fromSlot, toSlot, benchIndex = null) => {
+      applyStarterMoveLocally(teamId, fromSlot, toSlot, benchIndex, false);
+      /* Its own queue key per move. The queue keeps one pending write per key, so a
+       * key shared with the next tap would let that tap replace this move unsent -
+       * after it had already been drawn. */
+      moveSeq.current += 1;
+      return immediate("move:" + teamId + ":" + moveSeq.current, async () => {
+        const r = await store.swapStarterSlots(teamId, fromSlot, toSlot, benchIndex, versions());
+        if (r && !r.ok && !r.view && r.reason !== "network") {
+          applyStarterMoveLocally(teamId, fromSlot, toSlot, benchIndex, true);
+        }
+        return r;
+      });
+    },
+    [store, immediate, applyStarterMoveLocally]
+  );
+
   /* The commissioner can submit on a team's behalf from Manage Rosters, and when he
    * does his own Weeks count should move at once rather than on the next tick. */
   const submitScheme = useCallback(
@@ -547,6 +584,7 @@ export function useLeague(store) {
       setStatLine,
       toggleSlotLock,
       swapLineupSlot,
+      swapStarterSlots,
       submitScheme,
       toggleRosterLock,
       dealPeriod,

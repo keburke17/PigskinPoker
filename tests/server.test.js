@@ -1944,6 +1944,114 @@ gate()("the lineup lock", () => {
     expect(after.find((x) => x.slot === "FLEX").player_id).toBe(flex.player_id);
   });
 
+  /* OQ-34 (Scott, 2026-10-30): starters trading places, and the three-way TE-to-FLEX. */
+  const flexTradePartner = (roster) => {
+    const flex = roster.find((r) => r.slot === "FLEX");
+    const partner = roster.find((r) => r.area === "starter" && r.slot === flex.player?.position);
+    return { flex, partner };
+  };
+
+  it("OQ-34: the FLEX starter trades places with the starter at his own position", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setKickoffs(period.id, {});
+    const roster = await rosterOf(period.id, T1);
+    const { flex, partner } = flexTradePartner(roster);
+    expect(partner).toBeTruthy();
+
+    const token = await asManager(T1);
+    const r = await ops.swapStarterSlots(db, { leagueId, token, teamId: T1, fromSlot: "FLEX", toSlot: partner.slot });
+    expect(r.status).toBe(200);
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === partner.slot).player_id).toBe(flex.player_id);
+    expect(after.find((x) => x.slot === "FLEX").player_id).toBe(partner.player_id);
+  });
+
+  it("OQ-34: the starting TE into the FLEX, the bench TE to TE, the FLEX player to the bench", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setKickoffs(period.id, {});
+    const roster = await rosterOf(period.id, T1);
+    const te = roster.find((r) => r.slot === "TE");
+    const flex = roster.find((r) => r.slot === "FLEX");
+    const benchTe = roster.find((r) => r.area === "bench" && r.player?.position === "TE");
+    expect(flex.player.position).not.toBe("TE");
+
+    const token = await asManager(T1);
+    const r = await ops.swapStarterSlots(db, {
+      leagueId, token, teamId: T1, fromSlot: "TE", toSlot: "FLEX", benchIndex: benchTe.bench_index,
+    });
+    expect(r.status).toBe(200);
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === "FLEX").player_id).toBe(te.player_id);
+    expect(after.find((x) => x.slot === "TE").player_id).toBe(benchTe.player_id);
+    expect(after.find((x) => x.area === "bench" && x.bench_index === benchTe.bench_index).player_id).toBe(flex.player_id);
+  });
+
+  it("OQ-34: refuses a straight trade where one of them does not fit - a WR cannot play TE", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setKickoffs(period.id, {});
+    const roster = await rosterOf(period.id, T1);
+    const te = roster.find((r) => r.slot === "TE");
+
+    const token = await asManager(T1);
+    const r = await ops.swapStarterSlots(db, { leagueId, token, teamId: T1, fromSlot: "TE", toSlot: "FLEX" });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/can't play TE/);
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === "TE").player_id).toBe(te.player_id);
+  });
+
+  it("OQ-34: refuses once either slot has a stat line, because lines are filed under the slot", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    await setKickoffs(period.id, {});
+    const roster = await rosterOf(period.id, T1);
+    const { flex, partner } = flexTradePartner(roster);
+    const line = await ops.setStatLine(db, {
+      leagueId, token: await asCommissioner(), teamId: T1, slot: "FLEX", line: { yards: "40", tds: "0" },
+    });
+    expect(line.status).toBe(200);
+
+    const token = await asManager(T1);
+    const r = await ops.swapStarterSlots(db, { leagueId, token, teamId: T1, fromSlot: "FLEX", toSlot: partner.slot });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/stats are already in/i);
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === "FLEX").player_id).toBe(flex.player_id);
+  });
+
+  it("OQ-34: the clock locks every player in the move, the bench TE included", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    const roster = await rosterOf(period.id, T1);
+    const te = roster.find((r) => r.slot === "TE");
+    const flex = roster.find((r) => r.slot === "FLEX");
+    const benchTe = roster.find((r) => r.area === "bench" && r.player?.position === "TE");
+    await setKickoffs(period.id, { [benchTe.player.nfl_team]: past() });
+
+    const token = await asManager(T1);
+    const r = await ops.swapStarterSlots(db, {
+      leagueId, token, teamId: T1, fromSlot: "TE", toSlot: "FLEX", benchIndex: benchTe.bench_index,
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.reason).toBe("locked");
+    // Whoever is named, the bench TE's own kickoff is what locked the move.
+    const sharesTeam = [te, flex].some((x) => x.player.nfl_team === benchTe.player.nfl_team);
+    if (!sharesTeam) expect(r.body.error).toContain(benchTe.player.name);
+    const after = await rosterOf(period.id, T1);
+    expect(after.find((x) => x.slot === "TE").player_id).toBe(te.player_id);
+  });
+
+  it("OQ-34: a manager cannot move another team's starters", async () => {
+    const period = await currentPeriod();
+    await openForSwaps(period.id);
+    const token = await asManager(T1);
+    const r = await ops.swapStarterSlots(db, { leagueId, token, teamId: T2, fromSlot: "FLEX", toSlot: "WR" });
+    expect(r.status).toBe(403);
+  });
+
   it("reads the week's kickoff times when it deals, and hands them to the browser", async () => {
     const feed = await import("../server/feed/fixture.js");
     const token = await asCommissioner();

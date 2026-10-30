@@ -83,7 +83,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
 
       <RuleCard title="Your week, as a manager">
         <li><strong>1. The roster is dealt.</strong> {autoWeek ? "Every week after the first is dealt for you at " + advanceDeadline + "; the first one waits for your commissioner." : "Your commissioner presses Deal."} Until then there is genuinely nothing for you to do, and My Team will show empty slots.</li>
-        <li><strong>2. Set your lineup.</strong> My Team - swap a bench player into a matching starting slot. Every change routes through the bench; you can never swap two starters directly.</li>
+        <li><strong>2. Set your lineup.</strong> My Team - tap a player's card, then tap HERE on any spot he can go. Bench to starter, starter to bench, or two starters trading places - a WR from the FLEX to WR, say.</li>
         <li><strong>3. Submit a scheme.</strong> Same screen, at the bottom. Block, Steal, Redraw or No Action. You can change it as often as you like {autoSchemes ? "until " + schemeDeadline : "until it is processed"}.</li>
         <li><strong>4. Schemes are processed.</strong> {autoSchemes ? "At " + schemeDeadline + ", on the clock - like waivers. Submit nothing by then and you get No Action." : "When your commissioner presses Process Schemes."} All blocks resolve first, then steals and redraws together in random order. Your roster can change here - someone may take a starter you did not protect.</li>
         <li><strong>5. The weekend.</strong> Rosters get locked, which closes scheme submission. Lineup swaps stay open per player until that player's real game starts.</li>
