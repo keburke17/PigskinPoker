@@ -96,7 +96,7 @@ describe("weekMoves reads the engine's own sentences", () => {
       { kind: "drop", player: nameOf(s, dropped), position: "WR", note: "dropped to free agency" },
       { kind: "add", player: nameOf(next, starter(next, "team_0", "WR")), position: "WR", note: "from free agency" },
     ]);
-    expect(moveHeadline(tm)).toBe("You redrew " + nameOf(next, starter(next, "team_0", "WR")));
+    expect(moveHeadline(tm)).toBe("You drew " + nameOf(next, starter(next, "team_0", "WR")) + " for " + nameOf(s, dropped));
   });
 
   it("reads a steal that found no target", () => {
