@@ -1944,7 +1944,17 @@ gate()("the lineup lock", () => {
     expect(after.find((x) => x.slot === "FLEX").player_id).toBe(flex.player_id);
   });
 
-  /* OQ-34 (Scott, 2026-10-30): starters trading places, and the three-way TE-to-FLEX. */
+  /* OQ-34 (Scott, 2026-10-30): starters trading places, and the three-way TE-to-FLEX.
+   *
+   * The demo seed has the week's stat lines already entered, and a move between two
+   * starters is refused once either slot has one (lines are filed by slot) - so each of
+   * these clears the team's lines first, and the stat-line test adds back just the one
+   * it is about. */
+  const clearLines = async (periodId, teamLegacy) => {
+    const { data: team } = await db
+      .from("teams").select("id").eq("league_id", leagueId).eq("legacy_id", teamLegacy).single();
+    await db.from("stat_lines").delete().eq("period_id", periodId).eq("team_id", team.id);
+  };
   const flexTradePartner = (roster) => {
     const flex = roster.find((r) => r.slot === "FLEX");
     const partner = roster.find((r) => r.area === "starter" && r.slot === flex.player?.position);
@@ -1954,6 +1964,7 @@ gate()("the lineup lock", () => {
   it("OQ-34: the FLEX starter trades places with the starter at his own position", async () => {
     const period = await currentPeriod();
     await openForSwaps(period.id);
+    await clearLines(period.id, T1);
     await setKickoffs(period.id, {});
     const roster = await rosterOf(period.id, T1);
     const { flex, partner } = flexTradePartner(roster);
@@ -1970,6 +1981,7 @@ gate()("the lineup lock", () => {
   it("OQ-34: the starting TE into the FLEX, the bench TE to TE, the FLEX player to the bench", async () => {
     const period = await currentPeriod();
     await openForSwaps(period.id);
+    await clearLines(period.id, T1);
     await setKickoffs(period.id, {});
     const roster = await rosterOf(period.id, T1);
     const te = roster.find((r) => r.slot === "TE");
@@ -1991,6 +2003,7 @@ gate()("the lineup lock", () => {
   it("OQ-34: refuses a straight trade where one of them does not fit - a WR cannot play TE", async () => {
     const period = await currentPeriod();
     await openForSwaps(period.id);
+    await clearLines(period.id, T1);
     await setKickoffs(period.id, {});
     const roster = await rosterOf(period.id, T1);
     const te = roster.find((r) => r.slot === "TE");
@@ -2006,6 +2019,7 @@ gate()("the lineup lock", () => {
   it("OQ-34: refuses once either slot has a stat line, because lines are filed under the slot", async () => {
     const period = await currentPeriod();
     await openForSwaps(period.id);
+    await clearLines(period.id, T1);
     await setKickoffs(period.id, {});
     const roster = await rosterOf(period.id, T1);
     const { flex, partner } = flexTradePartner(roster);
@@ -2025,6 +2039,7 @@ gate()("the lineup lock", () => {
   it("OQ-34: the clock locks every player in the move, the bench TE included", async () => {
     const period = await currentPeriod();
     await openForSwaps(period.id);
+    await clearLines(period.id, T1);
     const roster = await rosterOf(period.id, T1);
     const te = roster.find((r) => r.slot === "TE");
     const flex = roster.find((r) => r.slot === "FLEX");
