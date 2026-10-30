@@ -2417,3 +2417,40 @@ the move when either slot has a line.
 `swapStarterSlots` in `server/operations.js` (every check the old swap makes, on every
 player who moves), and `src/components/lineup.jsx`. Parity is untouched: the artifact's
 engine never swapped a lineup at all, the dropdown did.
+
+---
+
+### OQ-26. Who is allowed to name a team? **[ANSWERED 2026-10-30 by Scott: the manager names their own]**
+
+**Found twice.** Kyle hit it on 2026-09-09 playing as a manager, and fixed it on
+`kyle/manager-rename-own-team` - a branch that never merged, which is why this number was
+reserved by the note under OQ-28. It was found again on 2026-10-29 while building OQ-34 and
+parked as OQ-35 on `scott/commissioner-my-team`. **This entry replaces OQ-35**; drop that one
+if the branch carrying it ever merges.
+
+**What was wrong.** The **Rename** button on **My Team** took a new name and then quietly
+put the old one back. It had never worked for a manager - only for the commissioner, whose
+identical button on Manage Teams went through the same code and passed the permission check
+the manager failed. Since OQ-34 it mattered more: a manager who leaves the team name blank on
+the join screen starts with the front of their email address and had no working way to change it.
+
+**The decision.** Scott, asked on 2026-10-30 whether the button was broken: "if it is, we
+need to fix it". So a manager may rename their own team, whenever they like, without asking
+the commissioner. The commissioner can still rename any team in the league, and their rename
+wins simply by being the later one. Nobody can rename anybody else's team. To make team names
+the commissioner's alone instead, the button comes off the manager's screen - a smaller change
+than this one.
+
+**Worth knowing about the timing.** A rename takes effect immediately, mid-week included, and
+the new name shows in the standings and on the scoreboard for every week already played - the
+league stores one name per team, not one per week. That is how the commissioner's rename has
+always behaved; it is only now reachable by more people. The activity feed is the exception:
+an entry already written keeps the old name, because it was a sentence composed the day it
+happened rather than a lookup. Do not "fix" that.
+
+**A name cannot touch a score.** Nothing in `src/engine/` reads a team name - the same
+argument that lets the head-coach list write across leagues (OQ-4e).
+
+*The technical half, and the second bug underneath it - the app throwing refusals away
+without showing them - is in `docs/MIGRATION-NOTES.md` under "A manager could not rename
+their own team".*

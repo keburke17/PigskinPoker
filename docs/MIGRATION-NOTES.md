@@ -2360,3 +2360,48 @@ and takes its own write-queue key so a second quick tap cannot replace it unsent
 
 The rules screen's "Swaps go through the bench." and the Help tab's "you can never swap
 two starters directly" were both rewritten; they were true until this change.
+
+---
+
+## A manager could not rename their own team (found 2026-09-09, fixed 2026-10-30)
+
+**What happened.** Pressing **Rename** on **My Team** as a manager, typing a new name and
+pressing Save put the old name back, with nothing on screen to say why. Kyle found and fixed
+it on 2026-09-09 on `kyle/manager-rename-own-team` (`55abc41`); that branch never merged, and
+this is the same fix carried onto the main of 2026-10-30. The code applied cleanly; only
+the docs needed rewriting. Decision recorded as OQ-26.
+
+**Two independent defects, and either one alone would have hidden the other.**
+
+**1. The button had no operation behind it.** Both rename controls - the manager's on My
+Team and the commissioner's on Manage Teams - called `ops.mutate()`, which posts the whole
+league to `replaceLeague`. That route is commissioner-only on purpose: the blob it accepts
+can rewrite the pool, the scoring and every team. A manager's rename was refused every time.
+
+**2. `handle()` in `src/hooks/useLeague.js` discarded the refusal.** It shaped its banner in
+a chain of else-ifs - `stale`, `phase`, `locked`, `invalid`, `network` - with no final
+`else`, so `forbidden` fell off the end silently. So did `unauthorized` (an expired
+session), `throttled`, and the server's `unlocked` from `setStatLine`.
+
+**The fix.**
+
+- `renameTeam` in `server/operations.js`, authorized with `canActForTeam` - the question
+  `swapLineupSlot` and `submitScheme` ask. Own team for a manager, any team for the
+  commissioner. Both buttons call it, so the commissioner's rename stopped being a
+  whole-league write too. No phase rule and no version key: no week makes naming your team
+  illegal, and last writer wins on a label, as on a coach's name (`setCoach`).
+- `src/hooks/opError.js` - a pure `failureBanner(result)` turning any refusal into a
+  headline, preferring the server's own sentence. `handle()` is now conflict, or banner.
+- Save is disabled on an empty box in both rename controls.
+
+**Tests.** Six in `tests/server.test.js` for the route and eleven in `tests/opError.test.js`,
+which pins coverage rather than wording: every reason, including one not invented yet, gets
+a headline. Two of its cases read `useLeague.js` as text; on 2026-10-30 they learned to fold
+CRLF, because a Windows checkout has it and the match is literal.
+
+**Verified** in the running app as `team1@pigskin.test`: the rename saved, showed in the
+header and the team card, and survived a reload.
+
+**Not done.** The editor still closes on Save whether or not the write lands; the banner is
+what tells you it did not. Carrying a per-write result back to the component is issue #58's
+territory.
