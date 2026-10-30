@@ -142,7 +142,7 @@ export function RulesTab({ state }) {
         <>FLEX is always dealt a WR or RB, but you can <strong>start a TE there</strong> - so you can play both your TEs.</>,
         "Each NFL team's top healthy RB and WR is " + oddsWords(TOP_OF_CHART_WEIGHT) + " to be dealt.",
         "Players on a bye, OUT or IR aren't dealt.",
-        "Swaps go through the bench.",
+        "Tap a player's card to move him - to the bench, or to any starting spot he fits.",
         weekly
           ? "Every lineup locks at the " + word + "'s first kickoff" + (first ? " - " + formatKickoff(first) + "." : ".")
           : "Each player locks when his own game kicks off, so a Sunday-night starter can still come in at 7pm.",

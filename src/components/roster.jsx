@@ -150,7 +150,10 @@ export function PlayerName({ player }) {
  * The stat line then gets a line of its own instead of trailing off the end of the meta,
  * and the points stay hard right in a column that lines up down the whole card.
  */
-export function RosterSlotRow({ slot, player, state, statLine, locked, showStats, bench }) {
+/* `card` and `className` let the lineup editor put a tappable card in place of the plain
+ * one and light the row up while a move is in progress (OQ-34). Everywhere else the row
+ * is exactly what it was. */
+export function RosterSlotRow({ slot, player, state, statLine, locked, showStats, bench, card, className }) {
   /* A BENCH ROW (OQ-28, Scott 2026-10-16) scores the feed's line for him this week, with
    * the same function a starter is scored with - so the grey number is exactly what he
    * would have put up in the lineup. It is greyed and italic because it does not count:
@@ -166,8 +169,8 @@ export function RosterSlotRow({ slot, player, state, statLine, locked, showStats
    * the opponent and kickoff - so a healthy player's row is exactly what it was. */
   const injury = useInjuryNotes(state, player);
   return (
-    <div className="pp-roster-slot">
-      <PositionCard slot={slot} position={player ? player.position : null} />
+    <div className={"pp-roster-slot" + (className ? " " + className : "")}>
+      {card || <PositionCard slot={slot} position={player ? player.position : null} />}
       <div className="pp-roster-slot-body">
         <div className="pp-roster-slot-top">
           {/* The name line is the name, the injury pill and an OUT / IR status - nothing

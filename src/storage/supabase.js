@@ -465,6 +465,8 @@ export function createSupabaseStore(config) {
     setStatLine: (teamId, slot, line, expect) => call("setStatLine", { teamId, slot, line, expect }),
     swapLineupSlot: (teamId, slot, benchIndex, expect) =>
       call("swapLineupSlot", { teamId, slot, benchIndex, expect }),
+    swapStarterSlots: (teamId, fromSlot, toSlot, benchIndex, expect) =>
+      call("swapStarterSlots", { teamId, fromSlot, toSlot, benchIndex, expect }),
     submitScheme: (teamId, scheme, expect) => call("submitScheme", { teamId, scheme, expect }),
     toggleSlotLock: (teamId, playerId) => call("toggleSlotLock", { teamId, playerId }),
     toggleRosterLock: (expect) => call("toggleRosterLock", { expect }),

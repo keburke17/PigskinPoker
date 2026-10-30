@@ -2343,3 +2343,20 @@ after it. See OQ-33 for what that does to steals and the 2-TE cap.
 (`src/components/scheme.jsx`), lifted from the artifact. It is now `slotAcceptsPosition`
 and `FLEX_POSITIONS` in `src/engine/state.js`, read by that screen and by
 `swapLineupSlot` in `server/operations.js`, which until now accepted any swap at all.
+
+## Tap the card to move a player (2026-10-30, OQ-34)
+
+Scott's. The "Swap in from bench..." dropdown under each starter is gone; every position
+card on My Team (and the commissioner's Manage Rosters, which draws the same screen) is a
+button, and the bench moved inside the lineup editor so its cards are too. New moves:
+starter for starter of the same position, and the three-way TE-to-FLEX. See OQ-34.
+
+**A second write, not a widened first one.** `swapLineupSlot` is untouched - still one
+starter for one bench player. `swapStarterSlots` is new: two or three compare-and-swap
+writes to `roster_slots`, putting back the ones already made if a later one finds its row
+moved. It refuses a move into a slot with a stat line, because lines are keyed by slot.
+In the browser each move is drawn at once and undone with `unmoveStarter` on a refusal,
+and takes its own write-queue key so a second quick tap cannot replace it unsent.
+
+The rules screen's "Swaps go through the bench." and the Help tab's "you can never swap
+two starters directly" were both rewritten; they were true until this change.

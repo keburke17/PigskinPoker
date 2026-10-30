@@ -87,6 +87,7 @@ const PHASE_RULES = {
   dealPeriod: ["pre-deal"],
   submitScheme: ["dealt"],
   swapLineupSlot: ["dealt", "schemes-processed"],
+  swapStarterSlots: ["dealt", "schemes-processed"],
   processSchemes: ["dealt"],
   setStatLine: ["schemes-processed", "stats"],
   toggleSlotLock: ["schemes-processed", "stats"],
@@ -1010,6 +1011,89 @@ export async function swapLineupSlot(db, { leagueId, token, teamId, slot, benchI
       reason: "stale",
       view: hydrate(await fetchLeagueRows(db, leagueId)),
     });
+  }
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/* Two starters trading places, or the three-way TE-to-FLEX move (OQ-34, Scott
+ * 2026-10-30; the rules are in src/engine/lineupMoves.js). The starter in `fromSlot`
+ * goes to `toSlot`. With `benchIndex` null whoever held `toSlot` comes back to
+ * `fromSlot`; with a bench index, that bench player takes `fromSlot` and the displaced
+ * starter goes to the bench.
+ *
+ * Every check swapLineupSlot makes, on every player who moves, plus one more: a STAT
+ * LINE IS FILED UNDER ITS SLOT, not its player, so two starters trading places after
+ * their lines are in would each score the other's week. The lock normally makes that
+ * impossible - a player with stats has played - but a week with no kickoff times read
+ * locks nobody on the clock, so it is refused here rather than trusted. */
+export async function swapStarterSlots(db, { leagueId, token, teamId, fromSlot, toSlot, benchIndex = null, expect }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  const team = teamRow(ctx.rows, teamId);
+  if (!team) return fail(404, "Unknown team.");
+  if (!canActForTeam(ctx.session, team.id)) {
+    return fail(AUTH_ERRORS.notYourTeam.status, AUTH_ERRORS.notYourTeam.error);
+  }
+  if (fromSlot === toSlot) return fail(400, "Pick a different slot.");
+  const keys = [vkey.starterSlot(teamId, fromSlot), vkey.starterSlot(teamId, toSlot)];
+  if (benchIndex != null) keys.push(vkey.benchSlot(teamId, benchIndex));
+  const bad = guard(ctx, "swapStarterSlots", expect, keys);
+  if (bad) return bad;
+
+  const mine = ctx.rows.roster_slots.filter((r) => r.period_id === ctx.period.id && r.team_id === team.id);
+  const from = mine.find((r) => r.area === "starter" && r.slot === fromSlot);
+  const to = mine.find((r) => r.area === "starter" && r.slot === toSlot);
+  const bench = benchIndex == null ? null : mine.find((r) => r.area === "bench" && r.bench_index === benchIndex);
+  if (!from || !to || (benchIndex != null && !bench)) return fail(404, "That roster slot doesn't exist.");
+  const moving = [from, to, bench].filter(Boolean);
+  if (moving.some((r) => r.locked)) return fail(409, "That player is locked.", { reason: "locked" });
+
+  const clockLock = kickoffLock(ctx);
+  const refusal = moving.map((r) => clockLock(r.player_id)).find(Boolean);
+  if (refusal) return fail(409, refusal, { reason: "locked", view: ctx.view });
+
+  const hasLine = ctx.rows.stat_lines.some(
+    (s) => s.period_id === ctx.period.id && s.team_id === team.id && (s.slot === fromSlot || s.slot === toSlot)
+  );
+  if (hasLine) {
+    return fail(409, "Stats are already in for one of those slots, so those two can't trade places this week.", {
+      reason: "locked",
+    });
+  }
+
+  /* Each player must fit where he lands. The bench takes anyone. */
+  const player = (r) => ctx.rows.players.find((p) => p.id === r.player_id) ?? null;
+  const fits = (r, slot) => {
+    const p = player(r);
+    return !p || slotAcceptsPosition(slot, p.position) ? null : p.name + " is a " + p.position + " and can't play " + slot + ".";
+  };
+  const misfit = fits(from, toSlot) || fits(bench ?? to, fromSlot);
+  if (misfit) return fail(400, misfit);
+
+  /* Two or three compare-and-swap writes. If one finds its row moved underneath it, the
+   * ones already made are put back rather than leaving a player on the roster twice. */
+  const plan = bench
+    ? [[to, from.player_id], [from, bench.player_id], [bench, to.player_id]]
+    : [[to, from.player_id], [from, to.player_id]];
+  const done = [];
+  for (const [row, playerId] of plan) {
+    const w = await db
+      .from("roster_slots")
+      .update({ player_id: playerId, version: row.version + 1 })
+      .eq("id", row.id)
+      .eq("version", row.version)
+      .select();
+    if (w.error || !w.data?.length) {
+      for (const prev of done) {
+        await db.from("roster_slots").update({ player_id: prev.player_id, version: prev.version + 2 }).eq("id", prev.id);
+      }
+      if (w.error) return fail(500, w.error.message);
+      return fail(409, "Someone else just updated the league - reloaded.", {
+        reason: "stale",
+        view: hydrate(await fetchLeagueRows(db, leagueId)),
+      });
+    }
+    done.push(row);
   }
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }

@@ -591,7 +591,7 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
   );
 }
 
-export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
+export function CommManageRostersPanel({ state, onSwap, onMoveStarter, onSubmitScheme }) {
   const teams = periodTeams(state);
   const [teamId, setTeamId] = useState(teams[0] ? teams[0].id : "");
   const team = state.teams.find((t) => t.id === teamId);
@@ -604,7 +604,7 @@ export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
           {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </div>
-      {team && <MyTeamTab state={state} team={team} onSwap={(slot, benchIdx) => onSwap(team.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={() => {}} />}
+      {team && <MyTeamTab state={state} team={team} onSwap={(slot, benchIdx) => onSwap(team.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(team.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={() => {}} />}
     </div>
   );
 }
@@ -1603,7 +1603,7 @@ export function CommissionerTab(props) {
       {openSub === "seats" && <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} />}
       {openSub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
       {openSub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onRefreshInjuries={props.onRefreshInjuries} injuryReport={props.injuryReport} onSetAutoCycle={props.onSetAutoCycle} onSetNotifyMembers={props.onSetNotifyMembers} />}
-      {openSub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
+      {openSub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onMoveStarter={props.onMoveStarter} onSubmitScheme={props.onSubmitScheme} />}
       {openSub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {openSub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
       {openSub === "playoffs" && <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />}

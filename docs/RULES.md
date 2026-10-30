@@ -414,8 +414,12 @@ Either way:
   say - and that lock always holds, outranking the schedule.
 - Managers can **freely move any non-locked player** between the starting lineup and the
   bench.
-- **A lineup swap always routes a starter through the bench.** You can never directly swap
-  two starters.
+- **Two starters can trade places when each fits the other's slot** (OQ-34, Scott
+  2026-10-30) - a WR in the FLEX with the WR, an RB with the RB, a TE with the TE. Only ever
+  two players of the same position, so the same six start and nobody's score moves.
+- **The starting TE can move into a FLEX held by a WR or RB in one go:** the bench TE comes
+  in at TE and the FLEX player goes to the bench. Any other move a starter cannot make
+  directly still goes through the bench.
 - A team whose kickoff time is not known - a bye, or a week whose schedule was never read -
   **never locks on the clock**, and only the commissioner's own locks apply.
 

@@ -2374,3 +2374,46 @@ in the FLEX. It now refuses a player who does not fit the slot he lands in.
 **Reversible in one line.** `FLEX_POSITIONS` in `src/engine/state.js` - take `"TE"` out
 and the old rule is back. Parity is untouched: the artifact's engine never checked a swap,
 and the deal did not change.
+
+---
+
+### OQ-34. Moving players by tapping their card, and starters trading places. **[ANSWERED 2026-10-30 by Scott: yes - option A of three mockups]**
+
+The lineup changed one way: a dropdown under each starter, "Swap in from bench...", and
+every change routed through the bench - you could never move two starters directly. Scott
+asked for it to work like ESPN, Yahoo and Sleeper: tap the position card next to the
+name. He looked at three working mockups (MOVE and HERE like ESPN, rows that light up like
+Sleeper, a pick-list like Yahoo) and chose **A**: the card you tap turns gold and reads
+MOVE, every place that player can go pulses HERE, everything else fades back. A message
+at the foot of the lineup says who is moving and, for four seconds after, who went where;
+he asked for no "Cancelled" and no standing header.
+
+And, his words, "I absolutely don't want it to go through the bench when swapping a WR, TE
+or RB to a flex spot."
+
+**What it does to the league.** Three moves are new:
+
+- **Bench to starter from the bench end.** Tap a bench card and the starting spots he fits
+  light up. The same one-for-one swap as before, started from the other player.
+- **Two starters trading places**, when each fits the other's slot - so in practice the
+  FLEX and the starter at the FLEX player's own position. Same position both ways, so the
+  **same six players start and no score can move.** Steals do not move either: a steal
+  already looks at every starter of a position, FLEX included.
+- **The starting TE into a FLEX held by a WR or RB**, in one tap. The WR or RB cannot play
+  TE, so the bench TE comes in at TE and the FLEX player goes to the bench - the same
+  lineup as moving the bench TE into the FLEX, with the two TEs the other way round.
+  Offered only when exactly one bench player fits the vacated slot, so the app never
+  chooses between two of a manager's players; the two-TE cap makes that always true for
+  the TE. An RB or WR in the same spot usually has two bench players who fit, and still
+  goes through the bench in two taps.
+
+**One guard, because stats are filed by slot.** A stat line belongs to a starting slot, not
+the player in it, so two starters trading places after their lines were in would each
+score the other's week. The lineup lock normally rules it out - a player with stats has
+played - but a week with no kickoff times read locks nobody, so `swapStarterSlots` refuses
+the move when either slot has a line.
+
+**Where it lives.** `src/engine/lineupMoves.js` (which places light up, and the move),
+`swapStarterSlots` in `server/operations.js` (every check the old swap makes, on every
+player who moves), and `src/components/lineup.jsx`. Parity is untouched: the artifact's
+engine never swapped a lineup at all, the dropdown did.
