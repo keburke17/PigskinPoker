@@ -11,6 +11,7 @@ import { TableSeatsPanel } from "./table.jsx";
 import {
   DEFAULT_SCORING,
   TABLE_MIN_PLAYERS,
+  SEASON_TEAMS_MAX,
   isTable,
   seatsTaken,
   tableSeats,
@@ -42,13 +43,22 @@ import { LiveStatsTab } from "./stats.jsx";
 
 export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam }) {
   const [newName, setNewName] = useState("");
+  /* OQ-35: teams normally arrive by people redeeming the invite link and naming their
+   * own. Adding one by hand is still here, for a manager with no email, up to the cap. */
+  const full = state.teams.length >= SEASON_TEAMS_MAX;
   return (
     <div>
       <div className="pp-card">
         <h3 className="pp-h3">Add a Team</h3>
+        <p className="pp-sub" style={{ marginBottom: 8 }}>
+          {full
+            ? "The league is full - " + SEASON_TEAMS_MAX + " teams is the most a season can have."
+            : "Usually you won't need this: everyone who joins with your invite link makes their own team. " +
+              state.teams.length + " of " + SEASON_TEAMS_MAX + " teams so far."}
+        </p>
         <div style={{ display: "flex", gap: 8 }}>
-          <input className="pp-input" placeholder="Team name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-          <button className="pp-btn pp-btn-gold" disabled={!newName.trim()} onClick={() => { onAddTeam(newName.trim()); setNewName(""); }}>Add</button>
+          <input className="pp-input" placeholder="Team name" value={newName} disabled={full} onChange={(e) => setNewName(e.target.value)} />
+          <button className="pp-btn pp-btn-gold" disabled={full || !newName.trim()} onClick={() => { onAddTeam(newName.trim()); setNewName(""); }}>Add</button>
         </div>
       </div>
       {state.teams.map((t) => <CommTeamRow key={t.id} team={t} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam} />)}
@@ -57,8 +67,8 @@ export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam })
           {/* Named the Weeks tab until 2026-09-08. It does not any more: this panel is
             * step 1 of the setup screen (OQ-23), where invites and the deal are both
             * further down the same page rather than behind a tab. */}
-          No teams yet - add your first team above. One row per manager; you can rename
-          them later. Once the teams are in, send invites, then deal Week 1.
+          No teams yet. Send your invite link - each person who opens it names their own
+          team and appears here. Once everyone is in, deal Week 1.
         </EmptyState>
       ) : null}
     </div>
@@ -1256,16 +1266,27 @@ function TableInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
   );
 }
 
+/* OQ-35: a season fills up the way a table does. The main invite is ONE link for the
+ * group chat; everyone who redeems it names a team of their own, until Week 1 is dealt or
+ * the league has SEASON_TEAMS_MAX teams. The team-specific invite survives below it for
+ * the one job only it can do - handing an existing team to a new manager - along with
+ * the invite for a second commissioner.
+ *
+ * The "Join Codes (the old way)" section that used to close this panel is gone: it said
+ * codes "still work", and they were retired in 20260820000000_retire_join_codes.sql. */
 function SeasonInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
   const [teamId, setTeamId] = useState("");
   const [role, setRole] = useState("manager");
   const [issued, setIssued] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const p = state.currentPeriod;
+  const open = p.type === "week" && p.number === 1 && p.phase === "pre-deal";
+  const full = state.teams.length >= SEASON_TEAMS_MAX;
 
-  const issue = async () => {
+  const issue = async (forTeam, forRole) => {
     setError(null); setIssued(null); setCopied(false);
-    const r = await onCreateInvite(role === "manager" ? teamId : null, role);
+    const r = await onCreateInvite(forTeam, forRole);
     if (!r || r.ok === false) { setError(r?.message || "Could not create that invite."); return; }
     setIssued(r.code);
   };
@@ -1274,34 +1295,16 @@ function SeasonInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
 
   return (
     <div className="pp-card">
-      <h3 className="pp-h3">Invite Someone</h3>
+      <h3 className="pp-h3">Invite Players</h3>
       <p className="pp-sub" style={{ marginBottom: 10 }}>
-        An invite lets someone join with their own account. Unlike a join code it is spent
-        once redeemed - so you can revoke or reissue one freely without locking anybody out.
+        One link for the whole league: paste it in the group chat. Everyone who opens it
+        signs in with their email, names their team, and is in - up to {SEASON_TEAMS_MAX} teams.
+        {" " + state.teams.length + " of " + SEASON_TEAMS_MAX + " so far."}
+        {!open
+          ? " The season has started, so the link no longer makes new teams - it closed when Week 1 was dealt."
+          : full ? " The league is full, so it will turn people away." : " It stops taking new teams once Week 1 is dealt."}
       </p>
-
-      <div className="pp-grid-2">
-        <div className="pp-field">
-          <label className="pp-label">Joining As</label>
-          <select className="pp-select" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="manager">A team manager</option>
-            <option value="commissioner">Another commissioner</option>
-          </select>
-        </div>
-        {role === "manager" ? (
-          <div className="pp-field">
-            <label className="pp-label">Which Team</label>
-            <select className="pp-select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-              <option value="">Select a team...</option>
-              {state.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-        ) : null}
-      </div>
-
-      <button className="pp-btn pp-btn-gold" disabled={role === "manager" && !teamId} onClick={issue}>
-        Create Invite
-      </button>
+      <button className="pp-btn pp-btn-gold" onClick={() => issue(null, "manager")}>Create Invite Link</button>
       {error ? <div className="pp-hint pp-hint-bad">{error}</div> : null}
 
       {issued ? (
@@ -1334,7 +1337,9 @@ function SeasonInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
             <div style={{ flex: 1 }}>
               <span style={{ fontFamily: "var(--font-mono)" }}>{i.ref}</span>
               <span className="pp-roster-slot-meta">
-                {"  " + (i.role === "commissioner" ? "commissioner" : (state.teams.find((t) => t.id === i.teamId)?.name ?? "a team"))}
+                {"  " + (i.role === "commissioner"
+                  ? "commissioner"
+                  : i.teamId ? (state.teams.find((t) => t.id === i.teamId)?.name ?? "a team") : "join link")}
                 {"  -  used " + i.uses + (i.maxUses ? " of " + i.maxUses : " times")}
               </span>
             </div>
@@ -1345,15 +1350,36 @@ function SeasonInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
         ))
       )}
 
-      <h3 className="pp-h3" style={{ marginTop: 18 }}>Join Codes (the old way)</h3>
-      <p className="pp-sub">
-        Still work, and still fine. A join code signs in a whole team on any device; an
-        invite signs in one person as themselves. Both will keep working until everyone
-        has an account.
+      <h3 className="pp-h3" style={{ marginTop: 18 }}>Other Invites</h3>
+      <p className="pp-sub" style={{ marginBottom: 10 }}>
+        Rarely needed. Hand an existing team to someone new - a manager quit and a buddy is
+        taking over - or bring in a second commissioner.
       </p>
-      {state.teams.map((t) => (
-        <div key={t.id} className="pp-roster-slot"><div style={{ flex: 1 }}>{t.name}</div></div>
-      ))}
+      <div className="pp-grid-2">
+        <div className="pp-field">
+          <label className="pp-label">Joining As</label>
+          <select className="pp-select" value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="manager">Manager of an existing team</option>
+            <option value="commissioner">Another commissioner</option>
+          </select>
+        </div>
+        {role === "manager" ? (
+          <div className="pp-field">
+            <label className="pp-label">Which Team</label>
+            <select className="pp-select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+              <option value="">Select a team...</option>
+              {state.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+        ) : null}
+      </div>
+      <button
+        className="pp-btn pp-btn-sm"
+        disabled={role === "manager" && !teamId}
+        onClick={() => issue(role === "manager" ? teamId : null, role)}
+      >
+        Create This Invite
+      </button>
     </div>
   );
 }
@@ -1380,8 +1406,9 @@ export function CommSetupChecklist({ state }) {
    * playoffs to schedule. */
   if (isTable(state)) return <TableSetupChecklist state={state} />;
   const steps = [
-    { done: state.teams.length > 0, label: "Add your teams", note: "One row per manager." },
-    { done: state.teams.length > 0, label: "Invite the managers", note: "Each invite signs one person in as themselves." },
+    /* OQ-35: the commissioner's own team is there from the start, so "done" is a second
+     * team - somebody came in through the link. */
+    { done: state.teams.length > 1, label: "Invite your league", note: "Send one invite link - everyone who opens it names their own team, up to " + SEASON_TEAMS_MAX + "." },
     /* _meta, not currentPeriod. The NFL week is a server-owned column kept OUT of the
      * state proper because parity depends on the artifact's shape - see the note in
      * src/storage/hydrate.js. Read off currentPeriod it is always undefined, and the
@@ -1401,7 +1428,7 @@ export function CommSetupChecklist({ state }) {
     <div className="pp-card">
       <h3 className="pp-h3">Setting up</h3>
       <p className="pp-sub" style={{ marginBottom: 10 }}>
-        Five steps to a running league, in the order they appear below. Scroll down and
+        Four steps to a running league, in the order they appear below. Scroll down and
         fill them in - this disappears once the first week is dealt.
       </p>
       {steps.map((st, i) => (
@@ -1489,6 +1516,14 @@ export function CommSetupScreen(props) {
   return (
     <>
       <CommSetupChecklist state={props.state} />
+      {/* The invite comes first since OQ-35: it is how a season fills up, and the teams
+        * below are the people who have come in through it. */}
+      <CommInvitePanel
+        state={props.state}
+        invites={props.invites}
+        onCreateInvite={props.onCreateInvite}
+        onRevokeInvite={props.onRevokeInvite}
+      />
       {isTable(props.state) ? null : (
         <CommTeamsPanel
           state={props.state}
@@ -1497,12 +1532,6 @@ export function CommSetupScreen(props) {
           onRemoveTeam={props.onRemoveTeam}
         />
       )}
-      <CommInvitePanel
-        state={props.state}
-        invites={props.invites}
-        onCreateInvite={props.onCreateInvite}
-        onRevokeInvite={props.onRevokeInvite}
-      />
       {isTable(props.state) ? (
         <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} />
       ) : null}

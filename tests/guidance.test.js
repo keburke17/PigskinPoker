@@ -21,7 +21,7 @@ import { nextStep } from "../src/components/guidance.js";
 
 const stateWith = (over = {}) => ({
   leagueName: "Test League",
-  teams: over.teams ?? [{ id: "t1", name: "Burke", roster: null }],
+  teams: over.teams ?? [{ id: "t1", name: "Burke", roster: null }, { id: "t2", name: "Rival", roster: null }],
   schemes: over.schemes ?? {},
   rosterLocked: over.rosterLocked ?? false,
   currentPeriod: over.currentPeriod ?? { type: "week", number: 1, phase: "pre-deal" },
@@ -33,8 +33,13 @@ const withRoster = (t) => ({ ...t, roster: { starters: {}, bench: [] } });
 describe("nextStep, as a commissioner", () => {
   it("asks for teams before anything else, even at pre-deal", () => {
     const step = nextStep(stateWith({ teams: [] }), "commissioner", null);
-    expect(step.headline).toMatch(/Add your teams/i);
+    expect(step.headline).toMatch(/Invite your league/i);
     expect(step.tab).toBe("comm");
+  });
+
+  it("still asks for invites while the commissioner's own team is the only one (OQ-35)", () => {
+    const step = nextStep(stateWith({ teams: [{ id: "t1", name: "The Commish", roster: null }] }), "commissioner", null);
+    expect(step.headline).toMatch(/Invite your league/i);
   });
 
   it("asks for the deal once there are teams", () => {

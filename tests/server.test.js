@@ -874,24 +874,38 @@ gate()("creating a league", () => {
 
   const cleanupLeagues = async (name) => { await db.from("leagues").delete().eq("name", name); };
 
-  it("makes the creator its commissioner, with a full player pool and no teams", async () => {
+  it("makes the creator its commissioner, with a full player pool and one team - their own", async () => {
+    /* OQ-35. A season commissioner plays in their league, the way a dealer plays at a
+     * table: the league is born with their team, tied to their membership. Until
+     * 2026-10-29 it was born with none. */
     const { token: jwt, userId } = await makeAccount("founder@example.test");
-    const r = await ops.createLeague(db, { accountToken: jwt, name: "Founders League", year: 2031 });
+    const r = await ops.createLeague(db, { accountToken: jwt, name: "Founders League", year: 2031, teamName: "The Commish" });
     expect(r.status).toBe(200);
+
+    const { data: teams } = await db.from("teams").select("id, name").eq("league_id", r.body.leagueId);
+    expect(teams.map((t) => t.name)).toEqual(["The Commish"]);
 
     const { data: member } = await db
       .from("league_members").select("role, team_id").eq("league_id", r.body.leagueId).single();
-    expect(member.role).toBe("commissioner");
-    expect(member.team_id).toBeNull();
+    expect(member).toEqual({ role: "commissioner", team_id: teams[0].id });
     expect(member.user_id ?? userId).toBeTruthy();
 
-    // Blank means: a full pool (you cannot deal without players) and zero teams.
+    const me = await ops.whoami(db, { leagueId: r.body.leagueId, token: jwt });
+    expect(me.body).toMatchObject({ role: "commissioner" });
+    expect(me.body.teamId).toBeTruthy();
+
     const { data: players } = await db.from("players").select("id").eq("league_id", r.body.leagueId);
     expect(players.length).toBeGreaterThan(100);
-    const { data: teams } = await db.from("teams").select("id").eq("league_id", r.body.leagueId);
-    expect(teams).toHaveLength(0);
 
     await cleanupLeagues("Founders League");
+  });
+
+  it("names the commissioner's team after their email when they give no name", async () => {
+    const { token: jwt } = await makeAccount("nameless.boss@example.test");
+    const r = await ops.createLeague(db, { accountToken: jwt, name: "Nameless League", year: 2031 });
+    const { data: teams } = await db.from("teams").select("name").eq("league_id", r.body.leagueId);
+    expect(teams.map((t) => t.name)).toEqual(["nameless.boss"]);
+    await cleanupLeagues("Nameless League");
   });
 
   it("stocks the pool from the player_pool template, not from JavaScript", async () => {
@@ -980,6 +994,112 @@ gate()("creating a league", () => {
 });
 
 
+/* Joining a season with the league's invite link, OQ-35.
+ *
+ * A season fills up the way a table does: one invite that names no team, and everyone
+ * who redeems it gets a team of their own. Refused past SEASON_TEAMS_MAX, and once
+ * Week 1 is dealt - the standings ladder is worth as many points as there are teams.
+ */
+gate()("joining a season with the invite link", () => {
+  beforeEach(() => resetDemo());
+  const NAME = "Link League";
+  const cleanup = async () => { await db.from("leagues").delete().eq("name", NAME); };
+  const fresh = () => "j" + Math.random().toString(36).slice(2) + "@example.test";
+
+  async function makeSeason() {
+    const boss = await makeAccount(fresh());
+    const made = await ops.createLeague(db, { accountToken: boss.token, name: NAME, year: 2033, teamName: "The Commish" });
+    expect(made.status).toBe(200);
+    const id = made.body.leagueId;
+    const inv = await ops.createInvite(db, { leagueId: id, token: boss.token, teamId: null, role: "manager" });
+    expect(inv.status).toBe(200);
+    const view = async () => hydrate(await fetchLeagueRows(db, id));
+    return { id, boss, code: inv.body.code, view };
+  }
+
+  it("gives everyone who redeems it a team of their own, named as they ask", async () => {
+    const lg = await makeSeason();
+    const a = await makeAccount(fresh());
+    const r = await ops.redeemInvite(db, { code: lg.code, accountToken: a.token, teamName: "Gridiron Gang" });
+    expect(r.status).toBe(200);
+    expect(r.body.role).toBe("manager");
+
+    const b = await makeAccount(fresh());
+    expect((await ops.redeemInvite(db, { code: lg.code, accountToken: b.token })).status).toBe(200);
+
+    const v = await lg.view();
+    expect(v.teams).toHaveLength(3);
+    expect(v.teams.map((t) => t.name)).toContain("Gridiron Gang");
+    const mine = await ops.whoami(db, { leagueId: lg.id, token: a.token });
+    expect(v.teams.find((t) => t.id === mine.body.teamId).name).toBe("Gridiron Gang");
+
+    // Redeeming twice is not a second team.
+    expect((await ops.redeemInvite(db, { code: lg.code, accountToken: a.token })).body.alreadyMember).toBe(true);
+    expect((await lg.view()).teams).toHaveLength(3);
+    await cleanup();
+  });
+
+  it("stops at 12 teams", async () => {
+    const lg = await makeSeason();
+    for (let i = 0; i < 11; i += 1) {
+      const acct = await makeAccount(fresh());
+      expect((await ops.redeemInvite(db, { code: lg.code, accountToken: acct.token })).status).toBe(200);
+    }
+    expect((await lg.view()).teams).toHaveLength(12);
+    const late = await makeAccount(fresh());
+    const r = await ops.redeemInvite(db, { code: lg.code, accountToken: late.token });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/full/);
+    expect((await lg.view()).teams).toHaveLength(12);
+
+    // The commissioner's Add Team holds the same line.
+    const blob = await lg.view();
+    delete blob._meta;
+    blob.teams.push({ ...blob.teams[0], id: "team_thirteen", name: "Thirteen" });
+    expect((await ops.replaceLeague(db, { leagueId: lg.id, token: lg.boss.token, blob })).status).toBe(400);
+    await cleanup();
+  });
+
+  it("closes once Week 1 is dealt", async () => {
+    const lg = await makeSeason();
+    const { data: season } = await db.from("seasons").select("id").eq("league_id", lg.id).single();
+    await db.from("periods").update({ phase: "dealt" }).eq("season_id", season.id);
+    const late = await makeAccount(fresh());
+    const r = await ops.redeemInvite(db, { code: lg.code, accountToken: late.token });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/started/);
+    expect((await lg.view()).teams).toHaveLength(1);
+    await cleanup();
+  });
+
+  it("still hands an EXISTING team to someone new, at any point in the season", async () => {
+    const lg = await makeSeason();
+    const v = await lg.view();
+    const theirs = v.teams[0].id;
+    const inv = await ops.createInvite(db, { leagueId: lg.id, token: lg.boss.token, teamId: theirs, role: "manager" });
+    expect(inv.status).toBe(200);
+    const acct = await makeAccount(fresh());
+    expect((await ops.redeemInvite(db, { code: inv.body.code, accountToken: acct.token, teamName: "Ignored" })).status).toBe(200);
+    expect((await ops.whoami(db, { leagueId: lg.id, token: acct.token })).body.teamId).toBe(theirs);
+    expect((await lg.view()).teams.map((t) => t.name)).toEqual(["The Commish"]);
+    await cleanup();
+  });
+
+  it("keeps the commissioner on their team through a league save", async () => {
+    /* A rename or Add Team writes the whole league. If it ever re-made the team rows,
+     * league_members.team_id would be set null and My Team would quietly vanish. */
+    const lg = await makeSeason();
+    const before = await ops.whoami(db, { leagueId: lg.id, token: lg.boss.token });
+    const blob = await lg.view();
+    delete blob._meta;
+    blob.teams[0].name = "Renamed Commish";
+    expect((await ops.replaceLeague(db, { leagueId: lg.id, token: lg.boss.token, blob })).status).toBe(200);
+    const after = await ops.whoami(db, { leagueId: lg.id, token: lg.boss.token });
+    expect(after.body.teamId).toBe(before.body.teamId);
+    await cleanup();
+  });
+});
+
 /* Deleting a league, OQ-18.
  *
  * The property that matters is not that the row goes - it is that NOTHING is left
@@ -1010,8 +1130,7 @@ gate()("deleting a league", () => {
 
   it("removes the league and everything that hung off it", async () => {
     const lg = await aLeague("deleter@example.test", "Doomed League");
-    /* A commissioner invite - a fresh league has no teams yet, and a manager invite
-     * needs one to point at. */
+    /* A commissioner invite - it names no team either way. */
     await ops.createInvite(db, { leagueId: lg.id, token: lg.token, role: "commissioner" });
 
     expect(await countIn("players", lg.id)).toBeGreaterThan(100);

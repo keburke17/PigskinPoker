@@ -2454,3 +2454,42 @@ argument that lets the head-coach list write across leagues (OQ-4e).
 *The technical half, and the second bug underneath it - the app throwing refusals away
 without showing them - is in `docs/MIGRATION-NOTES.md` under "A manager could not rename
 their own team".*
+
+### OQ-35. Joining a season league the way you join a table. **[ANSWERED 2026-10-29 by Scott: the commissioner gets a team, one invite link fills the league, 12 teams at most]**
+
+A table always filled itself: the dealer sits down with a team, sends one invite, and
+everyone who redeems it gets a team of their own. A season did not. Its commissioner had
+no team and no My Team tab, typed every team in by hand, and made one invite per team.
+Scott asked for a season to work like a table:
+
+> when you create a new season long league, the commissioner creates the league and
+> automatically gets a team himself. ... the commissioner will be able to send an invite
+> link to whoever wants to play. They click the link, put in an email, create a team.
+> Done. They're in.
+
+**What it does to the league.** No game rule moves - dealing, schemes, scoring, standings
+and the playoffs never read who owns a team. What changes is how a league fills up:
+
+- **The commissioner plays.** Creating a season makes their team, named on the form (or
+  after their email address), tied to their membership. They get My Team, the weekly
+  recap and - if league email is on - the manager emails, like anyone else, and still
+  manage every team as commissioner.
+- **One invite link.** Commish -> Invite makes a link that names no team. Whoever redeems
+  it signs in, types a team name (or leaves it blank for their email's), and lands on My
+  Team.
+- **12 teams at most** (`SEASON_TEAMS_MAX` in `src/engine/table.js`). Scott: the pool's
+  QBs and TEs have to stretch across every roster in a week with teams on a bye. The link
+  and the commissioner's Add Team both stop at 12; a league that already had more keeps
+  them. Tables stay at 2-13 for now - Scott wants those at 12 too, later.
+- **The link closes when Week 1 is dealt.** The standings ladder is worth as many points
+  as there are teams, so a team arriving in Week 6 would change what every later week is
+  worth. The commissioner can still add a team by hand.
+- **The team-specific invite survives, out of the way** ("Other Invites"), for the one job
+  only it does: handing an existing team to a new manager mid-season. So does the invite
+  for a second commissioner.
+
+**Leagues made before this** keep working exactly as they did, and their commissioner keeps
+running them without a team of their own. Scott, 2026-10-30: leave them that way.
+
+**Found on the way:** My Team's Rename button was refused for a manager. Fixed separately,
+as OQ-26.

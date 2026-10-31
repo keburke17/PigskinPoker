@@ -426,12 +426,14 @@ export function createSupabaseStore(config) {
     /* These three are about an ACCOUNT rather than a league, so they carry the account
      * token in the body. `call` would send it as the Authorization header, which the
      * server reads as a league session - correct everywhere else, wrong here. */
-    /* `opts` is issue #75's table: { mode: "table", seats, teamName }. Left out, it is a
-     * season, exactly as before. */
+    /* `opts` is issue #75's table: { mode: "table", seats, teamName }. A season sends
+     * { teamName } - its commissioner gets a team too (OQ-35). */
     createLeague: (name, year, visibility, opts = {}) =>
       callWithAccount("createLeague", { name, year, visibility, ...opts }),
     myLeagues: () => callWithAccount("myLeagues", {}),
-    redeemInvite: (code) => callWithAccount("redeemInvite", { code }),
+    /* `teamName` names the team an open invite makes for you; ignored when the invite
+     * hands over an existing team. */
+    redeemInvite: (code, teamName = null) => callWithAccount("redeemInvite", { code, teamName }),
 
     /* The site-admin screen (issue #40). Account-scoped for the same reason: the head
      * coaches are ONE list shared by every league, so there is no league to be a

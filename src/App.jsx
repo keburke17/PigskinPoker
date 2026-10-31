@@ -276,9 +276,9 @@ export default function App() {
     return r;
   };
 
-  const onRedeemInvite = async (code) => {
+  const onRedeemInvite = async (code, teamName = null) => {
     setLoginError(null);
-    const r = await store.redeemInvite?.(code);
+    const r = await store.redeemInvite?.(code, teamName);
     if (!r || r.ok === false) {
       setLoginError(r?.message || "Could not redeem that code.");
       return;
@@ -682,10 +682,10 @@ export default function App() {
 
   const isCommissioner = identity.role === "commissioner";
   const table = isTable(state);
-  /* A manager's team - and at a table, the DEALER's too, because they play at their own
-   * table (issue #75). A season is exactly as before: a commissioner who was once a
-   * manager can still carry a team_id, and must not grow a My Team tab because of it. */
-  const myTeam = identity.teamId && (identity.role === "manager" || table)
+  /* A manager's team - and a commissioner's too, when they play: the dealer at a table
+   * (issue #75), or a season commissioner, who gets a team when they create the league
+   * (OQ-35). A commissioner with no team - a league made before that - has no My Team. */
+  const myTeam = identity.teamId
     ? state.teams.find((t) => t.id === identity.teamId) || null
     : null;
 
@@ -732,7 +732,7 @@ export default function App() {
    * Keep new labels short anyway: two rows of pills is fine, three is a menu. */
   const NAV = [
     { key: "results", label: table ? "Hand" : "Week" },
-    ...(identity.role === "manager" || (table && myTeam) ? [{ key: "myteam", label: "My Team" }] : []),
+    ...(identity.role === "manager" || myTeam ? [{ key: "myteam", label: "My Team" }] : []),
     { key: "home", label: table ? "Table" : "League" },
     { key: "hub", label: "Rosters" },
     { key: "rules", label: "Rules" },

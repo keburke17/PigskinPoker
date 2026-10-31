@@ -205,11 +205,14 @@ function commissionerStep(state) {
   const teams = state.teams.length;
 
   /* Setup outranks the cycle. A league with no teams cannot be dealt, and the Weeks
-   * panel's disabled Deal button was the whole of issue #24's complaint. */
-  if (teams === 0) {
+   * panel's disabled Deal button was the whole of issue #24's complaint. Since OQ-35 the
+   * commissioner's own team is there from the start, so a league with only that one is
+   * still waiting on its invites. */
+  const firstWeek = state.currentPeriod.type === "week" && state.currentPeriod.number === 1 && phase === "pre-deal";
+  if (teams === 0 || (teams === 1 && firstWeek)) {
     return {
-      headline: "Add your teams.",
-      detail: "A league needs teams before it can deal. Commissioner " + ARROWED + " Teams, one row per manager. You can rename them later.",
+      headline: "Invite your league.",
+      detail: "Send one invite link - Commissioner " + ARROWED + " Invite. Everyone who opens it signs in, names their own team, and is in, up to 12 teams. Then deal Week 1.",
       tab: "comm",
     };
   }

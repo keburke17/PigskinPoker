@@ -36,6 +36,11 @@ export const SEAT_STATES = Object.freeze([SEAT.SEATED, SEAT.SITTING_OUT, SEAT.LE
 export const TABLE_SEATS_MIN = 2;
 export const TABLE_SEATS_MAX = 13;
 
+/* A SEASON league's cap, separate from a table's. Scott, 2026-10-29: 12, because the
+ * pool's QBs and TEs have to stretch across every roster in a week with teams on a bye.
+ * Enforced where a team is made - the invite link and the commissioner's Add Team. */
+export const SEASON_TEAMS_MAX = 12;
+
 /* A hand of one is not a game - there is nobody to beat and nobody to steal from. */
 export const TABLE_MIN_PLAYERS = 2;
 

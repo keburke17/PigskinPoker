@@ -53,6 +53,7 @@ import {
   SEAT,
   SEAT_STATES,
   TABLE_SEATS_MAX,
+  SEASON_TEAMS_MAX,
   TABLE_SEATS_MIN,
   isTable,
   seatOf,
@@ -361,11 +362,14 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   if (table && !(Number.isInteger(seatCount) && seatCount >= TABLE_SEATS_MIN && seatCount <= TABLE_SEATS_MAX)) {
     return fail(400, "A table has " + TABLE_SEATS_MIN + " to " + TABLE_SEATS_MAX + " seats.");
   }
-  const dealerTeamName = table ? cleanTeamName(teamName) || defaultTeamName(user) : null;
+  /* Whoever creates a league plays in it: a dealer at their table, a commissioner in
+   * their season (OQ-35). */
+  const ownTeamName = cleanTeamName(teamName) || defaultTeamName(user);
 
   const seasonYear = Number(year) || new Date().getFullYear();
 
-  /* A blank league: one season, week 1 pre-deal, and ZERO teams. Sharing
+  /* A blank league: one season, week 1 pre-deal, and no teams yet - the creator's own
+   * is added below, after the league row exists. Sharing
    * createDefaultState() rather than reimplementing it is what keeps a league made here
    * identical to one made anywhere else. */
   const blank = createDefaultState();
@@ -429,19 +433,20 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
 
   /* THE DEALER PLAYS. A table is a home game, and the person who set it up takes a seat
    * at it like everybody else - and can sit out a hand like everybody else. Their
-   * membership is still the commissioner role underneath; it simply has a team too. */
-  let dealerTeamId = null;
-  if (table) {
-    const made = await insertTableTeam(db, leagueId, dealerTeamName);
-    if (made.error) {
-      await db.from("leagues").delete().eq("id", leagueId);
-      return fail(500, "Could not seat you at the table: " + made.error);
-    }
-    dealerTeamId = made.id;
+   * membership is still the commissioner role underneath; it simply has a team too.
+   *
+   * A SEASON COMMISSIONER gets the same since OQ-35: a team made here and tied to their
+   * membership, so they have a My Team tab like any manager. Commissioner powers are
+   * unchanged - they still act for every team. */
+  const made = await insertTeam(db, leagueId, ownTeamName);
+  if (made.error) {
+    await db.from("leagues").delete().eq("id", leagueId);
+    return fail(500, (table ? "Could not seat you at the table: " : "Could not make your team: ") + made.error);
   }
+  const ownTeamId = made.id;
 
   const { error: memberError } = await db.from("league_members").insert({
-    league_id: leagueId, user_id: user.id, role: "commissioner", team_id: dealerTeamId,
+    league_id: leagueId, user_id: user.id, role: "commissioner", team_id: ownTeamId,
   });
   if (memberError) {
     /* Without a commissioner row the league would exist and be reachable by nobody -
@@ -471,7 +476,9 @@ const defaultTeamName = (user) => {
   return (local || "Player").slice(0, 30);
 };
 
-async function insertTableTeam(db, leagueId, name) {
+/* Also the season commissioner's own team: `seat` is a table's column, and a season never
+ * reads it, so the default it is born with is harmless there. */
+async function insertTeam(db, leagueId, name) {
   /* The legacy id is the team's identity everywhere the engine looks - the same
    * "team_" + hex shape the commissioner's Add Team makes in the browser. */
   const legacy = "team_" + randomBytes(5).toString("hex");
@@ -578,12 +585,16 @@ export async function createInvite(db, { leagueId, token, teamId = null, role = 
 
   let teamUuid = null;
   /* A TABLE INVITE NAMES NO TEAM (issue #75): whoever redeems it sits down, and their
-   * team is made for them. Many people can redeem one, up to the seats there are. */
+   * team is made for them. Many people can redeem one, up to the seats there are.
+   *
+   * A SEASON INVITE USUALLY NAMES NONE EITHER since OQ-35: it is the league's join link,
+   * and whoever redeems it makes a team of their own. Naming a team is still allowed -
+   * it is how a team whose manager quit is handed to somebody new. */
   if (role === "manager" && isTable(ctx.view)) {
     if (teamId != null) return fail(400, "At a table, an invite is for a seat, not a team.");
-  } else if (role === "manager") {
+  } else if (role === "manager" && teamId != null) {
     const team = teamRow(ctx.rows, teamId);
-    if (!team) return fail(404, "Pick a team for this invite.");
+    if (!team) return fail(404, "That team is not in this league.");
     teamUuid = team.id;
   }
 
@@ -662,7 +673,7 @@ export async function revokeInvite(db, { leagueId, token, inviteId }) {
  * Idempotent. Redeeming twice is a no-op rather than a second membership or an error,
  * which matters because "did that work?" is the most natural reason to press it again.
  */
-export async function redeemInvite(db, { code, accountToken }) {
+export async function redeemInvite(db, { code, accountToken, teamName = null }) {
   const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to redeem an invite.");
 
@@ -699,16 +710,29 @@ export async function redeemInvite(db, { code, accountToken }) {
 
   await db.from("profiles").upsert({ user_id: user.id }, { onConflict: "user_id" });
 
-  /* A TABLE INVITE: sit them down. Their team is made here, so it is theirs - and it
-   * stays theirs, record and all, if they leave and come back. Refused when every seat
-   * is taken; the invite is not used up by a refusal. */
+  /* AN INVITE THAT NAMES NO TEAM MAKES ONE. At a table that is sitting down: the team
+   * is theirs, record and all, if they leave and come back, and it is refused when every
+   * seat is taken. In a season (OQ-35) it is joining the league, refused at
+   * SEASON_TEAMS_MAX and once Week 1 has been dealt - the standings ladder is worth as
+   * many points as there are teams, so a team arriving mid-season would change what
+   * every later week is worth. A refusal does not use the invite up. */
   let teamId = invite.team_id;
   if (invite.role === "manager" && teamId == null) {
     const rows = await fetchLeagueRows(db, invite.league_id);
     const view = rows ? hydrate(rows) : null;
-    if (!view || !isTable(view)) return fail(410, "That invite has no team to give you - ask for a new one.");
-    if (seatsFree(view) < 1) return fail(409, "That table is full - every seat is taken.", { reason: "full" });
-    const made = await insertTableTeam(db, invite.league_id, defaultTeamName(user));
+    if (!view) return fail(410, "That invite has no team to give you - ask for a new one.");
+    if (isTable(view)) {
+      if (seatsFree(view) < 1) return fail(409, "That table is full - every seat is taken.", { reason: "full" });
+    } else {
+      if (view.teams.length >= SEASON_TEAMS_MAX) {
+        return fail(409, "That league is full - it has " + SEASON_TEAMS_MAX + " teams.", { reason: "full" });
+      }
+      const p = view.currentPeriod;
+      if (!(p && p.type === "week" && p.number === 1 && p.phase === "pre-deal")) {
+        return fail(409, "That league's season has started, so it is not taking new teams. Ask the commissioner.", { reason: "started" });
+      }
+    }
+    const made = await insertTeam(db, invite.league_id, cleanTeamName(teamName) || defaultTeamName(user));
     if (made.error) return fail(500, made.error);
     teamId = made.id;
   }
@@ -2879,6 +2903,13 @@ export async function replaceLeague(db, { leagueId, token, blob }) {
    * that is where "who is in this hand" lives (issue #75). Without the server's own copy
    * a rename mid-hand would rewrite the hand's players as every team at the table. The
    * blob never gets to choose these: they are server-owned, like the clock switches. */
+  /* The season cap (OQ-35) holds here too, for the commissioner's Add Team. Only an
+   * INCREASE past it is refused, so a league that already had more keeps them. */
+  const before = ctx.view?.teams?.length ?? 0;
+  const after = Array.isArray(blob?.teams) ? blob.teams.length : 0;
+  if (!isTable(ctx.view) && after > SEASON_TEAMS_MAX && after > before) {
+    return fail(400, "A season league has at most " + SEASON_TEAMS_MAX + " teams.");
+  }
   const toWrite = isTable(ctx.view) ? { ...blob, _meta: ctx.view._meta } : blob;
   await persistBlob(db, ctx.rows, toWrite, {
     leagueKey: ctx.rows.leagues[0].name === "Pigskin Poker (Demo League)" ? "demo" : leagueId,
