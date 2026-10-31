@@ -8,18 +8,13 @@
  */
 
 import { useState } from "react";
-import { LINEUP_LOCK, getPlayer, isPlayerLocked, lineupLockMode, teamPeriodScore } from "../engine/index.js";
-import { useNow } from "../hooks/useNow.js";
+import { LINEUP_LOCK, lineupLockMode, teamPeriodScore } from "../engine/index.js";
 import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
-import { RosterSlotRow } from "./roster.jsx";
 import { SchemeForm } from "./scheme.jsx";
 import { NextStepNote } from "./WelcomeOverlay.jsx";
 
-export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoTo }) {
-  /* Ticks so the bench greys out when the games start, without a reload - the lock is a
-   * moment, not a message from the server. See src/hooks/useNow.js. */
-  const now = useNow();
+export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, onRename, onGoTo }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(team.name);
   const dealt = state.currentPeriod.phase !== "pre-deal";
@@ -54,7 +49,10 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoT
           {renaming ? (
             <div style={{ display: "flex", gap: 6, flex: 1 }}>
               <input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} />
-              <button className="pp-btn pp-btn-sm pp-btn-gold" onClick={() => { onRename(name); setRenaming(false); }}>Save</button>
+              {/* Disabled on an empty box rather than accepting the press and doing
+                * nothing with it - the server refuses a blank name and the click would
+                * otherwise close the editor as though it had worked. */}
+              <button className="pp-btn pp-btn-sm pp-btn-gold" disabled={!name.trim()} onClick={() => { onRename(name); setRenaming(false); }}>Save</button>
               <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => { setRenaming(false); setName(team.name); }}>Cancel</button>
             </div>
           ) : (
@@ -72,19 +70,8 @@ export function MyTeamTab({ state, team, onSwap, onSubmitScheme, onRename, onGoT
         {/* The scheme sentence that sat here is now the Ticket at the top of every tab
           * (schemeTicket.jsx). The one beside the Submit button stays - issue #27. */}
         <h3 className="pp-h3">Starting Lineup</h3>
-        <p className="pp-sub" style={{ marginBottom: 10 }}>Swap a starter with an eligible bench player. Direct starter-for-starter swaps aren't allowed - route every change through the bench.</p>
-        <LineupEditor state={state} team={team} onSwap={onSwap} showStats={dealt} />
-        <h3 className="pp-h3" style={{ marginTop: 16 }}>Bench</h3>
-        <p className="pp-sub" style={{ marginBottom: 10 }}>Not tied to any slot - swap any of these into a matching starting spot above. Bench points are shown in grey and do not count toward your score.</p>
-        {team.roster ? (
-          team.roster.bench.map((pid, i) => {
-            const player = getPlayer(state, pid);
-            const locked = !!pid && isPlayerLocked(state, pid, now);
-            return <RosterSlotRow key={i} slot="BN" player={player} state={state} statLine={null} locked={locked} showStats={dealt} bench />;
-          })
-        ) : (
-          [0, 1, 2, 3, 4, 5].map((i) => <RosterSlotRow key={i} slot="BN" player={null} state={state} statLine={null} locked={false} showStats={false} />)
-        )}
+        <p className="pp-sub" style={{ marginBottom: 10 }}>Tap a player's card to move him. Every place he can go lights up HERE - tap one to make the move, or tap his card again to cancel.</p>
+        <LineupEditor state={state} team={team} onSwap={onSwap} onMoveStarter={onMoveStarter} showStats={dealt} />
       </div>
 
       <div className="pp-card">

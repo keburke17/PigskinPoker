@@ -427,7 +427,7 @@ export function createSupabaseStore(config) {
      * token in the body. `call` would send it as the Authorization header, which the
      * server reads as a league session - correct everywhere else, wrong here. */
     /* `opts` is issue #75's table: { mode: "table", seats, teamName }. A season sends
-     * { teamName } - its commissioner gets a team too (OQ-34). */
+     * { teamName } - its commissioner gets a team too (OQ-35). */
     createLeague: (name, year, visibility, opts = {}) =>
       callWithAccount("createLeague", { name, year, visibility, ...opts }),
     myLeagues: () => callWithAccount("myLeagues", {}),
@@ -467,7 +467,15 @@ export function createSupabaseStore(config) {
     setStatLine: (teamId, slot, line, expect) => call("setStatLine", { teamId, slot, line, expect }),
     swapLineupSlot: (teamId, slot, benchIndex, expect) =>
       call("swapLineupSlot", { teamId, slot, benchIndex, expect }),
+    swapStarterSlots: (teamId, fromSlot, toSlot, benchIndex, expect) =>
+      call("swapStarterSlots", { teamId, fromSlot, toSlot, benchIndex, expect }),
     submitScheme: (teamId, scheme, expect) => call("submitScheme", { teamId, scheme, expect }),
+
+    /* A team's name. A manager may rename his OWN team and the commissioner may rename
+     * any of them - the server decides that, and it is a route of its own rather than a
+     * whole-blob write because a manager cannot make one of those. See renameTeam in
+     * server/operations.js. No `expect`: last writer wins on a label. */
+    renameTeam: (teamId, name) => call("renameTeam", { teamId, name }),
     toggleSlotLock: (teamId, playerId) => call("toggleSlotLock", { teamId, playerId }),
     toggleRosterLock: (expect) => call("toggleRosterLock", { expect }),
     dealPeriod: (expect) => call("dealPeriod", { expect }),

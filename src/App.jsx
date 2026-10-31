@@ -342,14 +342,21 @@ export default function App() {
 
   /* ---- manager actions: one row each, not the whole league ---- */
   const onSwap = (teamId, slot, benchIdx) => ops.swapLineupSlot(teamId, slot, benchIdx);
+  const onMoveStarter = (teamId, fromSlot, toSlot, benchIdx) => ops.swapStarterSlots(teamId, fromSlot, toSlot, benchIdx);
   const onSubmitScheme = (teamId, scheme) => ops.submitScheme(teamId, scheme);
+  /* Renaming a team is a WRITE OF ITS OWN, not an ops.mutate().
+   *
+   * It used to be one, and that is why a manager pressing Rename on My Team watched the
+   * name snap back with nothing on screen to say why (2026-09-09): mutate() sends the
+   * whole league blob to `replaceLeague`, which is commissioner-only on purpose, and the
+   * 403 it came back with was then dropped by the client. Both halves are fixed - see
+   * renameTeam in server/operations.js and src/hooks/opError.js. The same call serves
+   * the commissioner's Manage Teams field below; the server decides who may rename
+   * which team, as it does for a lineup or a scheme. */
   const onRenameMyTeam = (teamId, name) => {
     const trimmed = (name || "").trim();
     if (!trimmed) return;
-    ops.mutate("renameTeam:" + teamId, (s) => {
-      const t = s.teams.find((x) => x.id === teamId);
-      if (t) t.name = trimmed;
-    });
+    ops.renameTeam(teamId, trimmed);
   };
 
   /* ---- commissioner: the weekly cycle ---- */
@@ -677,7 +684,7 @@ export default function App() {
   const table = isTable(state);
   /* A manager's team - and a commissioner's too, when they play: the dealer at a table
    * (issue #75), or a season commissioner, who gets a team when they create the league
-   * (OQ-34). A commissioner with no team - a league made before that - has no My Team. */
+   * (OQ-35). A commissioner with no team - a league made before that - has no My Team. */
   const myTeam = identity.teamId
     ? state.teams.find((t) => t.id === identity.teamId) || null
     : null;
@@ -825,7 +832,7 @@ export default function App() {
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} /> : null}
           {tab === "myteam" && myTeam && (
-            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
+            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}
@@ -846,7 +853,7 @@ export default function App() {
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}
               submittedTeamIds={submittedTeamIds}
-              onSwap={onSwap} onSubmitScheme={onSubmitScheme}
+              onSwap={onSwap} onMoveStarter={onMoveStarter} onSubmitScheme={onSubmitScheme}
               onAddPlayer={onAddPlayer} onSetStatus={onSetStatus} onDeletePlayer={onDeletePlayer} onRenamePlayer={onRenamePlayer} onRestorePlayer={onRestorePlayer}
               onRefreshPool={onRefreshPool} poolReport={poolReport}
               onSetNflWeek={onSetNflWeek}

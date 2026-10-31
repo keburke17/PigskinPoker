@@ -97,7 +97,7 @@ export function RecapPreview() {
           {tab === "myteam" ? (
             <>
               <RecapReminder recap={recap} onOpen={() => setOpen(true)} />
-              <MyTeamTab state={state} team={myTeam} onSwap={noop} onSubmitScheme={noop} onRename={noop} onGoTo={setTab} />
+              <MyTeamTab state={state} team={myTeam} onSwap={noop} onMoveStarter={noop} onSubmitScheme={noop} onRename={noop} onGoTo={setTab} />
             </>
           ) : null}
           {tab === "results" ? <ScoreboardTab state={state} myTeam={myTeam} onSeeAllActivity={() => setTab("home")} onGoTo={setTab} /> : null}

@@ -2375,7 +2375,87 @@ in the FLEX. It now refuses a player who does not fit the slot he lands in.
 and the old rule is back. Parity is untouched: the artifact's engine never checked a swap,
 and the deal did not change.
 
-### OQ-34. Joining a season league the way you join a table. **[ANSWERED 2026-10-29 by Scott: the commissioner gets a team, one invite link fills the league, 12 teams at most]**
+---
+
+### OQ-34. Moving players by tapping their card, and starters trading places. **[ANSWERED 2026-10-30 by Scott: yes - option A of three mockups]**
+
+The lineup changed one way: a dropdown under each starter, "Swap in from bench...", and
+every change routed through the bench - you could never move two starters directly. Scott
+asked for it to work like ESPN, Yahoo and Sleeper: tap the position card next to the
+name. He looked at three working mockups (MOVE and HERE like ESPN, rows that light up like
+Sleeper, a pick-list like Yahoo) and chose **A**: the card you tap turns gold and reads
+MOVE, every place that player can go pulses HERE, everything else fades back. A message
+at the foot of the lineup says who is moving and, for four seconds after, who went where;
+he asked for no "Cancelled" and no standing header.
+
+And, his words, "I absolutely don't want it to go through the bench when swapping a WR, TE
+or RB to a flex spot."
+
+**What it does to the league.** Three moves are new:
+
+- **Bench to starter from the bench end.** Tap a bench card and the starting spots he fits
+  light up. The same one-for-one swap as before, started from the other player.
+- **Two starters trading places**, when each fits the other's slot - so in practice the
+  FLEX and the starter at the FLEX player's own position. Same position both ways, so the
+  **same six players start and no score can move.** Steals do not move either: a steal
+  already looks at every starter of a position, FLEX included.
+- **The starting TE into a FLEX held by a WR or RB**, in one tap. The WR or RB cannot play
+  TE, so the bench TE comes in at TE and the FLEX player goes to the bench - the same
+  lineup as moving the bench TE into the FLEX, with the two TEs the other way round.
+  Offered only when exactly one bench player fits the vacated slot, so the app never
+  chooses between two of a manager's players; the two-TE cap makes that always true for
+  the TE. An RB or WR in the same spot usually has two bench players who fit, and still
+  goes through the bench in two taps.
+
+**One guard, because stats are filed by slot.** A stat line belongs to a starting slot, not
+the player in it, so two starters trading places after their lines were in would each
+score the other's week. The lineup lock normally rules it out - a player with stats has
+played - but a week with no kickoff times read locks nobody, so `swapStarterSlots` refuses
+the move when either slot has a line.
+
+**Where it lives.** `src/engine/lineupMoves.js` (which places light up, and the move),
+`swapStarterSlots` in `server/operations.js` (every check the old swap makes, on every
+player who moves), and `src/components/lineup.jsx`. Parity is untouched: the artifact's
+engine never swapped a lineup at all, the dropdown did.
+
+---
+
+### OQ-26. Who is allowed to name a team? **[ANSWERED 2026-10-30 by Scott: the manager names their own]**
+
+**Found twice.** Kyle hit it on 2026-09-09 playing as a manager, and fixed it on
+`kyle/manager-rename-own-team` - a branch that never merged, which is why this number was
+reserved by the note under OQ-28. It was found again on 2026-10-29 while building OQ-34 and
+parked as OQ-35 on `scott/commissioner-my-team`. **This entry replaces OQ-35**; drop that one
+if the branch carrying it ever merges.
+
+**What was wrong.** The **Rename** button on **My Team** took a new name and then quietly
+put the old one back. It had never worked for a manager - only for the commissioner, whose
+identical button on Manage Teams went through the same code and passed the permission check
+the manager failed. Since OQ-34 it mattered more: a manager who leaves the team name blank on
+the join screen starts with the front of their email address and had no working way to change it.
+
+**The decision.** Scott, asked on 2026-10-30 whether the button was broken: "if it is, we
+need to fix it". So a manager may rename their own team, whenever they like, without asking
+the commissioner. The commissioner can still rename any team in the league, and their rename
+wins simply by being the later one. Nobody can rename anybody else's team. To make team names
+the commissioner's alone instead, the button comes off the manager's screen - a smaller change
+than this one.
+
+**Worth knowing about the timing.** A rename takes effect immediately, mid-week included, and
+the new name shows in the standings and on the scoreboard for every week already played - the
+league stores one name per team, not one per week. That is how the commissioner's rename has
+always behaved; it is only now reachable by more people. The activity feed is the exception:
+an entry already written keeps the old name, because it was a sentence composed the day it
+happened rather than a lookup. Do not "fix" that.
+
+**A name cannot touch a score.** Nothing in `src/engine/` reads a team name - the same
+argument that lets the head-coach list write across leagues (OQ-4e).
+
+*The technical half, and the second bug underneath it - the app throwing refusals away
+without showing them - is in `docs/MIGRATION-NOTES.md` under "A manager could not rename
+their own team".*
+
+### OQ-35. Joining a season league the way you join a table. **[ANSWERED 2026-10-29 by Scott: the commissioner gets a team, one invite link fills the league, 12 teams at most]**
 
 A table always filled itself: the dealer sits down with a team, sends one invite, and
 everyone who redeems it gets a team of their own. A season did not. Its commissioner had
@@ -2408,42 +2488,8 @@ and the playoffs never read who owns a team. What changes is how a league fills 
   only it does: handing an existing team to a new manager mid-season. So does the invite
   for a second commissioner.
 
-**Leagues made before this** keep working exactly as they did. Their commissioner has no
-team, and so no My Team, until someone links one - OQ-36.
+**Leagues made before this** keep working exactly as they did, and their commissioner keeps
+running them without a team of their own. Scott, 2026-10-30: leave them that way.
 
-**Found on the way, not fixed:** My Team's Rename button is broken for managers - OQ-35.
-
-### OQ-35. My Team's Rename button is refused for a manager. **[OPEN - Scott 2026-10-29: parked, to be fixed in its own session]**
-
-Found while building OQ-34. A manager sees Rename on My Team, but pressing it fails: the
-button saves through `onRenameMyTeam` in `src/App.jsx`, which calls `ops.mutate` - the
-commissioner's whole-league write (`replaceLeague` in `server/operations.js`), refused to
-anyone who is not a commissioner. So it works for a commissioner and nobody else.
-
-It matters more since OQ-34, because a manager who leaves the team name blank on the join
-screen starts with the front of their email address and has no working way to change it.
-The commissioner can rename any team under Commish -> Teams in the meantime.
-
-The likely shape of a fix is a small server route that renames ONE team, allowed for that
-team's own manager and for a commissioner - the same `canActForTeam` check `swapLineupSlot`
-and `submitScheme` use.
-
-### OQ-36. A commissioner of a league made before OQ-34 has no My Team. **[OPEN - Scott 2026-10-29: parked, to be fixed in its own session]**
-
-OQ-34 gives a commissioner a team when they CREATE a season league. A league created
-before it - including Scott's live league - is untouched: its commissioner manages their
-own team through Commish -> Manage Rosters and has no My Team tab, because their
-`league_members` row has no `team_id`.
-
-My Team itself needs no further code: since OQ-34 it shows for any member whose
-membership has a team. What is missing is a way to say which team is the commissioner's.
-Two shapes, for whoever picks this up:
-
-- **For Scott's league only:** Kyle sets `league_members.team_id` on Scott's row in the
-  live database to his team's id. One row; nothing else touched. Needs Scott to say which
-  team is his.
-- **For every older league:** a one-time way for a commissioner with no team to say
-  which team is theirs. A "This is my team" button was built and then removed on
-  2026-10-29 - Scott did not want a button in the normal flow - so whatever replaces it
-  should only appear for a commissioner who has no team.
-
+**Found on the way:** My Team's Rename button was refused for a manager. Fixed separately,
+as OQ-26.

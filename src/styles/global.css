@@ -373,6 +373,52 @@
 .pp-pos-TE{ --pip-ink:#432b70; }
 .pp-pos-FLEX{ --pip-ink:#6f4a0c; }
 .pp-pos-BN{ --pip-ink:#5d6b63; }
+/* TAP THE CARD TO MOVE HIM (OQ-34, Scott 2026-10-30, option A of three mockups). On the
+   lineup the card is a button: 44px, the smallest a thumb can count on hitting (OQ-8),
+   with a little depth so it reads as pressable. MOVE in gold on the one picked, a pulsing
+   HERE on every place he can go, everything else faded back. */
+.pp-move-card{
+  width:44px; height:44px; padding:0; cursor:pointer; font-family:var(--font-body);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.4), 0 2px 0 rgba(0,0,0,0.35);
+  transition: transform .12s, box-shadow .12s;
+}
+.pp-move-card:active{ transform:translateY(1px); box-shadow:0 1px 1px rgba(0,0,0,0.4); }
+.pp-move-card:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+.pp-move-card[aria-disabled="true"]{ cursor:not-allowed; }
+.pp-move-word{ font-size:11px; letter-spacing:0.5px; }
+.pp-move-word-small{ font-size:8.5px; letter-spacing:0.3px; }
+.pp-move-card-picked{
+  background: linear-gradient(158deg, var(--gold-bright) 0%, var(--gold) 100%);
+  color:#2a1d00; box-shadow: 0 0 0 2px var(--gold-bright), 0 0 14px rgba(255,220,132,.55);
+}
+.pp-move-card-here{
+  background:transparent; border:2px solid var(--gold-bright); color:var(--gold-bright);
+  animation: pp-move-pulse 1.4s ease-in-out infinite;
+}
+.pp-move-card-blocked{
+  background:transparent; border:1px dashed var(--red-dim); color:#ffb4a8; box-shadow:none;
+}
+.pp-roster-slot.pp-move-picked{ border-color:var(--gold-bright); background: rgba(232,194,90,0.10); }
+.pp-roster-slot.pp-move-dim{ opacity:0.38; }
+.pp-roster-slot{ transition: opacity .18s, border-color .18s, background-color .18s; }
+.pp-roster-slot.pp-move-flash{ animation: pp-move-flash .9s ease-out; }
+.pp-move-shake{ animation: pp-move-shake .32s; }
+@keyframes pp-move-pulse{ 0%,100%{ box-shadow:0 0 6px rgba(255,220,132,.25); } 50%{ box-shadow:0 0 16px rgba(255,220,132,.6); } }
+@keyframes pp-move-flash{ 0%{ background:rgba(255,220,132,.40); } 100%{ background:rgba(0,0,0,0.15); } }
+@keyframes pp-move-shake{ 25%{ transform:translateX(-3px); } 75%{ transform:translateX(3px); } }
+/* Who is moving, or who just moved. It sits at the bottom of the screen rather than above
+   the lineup, so appearing and fading never shoves the rows up and down. */
+.pp-move-message{
+  position:sticky; bottom:max(12px, env(safe-area-inset-bottom, 0px)); z-index:5; margin-top:8px;
+  font-size:13px; line-height:1.4; color:var(--text);
+  background:var(--surface-3); border:1px solid var(--gold-dim); border-radius:8px;
+  padding:9px 12px; box-shadow:0 6px 18px rgba(0,0,0,.55);
+}
+.pp-move-message b{ color:var(--gold-bright); }
+@media (prefers-reduced-motion: reduce){
+  .pp-move-card-here, .pp-roster-slot.pp-move-flash, .pp-move-shake{ animation:none; }
+}
+
 /* A slot with nobody in it is the shape of a card and nothing else. */
 .pp-pos-empty{
   background:transparent; box-shadow:none; color:var(--text-faint);

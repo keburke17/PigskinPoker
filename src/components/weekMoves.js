@@ -184,7 +184,10 @@ export function moveHeadline(tm) {
   }
   if (tm.scheme === "redraw") {
     const got = tm.lines.find((l) => l.kind === "add" && l.note === "from free agency");
-    const base = got ? "You redrew " + got.player : "Your redraw found no free agent";
+    const dropped = first("drop");
+    const base = got
+      ? "You drew " + got.player + (dropped ? " for " + dropped.player : "")
+      : "Your redraw found no free agent";
     return base + (stolen ? ", but lost " + stolen.player : "");
   }
   if (tm.scheme === "block") {

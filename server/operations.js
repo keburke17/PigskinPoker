@@ -88,6 +88,7 @@ const PHASE_RULES = {
   dealPeriod: ["pre-deal"],
   submitScheme: ["dealt"],
   swapLineupSlot: ["dealt", "schemes-processed"],
+  swapStarterSlots: ["dealt", "schemes-processed"],
   processSchemes: ["dealt"],
   setStatLine: ["schemes-processed", "stats"],
   toggleSlotLock: ["schemes-processed", "stats"],
@@ -362,7 +363,7 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
     return fail(400, "A table has " + TABLE_SEATS_MIN + " to " + TABLE_SEATS_MAX + " seats.");
   }
   /* Whoever creates a league plays in it: a dealer at their table, a commissioner in
-   * their season (OQ-34). */
+   * their season (OQ-35). */
   const ownTeamName = cleanTeamName(teamName) || defaultTeamName(user);
 
   const seasonYear = Number(year) || new Date().getFullYear();
@@ -434,7 +435,7 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
    * at it like everybody else - and can sit out a hand like everybody else. Their
    * membership is still the commissioner role underneath; it simply has a team too.
    *
-   * A SEASON COMMISSIONER gets the same since OQ-34: a team made here and tied to their
+   * A SEASON COMMISSIONER gets the same since OQ-35: a team made here and tied to their
    * membership, so they have a My Team tab like any manager. Commissioner powers are
    * unchanged - they still act for every team. */
   const made = await insertTeam(db, leagueId, ownTeamName);
@@ -586,7 +587,7 @@ export async function createInvite(db, { leagueId, token, teamId = null, role = 
   /* A TABLE INVITE NAMES NO TEAM (issue #75): whoever redeems it sits down, and their
    * team is made for them. Many people can redeem one, up to the seats there are.
    *
-   * A SEASON INVITE USUALLY NAMES NONE EITHER since OQ-34: it is the league's join link,
+   * A SEASON INVITE USUALLY NAMES NONE EITHER since OQ-35: it is the league's join link,
    * and whoever redeems it makes a team of their own. Naming a team is still allowed -
    * it is how a team whose manager quit is handed to somebody new. */
   if (role === "manager" && isTable(ctx.view)) {
@@ -711,7 +712,7 @@ export async function redeemInvite(db, { code, accountToken, teamName = null }) 
 
   /* AN INVITE THAT NAMES NO TEAM MAKES ONE. At a table that is sitting down: the team
    * is theirs, record and all, if they leave and come back, and it is refused when every
-   * seat is taken. In a season (OQ-34) it is joining the league, refused at
+   * seat is taken. In a season (OQ-35) it is joining the league, refused at
    * SEASON_TEAMS_MAX and once Week 1 has been dealt - the standings ladder is worth as
    * many points as there are teams, so a team arriving mid-season would change what
    * every later week is worth. A refusal does not use the invite up. */
@@ -1038,6 +1039,89 @@ export async function swapLineupSlot(db, { leagueId, token, teamId, slot, benchI
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
+/* Two starters trading places, or the three-way TE-to-FLEX move (OQ-34, Scott
+ * 2026-10-30; the rules are in src/engine/lineupMoves.js). The starter in `fromSlot`
+ * goes to `toSlot`. With `benchIndex` null whoever held `toSlot` comes back to
+ * `fromSlot`; with a bench index, that bench player takes `fromSlot` and the displaced
+ * starter goes to the bench.
+ *
+ * Every check swapLineupSlot makes, on every player who moves, plus one more: a STAT
+ * LINE IS FILED UNDER ITS SLOT, not its player, so two starters trading places after
+ * their lines are in would each score the other's week. The lock normally makes that
+ * impossible - a player with stats has played - but a week with no kickoff times read
+ * locks nobody on the clock, so it is refused here rather than trusted. */
+export async function swapStarterSlots(db, { leagueId, token, teamId, fromSlot, toSlot, benchIndex = null, expect }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  const team = teamRow(ctx.rows, teamId);
+  if (!team) return fail(404, "Unknown team.");
+  if (!canActForTeam(ctx.session, team.id)) {
+    return fail(AUTH_ERRORS.notYourTeam.status, AUTH_ERRORS.notYourTeam.error);
+  }
+  if (fromSlot === toSlot) return fail(400, "Pick a different slot.");
+  const keys = [vkey.starterSlot(teamId, fromSlot), vkey.starterSlot(teamId, toSlot)];
+  if (benchIndex != null) keys.push(vkey.benchSlot(teamId, benchIndex));
+  const bad = guard(ctx, "swapStarterSlots", expect, keys);
+  if (bad) return bad;
+
+  const mine = ctx.rows.roster_slots.filter((r) => r.period_id === ctx.period.id && r.team_id === team.id);
+  const from = mine.find((r) => r.area === "starter" && r.slot === fromSlot);
+  const to = mine.find((r) => r.area === "starter" && r.slot === toSlot);
+  const bench = benchIndex == null ? null : mine.find((r) => r.area === "bench" && r.bench_index === benchIndex);
+  if (!from || !to || (benchIndex != null && !bench)) return fail(404, "That roster slot doesn't exist.");
+  const moving = [from, to, bench].filter(Boolean);
+  if (moving.some((r) => r.locked)) return fail(409, "That player is locked.", { reason: "locked" });
+
+  const clockLock = kickoffLock(ctx);
+  const refusal = moving.map((r) => clockLock(r.player_id)).find(Boolean);
+  if (refusal) return fail(409, refusal, { reason: "locked", view: ctx.view });
+
+  const hasLine = ctx.rows.stat_lines.some(
+    (s) => s.period_id === ctx.period.id && s.team_id === team.id && (s.slot === fromSlot || s.slot === toSlot)
+  );
+  if (hasLine) {
+    return fail(409, "Stats are already in for one of those slots, so those two can't trade places this week.", {
+      reason: "locked",
+    });
+  }
+
+  /* Each player must fit where he lands. The bench takes anyone. */
+  const player = (r) => ctx.rows.players.find((p) => p.id === r.player_id) ?? null;
+  const fits = (r, slot) => {
+    const p = player(r);
+    return !p || slotAcceptsPosition(slot, p.position) ? null : p.name + " is a " + p.position + " and can't play " + slot + ".";
+  };
+  const misfit = fits(from, toSlot) || fits(bench ?? to, fromSlot);
+  if (misfit) return fail(400, misfit);
+
+  /* Two or three compare-and-swap writes. If one finds its row moved underneath it, the
+   * ones already made are put back rather than leaving a player on the roster twice. */
+  const plan = bench
+    ? [[to, from.player_id], [from, bench.player_id], [bench, to.player_id]]
+    : [[to, from.player_id], [from, to.player_id]];
+  const done = [];
+  for (const [row, playerId] of plan) {
+    const w = await db
+      .from("roster_slots")
+      .update({ player_id: playerId, version: row.version + 1 })
+      .eq("id", row.id)
+      .eq("version", row.version)
+      .select();
+    if (w.error || !w.data?.length) {
+      for (const prev of done) {
+        await db.from("roster_slots").update({ player_id: prev.player_id, version: prev.version + 2 }).eq("id", prev.id);
+      }
+      if (w.error) return fail(500, w.error.message);
+      return fail(409, "Someone else just updated the league - reloaded.", {
+        reason: "stale",
+        view: hydrate(await fetchLeagueRows(db, leagueId)),
+      });
+    }
+    done.push(row);
+  }
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
 export async function submitScheme(db, { leagueId, token, teamId, scheme, expect }) {
   const ctx = await context(db, leagueId, token);
   if (ctx.error) return ctx.error;
@@ -1100,6 +1184,50 @@ export async function submitScheme(db, { leagueId, token, teamId, scheme, expect
     const { error } = await db.from("schemes").insert({ ...payload, version: 1 });
     if (error) return fail(500, error.message);
   }
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Rename a team.
+ *
+ * A manager's OWN team, or any team in the league when the commissioner asks - the same
+ * `canActForTeam` question the lineup and the scheme ask, so one route serves both the
+ * button on My Team and the field on Manage Teams.
+ *
+ * IT NEEDED A ROUTE AT ALL because both of those buttons used to go through
+ * `ops.mutate`, which sends the whole league blob to `replaceLeague`. That is
+ * commissioner-only on purpose - the blob can rewrite the pool, the scoring and every
+ * team - so a MANAGER renaming his own team was refused every single time, and the
+ * refusal was then dropped by the client rather than shown: the editor closed, the old
+ * name came back, and nothing said why. Found on 2026-09-09. The other half of that bug
+ * is in src/hooks/opError.js.
+ *
+ * NO PHASE RULE, deliberately. There is no week in which naming your own team is
+ * illegal, and a name cannot move a point - it is not roster state, so a rename
+ * mid-week takes nothing with it.
+ *
+ * NO VERSION KEY either, for the same reason a coach's name has none (see setCoach):
+ * last writer wins on a label, and two people renaming one team in the same second is
+ * not a race worth a column.
+ */
+export async function renameTeam(db, { leagueId, token, teamId, name }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  const team = teamRow(ctx.rows, teamId);
+  if (!team) return fail(404, "Unknown team.");
+  if (!canActForTeam(ctx.session, team.id)) {
+    return fail(AUTH_ERRORS.notYourTeam.status, AUTH_ERRORS.notYourTeam.error);
+  }
+
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return fail(400, "Give your team a name.");
+  if (trimmed.length > 80) return fail(400, "That team name is too long.");
+
+  const { error } = await db
+    .from("teams")
+    .update({ name: trimmed, version: team.version + 1 })
+    .eq("id", team.id);
+  if (error) return fail(500, error.message);
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
@@ -2775,7 +2903,7 @@ export async function replaceLeague(db, { leagueId, token, blob }) {
    * that is where "who is in this hand" lives (issue #75). Without the server's own copy
    * a rename mid-hand would rewrite the hand's players as every team at the table. The
    * blob never gets to choose these: they are server-owned, like the clock switches. */
-  /* The season cap (OQ-34) holds here too, for the commissioner's Add Team. Only an
+  /* The season cap (OQ-35) holds here too, for the commissioner's Add Team. Only an
    * INCREASE past it is refused, so a league that already had more keeps them. */
   const before = ctx.view?.teams?.length ?? 0;
   const after = Array.isArray(blob?.teams) ? blob.teams.length : 0;

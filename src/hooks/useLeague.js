@@ -21,6 +21,8 @@ import { loadIdentity, saveIdentity } from "../storage/index.js";
 import { isAmbiguousRead } from "../storage/types.js";
 import { createWriteQueue } from "../storage/writeQueue.js";
 import { vkey } from "../storage/hydrate.js";
+import { moveStarter, unmoveStarter } from "../engine/index.js";
+import { failureBanner } from "./opError.js";
 
 const MAX_LOAD_ATTEMPTS = 3;
 
@@ -220,13 +222,16 @@ export function useLeague(store) {
         key: result.key,
         message: "Someone else just updated the league - reloaded.",
       });
-    } else if (result.reason === "phase") {
-      setOpError({ headline: result.message, detail: null });
-    } else if (result.reason === "locked" || result.reason === "invalid") {
-      setOpError({ headline: result.message, detail: null });
-    } else if (result.reason === "network") {
-      setOpError({ headline: "Couldn't save that change.", detail: result.message });
+      return;
     }
+    /* EVERY OTHER REFUSAL BECOMES A BANNER, which used not to be true.
+     *
+     * This was a chain of else-ifs ending at `network` with nothing after it, so
+     * `forbidden`, `unauthorized`, `throttled` and the server's `unlocked` fell off the
+     * end in silence - the change did not happen, the server's view replaced it, and
+     * the screen said nothing. See src/hooks/opError.js, which now owns the wording and
+     * is where the reasoning lives. */
+    setOpError(failureBanner(result));
   }, []);
 
   const versions = () => viewRef.current?._meta?.versions ?? {};
@@ -360,6 +365,42 @@ export function useLeague(store) {
     [store, immediate, applySwapLocally]
   );
 
+  /** Two starters trading places, or the three-way TE-to-FLEX move (OQ-34). Drawn at
+   * once and undone on a refusal, exactly as swapLineupSlot above - except that a
+   * three-way move is not its own inverse, so the undo is unmoveStarter. Manual locks
+   * only, for the same reason given on applySwapLocally. */
+  const moveSeq = useRef(0);
+  const applyStarterMoveLocally = useCallback((teamId, fromSlot, toSlot, benchIndex, undo) => {
+    setView((prev) => {
+      const team = prev?.teams?.find((t) => t.id === teamId);
+      if (!team || !team.roster) return prev;
+      const r = team.roster;
+      const locks = prev.lockedPlayerIds || {};
+      const ids = [r.starters[fromSlot], r.starters[toSlot], benchIndex == null ? null : r.bench[benchIndex]];
+      if (ids.some((id) => id && locks[id])) return prev;
+      const roster = (undo ? unmoveStarter : moveStarter)(r, fromSlot, toSlot, benchIndex);
+      return { ...prev, teams: prev.teams.map((t) => (t.id !== teamId ? t : { ...t, roster })) };
+    });
+  }, []);
+
+  const swapStarterSlots = useCallback(
+    (teamId, fromSlot, toSlot, benchIndex = null) => {
+      applyStarterMoveLocally(teamId, fromSlot, toSlot, benchIndex, false);
+      /* Its own queue key per move. The queue keeps one pending write per key, so a
+       * key shared with the next tap would let that tap replace this move unsent -
+       * after it had already been drawn. */
+      moveSeq.current += 1;
+      return immediate("move:" + teamId + ":" + moveSeq.current, async () => {
+        const r = await store.swapStarterSlots(teamId, fromSlot, toSlot, benchIndex, versions());
+        if (r && !r.ok && !r.view && r.reason !== "network") {
+          applyStarterMoveLocally(teamId, fromSlot, toSlot, benchIndex, true);
+        }
+        return r;
+      });
+    },
+    [store, immediate, applyStarterMoveLocally]
+  );
+
   /* The commissioner can submit on a team's behalf from Manage Rosters, and when he
    * does his own Weeks count should move at once rather than on the next tick. */
   const submitScheme = useCallback(
@@ -371,6 +412,15 @@ export function useLeague(store) {
       return r;
     },
     [store, immediate, refreshSchemeStatus]
+  );
+
+  /* Naming a team. A manager's own, or any of them if the commissioner is asking - the
+   * server settles which (renameTeam in server/operations.js). It is a fine-grained
+   * write like the two above rather than an ops.mutate(), because mutate() is the
+   * commissioner-only whole-blob write and a manager's rename could never get past it. */
+  const renameTeam = useCallback(
+    (teamId, name) => immediate("renameTeam:" + teamId, () => store.renameTeam(teamId, name)),
+    [store, immediate]
   );
 
   const toggleRosterLock = useCallback(
@@ -547,7 +597,9 @@ export function useLeague(store) {
       setStatLine,
       toggleSlotLock,
       swapLineupSlot,
+      swapStarterSlots,
       submitScheme,
+      renameTeam,
       toggleRosterLock,
       dealPeriod,
       refreshPlayerPool,

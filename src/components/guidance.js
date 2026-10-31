@@ -205,7 +205,7 @@ function commissionerStep(state) {
   const teams = state.teams.length;
 
   /* Setup outranks the cycle. A league with no teams cannot be dealt, and the Weeks
-   * panel's disabled Deal button was the whole of issue #24's complaint. Since OQ-34 the
+   * panel's disabled Deal button was the whole of issue #24's complaint. Since OQ-35 the
    * commissioner's own team is there from the start, so a league with only that one is
    * still waiting on its invites. */
   const firstWeek = state.currentPeriod.type === "week" && state.currentPeriod.number === 1 && phase === "pre-deal";

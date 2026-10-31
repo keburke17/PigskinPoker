@@ -43,7 +43,7 @@ import { LiveStatsTab } from "./stats.jsx";
 
 export function CommTeamsPanel({ state, onAddTeam, onRenameTeam, onRemoveTeam }) {
   const [newName, setNewName] = useState("");
-  /* OQ-34: teams normally arrive by people redeeming the invite link and naming their
+  /* OQ-35: teams normally arrive by people redeeming the invite link and naming their
    * own. Adding one by hand is still here, for a manager with no email, up to the cap. */
   const full = state.teams.length >= SEASON_TEAMS_MAX;
   return (
@@ -92,7 +92,7 @@ export function CommTeamRow({ team, onRenameTeam, onRemoveTeam }) {
         <label className="pp-label">Team Name</label>
         <div style={{ display: "flex", gap: 6 }}>
           <input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="pp-btn pp-btn-sm" onClick={() => onRenameTeam(team.id, name)}>Save</button>
+          <button className="pp-btn pp-btn-sm" disabled={!name.trim()} onClick={() => onRenameTeam(team.id, name)}>Save</button>
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -601,7 +601,7 @@ export function CommWeeksPanel({ state, onDeal, onProcessSchemes, dealError, sub
   );
 }
 
-export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
+export function CommManageRostersPanel({ state, onSwap, onMoveStarter, onSubmitScheme }) {
   const teams = periodTeams(state);
   const [teamId, setTeamId] = useState(teams[0] ? teams[0].id : "");
   const team = state.teams.find((t) => t.id === teamId);
@@ -614,7 +614,7 @@ export function CommManageRostersPanel({ state, onSwap, onSubmitScheme }) {
           {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </div>
-      {team && <MyTeamTab state={state} team={team} onSwap={(slot, benchIdx) => onSwap(team.id, slot, benchIdx)} onSubmitScheme={onSubmitScheme} onRename={() => {}} />}
+      {team && <MyTeamTab state={state} team={team} onSwap={(slot, benchIdx) => onSwap(team.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(team.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={() => {}} />}
     </div>
   );
 }
@@ -1266,7 +1266,7 @@ function TableInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
   );
 }
 
-/* OQ-34: a season fills up the way a table does. The main invite is ONE link for the
+/* OQ-35: a season fills up the way a table does. The main invite is ONE link for the
  * group chat; everyone who redeems it names a team of their own, until Week 1 is dealt or
  * the league has SEASON_TEAMS_MAX teams. The team-specific invite survives below it for
  * the one job only it can do - handing an existing team to a new manager - along with
@@ -1406,7 +1406,7 @@ export function CommSetupChecklist({ state }) {
    * playoffs to schedule. */
   if (isTable(state)) return <TableSetupChecklist state={state} />;
   const steps = [
-    /* OQ-34: the commissioner's own team is there from the start, so "done" is a second
+    /* OQ-35: the commissioner's own team is there from the start, so "done" is a second
      * team - somebody came in through the link. */
     { done: state.teams.length > 1, label: "Invite your league", note: "Send one invite link - everyone who opens it names their own team, up to " + SEASON_TEAMS_MAX + "." },
     /* _meta, not currentPeriod. The NFL week is a server-owned column kept OUT of the
@@ -1516,7 +1516,7 @@ export function CommSetupScreen(props) {
   return (
     <>
       <CommSetupChecklist state={props.state} />
-      {/* The invite comes first since OQ-34: it is how a season fills up, and the teams
+      {/* The invite comes first since OQ-35: it is how a season fills up, and the teams
         * below are the people who have come in through it. */}
       <CommInvitePanel
         state={props.state}
@@ -1632,7 +1632,7 @@ export function CommissionerTab(props) {
       {openSub === "seats" && <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} />}
       {openSub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
       {openSub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onRefreshInjuries={props.onRefreshInjuries} injuryReport={props.injuryReport} onSetAutoCycle={props.onSetAutoCycle} onSetNotifyMembers={props.onSetNotifyMembers} />}
-      {openSub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onSubmitScheme={props.onSubmitScheme} />}
+      {openSub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onMoveStarter={props.onMoveStarter} onSubmitScheme={props.onSubmitScheme} />}
       {openSub === "pool" && <CommPlayerPoolPanel state={props.state} onAddPlayer={props.onAddPlayer} onSetStatus={props.onSetStatus} onDeletePlayer={props.onDeletePlayer} onRenamePlayer={props.onRenamePlayer} onRestorePlayer={props.onRestorePlayer} onRefreshPool={props.onRefreshPool} poolReport={props.poolReport} phase={props.state.currentPeriod.phase} />}
       {openSub === "scoring" && <CommScoringPanel state={props.state} onSave={props.onSaveScoring} />}
       {openSub === "playoffs" && <CommPlayoffsPanel state={props.state} onSave={props.onSavePlayoffSettings} />}

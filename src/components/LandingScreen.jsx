@@ -44,7 +44,7 @@ export function LandingScreen({
   const [leagueMode, setLeagueMode] = useState("season");
   const [seats, setSeats] = useState(6);
   const [myTeamName, setMyTeamName] = useState("");
-  /* The name of the team an open invite makes for you (OQ-34). Blank is fine: it starts
+  /* The name of the team an open invite makes for you (OQ-35). Blank is fine: it starts
    * as the front of your email address. Ignored by an invite for an existing team. */
   const [joinTeamName, setJoinTeamName] = useState("");
   const [busy, setBusy] = useState(false);

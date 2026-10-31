@@ -37,7 +37,7 @@ describe("nextStep, as a commissioner", () => {
     expect(step.tab).toBe("comm");
   });
 
-  it("still asks for invites while the commissioner's own team is the only one (OQ-34)", () => {
+  it("still asks for invites while the commissioner's own team is the only one (OQ-35)", () => {
     const step = nextStep(stateWith({ teams: [{ id: "t1", name: "The Commish", roster: null }] }), "commissioner", null);
     expect(step.headline).toMatch(/Invite your league/i);
   });
