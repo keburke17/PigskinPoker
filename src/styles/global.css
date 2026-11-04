@@ -488,6 +488,51 @@
 .pp-login-wrap{ display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding: 24px 14px; }
 .pp-login-card{ max-width:400px; width:100%; }
 
+/* ---------------------------------------------------------------- homepage --
+   Scott, 2026-11-04 ("option A"). Your leagues, then the games. Every tappable thing
+   here is 44px or taller - the homepage starts clean of OQ-8's small-target problem. */
+.pp-title-with-ball{ display:inline-flex; align-items:center; gap:10px; }
+.pp-title-with-ball svg{ flex:none; }
+.pp-home-section{ display:flex; flex-direction:column; gap:10px; margin-bottom:22px; }
+.pp-home-h{ font-size:18px; margin:0; }
+.pp-home-tap{ min-height:44px; }
+
+.pp-home-row, .pp-game-card{
+  display:flex; align-items:center; gap:12px; width:100%; min-height:44px;
+  padding:14px; border-radius:var(--radius); border:1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  color:var(--text); font-family:var(--font-body); text-align:left;
+}
+.pp-home-row{ cursor:pointer; }
+.pp-home-row:hover{ border-color:var(--border-soft); }
+.pp-home-row:active{ transform: translateY(1px); }
+.pp-home-row:focus-visible, .pp-play-btn:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+.pp-home-row-text{ display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.pp-home-row-name{ font-weight:700; font-size:15px; }
+.pp-home-row-sub{ font-size:12.5px; color:var(--text-dim); line-height:1.35; }
+.pp-home-row-status{ font-size:12px; font-weight:700; color:var(--gold-bright); }
+
+.pp-league-badge, .pp-game-badge{ flex:none; display:flex; align-items:center; justify-content:center; }
+.pp-league-badge{ width:42px; height:42px; border-radius:10px; background:var(--text); }
+.pp-game-badge{ width:48px; height:48px; border-radius:12px; background: linear-gradient(180deg, var(--gold-bright), var(--gold)); }
+.pp-game-badge-soon{ background:transparent; border:1px solid var(--border); }
+.pp-game-eyebrow{ font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ok); font-weight:700; }
+.pp-game-name{ font-family:var(--font-display); font-weight:700; font-size:17px; }
+.pp-game-soon{ border-style:dashed; background: rgba(12,35,24,0.55); }
+.pp-game-soon .pp-game-name{ color:var(--text-dim); }
+.pp-soon-tag{
+  flex:none; padding:6px 10px; border-radius:22px; background:var(--surface-2); color:var(--text-dim);
+  font-weight:700; font-size:11px; letter-spacing:0.8px; text-transform:uppercase;
+}
+.pp-play-btn{
+  flex:none; min-height:44px; padding:0 16px; border-radius:22px; cursor:pointer;
+  border:1px solid var(--gold-dim); background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  color:#1c1a08; font-family:var(--font-body); font-weight:800; font-size:13px; letter-spacing:0.6px;
+}
+.pp-play-btn:hover{ background: linear-gradient(180deg, #ffe79a, #efcb63); }
+.pp-create-head{ display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+.pp-create-head .pp-game-badge{ width:42px; height:42px; border-radius:10px; }
+
 .pp-badge-role{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-dim); }
 
 /* ---------------------------------------------------------------- scoreboard --

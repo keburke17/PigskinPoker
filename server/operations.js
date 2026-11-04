@@ -548,10 +548,30 @@ export async function myLeagues(db, { accountToken }) {
   if (error) return fail(500, error.message);
   if (!members?.length) return good({ leagues: [] });
 
+  const leagueIds = members.map((m) => m.league_id);
   const { data: leagues } = await db
-    .from("leagues").select("id, name, visibility").in("id", members.map((m) => m.league_id));
+    .from("leagues")
+    .select("id, name, visibility, mode, table_seats, auto_process_schemes, tz")
+    .in("id", leagueIds);
   const { data: teams } = await db
     .from("teams").select("id, name").in("id", members.map((m) => m.team_id).filter(Boolean));
+
+  /* THE HOMEPAGE'S STATUS LINE (Scott, 2026-11-04): "Week 9 - Schemes due Thursday 3am",
+   * under each league. Three more reads, each one query for ALL the caller's leagues
+   * rather than one per league, and none of them a blob - the home screen is opened far
+   * more often than any one league, and must not cost a full hydrate per row. A failure
+   * here costs the line, never the list: the facts come back empty and the row still
+   * opens the league. */
+  const { data: seasons } = await db
+    .from("seasons").select("id, league_id, year, status, playoff_completed").in("league_id", leagueIds);
+  const seasonIds = (seasons ?? []).map((s) => s.id);
+  const { data: periods } = seasonIds.length
+    ? await db.from("periods").select("season_id, type, number, phase").in("season_id", seasonIds)
+    : { data: [] };
+  const tableIds = (leagues ?? []).filter((l) => l.mode === "table").map((l) => l.id);
+  const { data: seatedTeams } = tableIds.length
+    ? await db.from("teams").select("league_id").in("league_id", tableIds).eq("seat", "seated").eq("active", true)
+    : { data: [] };
 
   return good({
     leagues: members.map((m) => {
@@ -562,9 +582,52 @@ export async function myLeagues(db, { accountToken }) {
         visibility: league?.visibility ?? null,
         role: m.role,
         teamName: teams?.find((t) => t.id === m.team_id)?.name ?? null,
+        ...leagueHomeFacts({
+          league,
+          seasons: (seasons ?? []).filter((x) => x.league_id === m.league_id),
+          periods: periods ?? [],
+          seated: (seatedTeams ?? []).filter((t) => t.league_id === m.league_id).length,
+        }),
       };
     }),
   });
+}
+
+/**
+ * What the homepage says about one league, from rows already read. Pure, so it is tested
+ * without a database (tests/homepage.test.js); the WORDS are the browser's
+ * (src/components/homeStatus.js), so this only reports facts.
+ *
+ * The current period is chosen exactly as hydrate.js chooses it - the first one not yet
+ * finalized, weeks before playoff rounds, else the last - so the home screen and the
+ * league's own Week tab cannot disagree about which week it is.
+ *
+ * The season is the active one, else the newest. `autoProcessSchemes` and `tz` travel
+ * with it because a deadline is only promised to a league whose clock is switched on
+ * (server/notifyFacts.js says the same, for the same reason).
+ */
+export function leagueHomeFacts({ league, seasons = [], periods = [], seated = 0 }) {
+  const table = league?.mode === "table";
+  const season =
+    seasons.find((x) => x.status === "active") ??
+    seasons.slice().sort((a, b) => b.year - a.year)[0] ??
+    null;
+  const own = season
+    ? periods
+        .filter((p) => p.season_id === season.id)
+        .slice()
+        .sort((a, b) => (a.type === b.type ? a.number - b.number : a.type === "week" ? -1 : 1))
+    : [];
+  const current = own.find((p) => p.phase !== "finalized") ?? own[own.length - 1] ?? null;
+  return {
+    game: table ? "table" : "season",
+    seats: table ? (league?.table_seats ?? null) : null,
+    seated: table ? seated : null,
+    period: current ? { type: current.type, number: current.number, phase: current.phase } : null,
+    seasonOver: Boolean(season?.playoff_completed),
+    autoProcessSchemes: Boolean(league?.auto_process_schemes),
+    tz: league?.tz ?? null,
+  };
 }
 
 /**
