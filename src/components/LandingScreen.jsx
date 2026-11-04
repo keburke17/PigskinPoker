@@ -113,9 +113,18 @@ export function LandingScreen({
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="pp-btn pp-btn-sm" onClick={() => setMode("code")}>Redeem an invite</button>
               <button className="pp-btn pp-btn-sm" onClick={() => setMode("create")}>Create a league</button>
-              <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onSignOut}>Sign out</button>
             </div>
-            <div className="pp-hint">Signed in as {account.email}</div>
+          </div>
+        )}
+
+        {/* LOG OUT LIVES HERE, and only here (Scott, 2026-11-04). Inside a league the
+          * header's corner is Home, which brings you to this page still signed in; this is
+          * the one place to actually sign out, set apart from the leagues so nobody taps it
+          * meaning "go back". */}
+        {signedIn && !mode && (
+          <div className="pp-account-foot">
+            <span className="pp-hint">Signed in as {account.email}</span>
+            <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onSignOut}>Log Out</button>
           </div>
         )}
 

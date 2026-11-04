@@ -777,7 +777,12 @@ export default function App() {
               <h1 className="pp-h1 pp-league-title">{SUIT_CH.spade} {state.leagueName} {SUIT_CH.diamond}</h1>
               <span className="pp-badge-role">{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</span>
             </div>
-            <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLogout}>Log Out</button>
+            {/* HOME, NOT LOG OUT (Scott, 2026-11-04). The league switcher below already
+              * reached the front page, but only for someone in two or more leagues - with
+              * one, Log Out was the only way back, and signing in again costs a magic link.
+              * Home is used all the time and Log Out almost never, so Home gets the corner
+              * and Log Out lives on the front page, the way Sleeper keeps it on Account. */}
+            <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => go({ name: "landing" })}>Home</button>
           </div>
           <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} />
           <AccountBar
