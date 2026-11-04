@@ -13,7 +13,6 @@
  */
 
 import { useMemo, useState } from "react";
-import { SUIT_CH } from "../engine/index.js";
 import { MyTeamTab } from "../components/MyTeamTab.jsx";
 import { ScoreboardTab } from "../components/ScoreboardTab.jsx";
 import { LeagueHomeTab } from "../components/LeagueHomeTab.jsx";
@@ -22,6 +21,7 @@ import { createPreviewLeague, PREVIEW_TEAMS, previewTeamId, RECAP_WEEKS } from "
 import { RECAP_EXAMPLES } from "./recapExamples.js";
 import { freeRecapsByWeek } from "./freeRecap.js";
 import { RecapReminder, WeeklyRecap } from "../components/weeklyRecap.jsx";
+import { TitleBall } from "../components/games.jsx";
 
 const NAV = [
   { key: "results", label: "Week" },
@@ -74,7 +74,7 @@ export function RecapPreview() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div className="pp-eyebrow">Pigskin Poker</div>
-              <h1 className="pp-h1 pp-league-title">{SUIT_CH.spade} {state.leagueName} {SUIT_CH.diamond}</h1>
+              <h1 className="pp-h1 pp-league-title pp-title-with-ball"><TitleBall size="1.05em" /> {state.leagueName}</h1>
               <span className="pp-badge-role">{myTeam.name}</span>
             </div>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={noop}>Home</button>

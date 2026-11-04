@@ -29,7 +29,6 @@ import {
   isTable,
   uid,
   POSITIONS,
-  SUIT_CH,
 } from "./engine/index.js";
 import { AccountBar, EmptyState, ErrorBanner, SaveStatusBar } from "./components/atoms.jsx";
 import { LoginScreen } from "./components/LoginScreen.jsx";
@@ -46,6 +45,7 @@ import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
 import { CommissionerTab } from "./components/commissioner.jsx";
 import { MySeatCard } from "./components/table.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
+import { TitleBall } from "./components/games.jsx";
 
 
 
@@ -774,7 +774,7 @@ export default function App() {
                 * Pigskin Poker where the eye already expects a brand, and costs 14px rather than a
                 * second row of header. */}
               <div className="pp-eyebrow">Pigskin Poker</div>
-              <h1 className="pp-h1 pp-league-title">{SUIT_CH.spade} {state.leagueName} {SUIT_CH.diamond}</h1>
+              <h1 className="pp-h1 pp-league-title pp-title-with-ball"><TitleBall size="1.05em" /> {state.leagueName}</h1>
               <span className="pp-badge-role">{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</span>
             </div>
             {/* HOME, NOT LOG OUT (Scott, 2026-11-04). The league switcher below already

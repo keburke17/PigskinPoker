@@ -12,8 +12,8 @@
  */
 
 import { useState } from "react";
-import { SUIT_CH } from "../engine/index.js";
 import { ErrorBanner } from "./atoms.jsx";
+import { TitleBall } from "./games.jsx";
 
 export function LoginScreen({ onSignInWithEmail, loginError, setLoginError }) {
   const [email, setEmail] = useState("");
@@ -24,7 +24,7 @@ export function LoginScreen({ onSignInWithEmail, loginError, setLoginError }) {
       <div className="pp-login-card">
         <div style={{ textAlign: "center", marginBottom: 18 }}>
           <div className="pp-eyebrow">Welcome to</div>
-          <h1 className="pp-h1" style={{ fontSize: 32 }}>{SUIT_CH.spade} Pigskin Poker {SUIT_CH.diamond}</h1>
+          <h1 className="pp-h1 pp-title-with-ball" style={{ fontSize: 32 }}><TitleBall size={32} /> Pigskin Poker</h1>
           <p className="pp-sub">A new hand every week. Play the deal, work the scheme.</p>
         </div>
 

@@ -20,8 +20,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { SUIT_CH } from "../engine/index.js";
 import { ErrorBanner } from "./atoms.jsx";
+import { TitleBall } from "./games.jsx";
 
 function CoachRow({ row, onSave, busy }) {
   const [editing, setEditing] = useState(false);
@@ -230,7 +230,7 @@ export function AdminScreen({ account, admin, checked, coaches, error, onSetCoac
         <div className="pp-header">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <h1 className="pp-h1">{SUIT_CH.spade} Pigskin Poker {SUIT_CH.diamond}</h1>
+              <h1 className="pp-h1 pp-title-with-ball"><TitleBall size="1.05em" /> Pigskin Poker</h1>
               <span className="pp-badge-role">Admin</span>
             </div>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onLeave}>My Leagues</button>

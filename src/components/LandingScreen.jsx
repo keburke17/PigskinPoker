@@ -15,8 +15,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { SUIT_CH } from "../engine/index.js";
 import { ErrorBanner } from "./atoms.jsx";
+import { ChevronIcon, GAMES, GameIcon, TitleBall, iconForGame } from "./games.jsx";
+import { gameName, leagueStatus, leagueSubtitle } from "./homeStatus.js";
 
 export function LandingScreen({
   account,
@@ -81,40 +82,50 @@ export function LandingScreen({
     <div className="pp-login-wrap">
       <div className="pp-login-card">
         <div style={{ textAlign: "center", marginBottom: 18 }}>
-          <div className="pp-eyebrow">Welcome to</div>
-          <h1 className="pp-h1" style={{ fontSize: 32 }}>{SUIT_CH.spade} Pigskin Poker {SUIT_CH.diamond}</h1>
+          <div className="pp-eyebrow">{signedIn ? "Welcome back" : "Welcome to"}</div>
+          <h1 className="pp-h1 pp-title-with-ball" style={{ fontSize: 32 }}><TitleBall size={32} /> Pigskin Poker</h1>
           <p className="pp-sub">A new hand every week. Play the deal, work the scheme.</p>
         </div>
 
         {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
 
-        {/* Signed in: your leagues ARE the landing page. */}
+        {/* THE HOMEPAGE (Scott, 2026-11-04 - "option A" on the design canvas).
+          * Your leagues on top, each with its game's picture and what is happening in it
+          * this week; then every game the site offers. Sleeper's shape, the site's look. */}
         {signedIn && !mode && (
-          <div className="pp-card">
-            <h3 className="pp-h3">Your Leagues</h3>
-            {leaguesLoading ? (
+          <section className="pp-home-section">
+            <h2 className="pp-h2 pp-home-h">Your Leagues</h2>
+            {leaguesLoading && leagues.length === 0 ? (
               <p className="pp-sub">Looking for your leagues...</p>
             ) : leagues.length === 0 ? (
               <p className="pp-sub">
-                You are not in a league yet. Redeem an invite code, or create one of your own.
+                You are not in a league yet. Start a game below, or redeem an invite someone sent you.
               </p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-                {leagues.map((l) => (
-                  <button key={l.id} className="pp-btn pp-btn-gold pp-btn-block" onClick={() => onOpenLeague(l.id)}>
-                    {l.name}
-                    <span style={{ opacity: 0.75, fontWeight: 400 }}>
-                      {"  -  " + (l.role === "commissioner" ? "Commissioner" : l.teamName || "Manager")}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              leagues.map((l) => <LeagueRow key={l.id} league={l} onOpen={() => onOpenLeague(l.id)} />)
             )}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="pp-btn pp-btn-sm" onClick={() => setMode("code")}>Redeem an invite</button>
-              <button className="pp-btn pp-btn-sm" onClick={() => setMode("create")}>Create a league</button>
-            </div>
+            <button className="pp-btn pp-btn-ghost pp-btn-block pp-home-tap" onClick={() => { setMode("code"); setError(null); }}>
+              Redeem an invite
+            </button>
+          </section>
+        )}
+
+        {!signedIn && !mode && (
+          <div className="pp-card">
+            <button className="pp-btn pp-btn-gold pp-btn-block pp-home-tap" style={{ marginBottom: 10 }} onClick={() => { setMode("signin"); setError(null); }}>
+              Sign In
+            </button>
+            <button className="pp-btn pp-btn-block pp-home-tap" onClick={() => { setMode("code"); setError(null); }}>
+              I Have An Invite Code
+            </button>
           </div>
+        )}
+
+        {/* Shown signed out as well: a first-time visitor sees what there is to play
+          * before being asked for an email. PLAY on a game opens its create screen, which
+          * asks them to sign in if they have not. */}
+        {!mode && (
+          <GameList onPlay={(g) => { setLeagueMode(g.mode); setMode("create"); setError(null); }} />
         )}
 
         {/* LOG OUT LIVES HERE, and only here (Scott, 2026-11-04). Inside a league the
@@ -125,20 +136,6 @@ export function LandingScreen({
           <div className="pp-account-foot">
             <span className="pp-hint">Signed in as {account.email}</span>
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={onSignOut}>Log Out</button>
-          </div>
-        )}
-
-        {!signedIn && !mode && (
-          <div className="pp-card">
-            <button className="pp-btn pp-btn-gold pp-btn-block" style={{ marginBottom: 10 }} onClick={() => { setMode("signin"); setError(null); }}>
-              Sign In
-            </button>
-            <button className="pp-btn pp-btn-block" style={{ marginBottom: 10 }} onClick={() => { setMode("code"); setError(null); }}>
-              I Have An Invite Code
-            </button>
-            <button className="pp-btn pp-btn-block" onClick={() => { setMode("create"); setError(null); }}>
-              Create A League
-            </button>
           </div>
         )}
 
@@ -215,31 +212,19 @@ export function LandingScreen({
 
         {mode === "create" && (
           <div className="pp-card">
-            <h3 className="pp-h3">Create A League</h3>
+            <div className="pp-create-head">
+              <span className="pp-game-badge"><GameIcon icon={iconForGame(leagueMode)} size={28} tone="gold" /></span>
+              <h3 className="pp-h3" style={{ margin: 0 }}>New {gameName(leagueMode)}</h3>
+            </div>
             {signedIn ? (
               <>
-                <div className="pp-field">
-                  <label className="pp-label">What are you starting?</label>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      className={"pp-btn pp-btn-sm" + (leagueMode === "season" ? " pp-btn-gold" : " pp-btn-ghost")}
-                      onClick={() => setLeagueMode("season")}
-                    >
-                      A Season
-                    </button>
-                    <button
-                      className={"pp-btn pp-btn-sm" + (leagueMode === "table" ? " pp-btn-gold" : " pp-btn-ghost")}
-                      onClick={() => setLeagueMode("table")}
-                    >
-                      A Table
-                    </button>
-                  </div>
-                  <span className="pp-sub" style={{ display: "block", marginTop: 6 }}>
-                    {leagueMode === "season"
-                      ? "The same teams every week, a standings table, and playoffs at the end."
-                      : "One hand at a time. Players sit out a week or leave whenever they like, and the table keeps a tally of hands won and lost. No playoffs."}
-                  </span>
-                </div>
+                {/* The game was picked on the homepage, so there is no Season / Table
+                  * toggle here any more - Back is how you choose the other one. */}
+                <p className="pp-sub" style={{ marginBottom: 10 }}>
+                  {leagueMode === "season"
+                    ? "The same teams every week, a standings table, and playoffs at the end."
+                    : "One hand at a time. Players sit out a week or leave whenever they like, and the table keeps a tally of hands won and lost. No playoffs."}
+                </p>
                 <div className="pp-field">
                   <label className="pp-label">{leagueMode === "table" ? "Table Name" : "League Name"}</label>
                   <input className="pp-input" type="text" value={leagueName} onChange={(e) => setLeagueName(e.target.value)} placeholder={leagueMode === "table" ? "Tuesday Night Table" : "The Sunday Boys"} />
@@ -295,5 +280,58 @@ export function LandingScreen({
         )}
       </div>
     </div>
+  );
+}
+
+/* One of your leagues: its game's picture, its name, who you are in it, and what is
+ * happening this week. The whole row is the button - a 44px-plus target, unlike the
+ * header pills OQ-8 is about. */
+function LeagueRow({ league, onOpen }) {
+  const status = leagueStatus(league);
+  return (
+    <button type="button" className="pp-home-row" onClick={onOpen}>
+      <span className="pp-league-badge"><GameIcon icon={iconForGame(league.game)} size={26} tone="ivory" /></span>
+      <span className="pp-home-row-text">
+        <span className="pp-home-row-name">{league.name}</span>
+        <span className="pp-home-row-sub">{leagueSubtitle(league)}</span>
+        {status ? <span className="pp-home-row-status">{status}</span> : null}
+      </span>
+      <ChevronIcon />
+    </button>
+  );
+}
+
+/* Every game on the site. A coming-soon game is drawn but is NOT a button: there is
+ * nothing behind it to open yet (games.jsx says how one goes live). */
+function GameList({ onPlay }) {
+  return (
+    <section className="pp-home-section">
+      <div>
+        <h2 className="pp-h2 pp-home-h">Start a Game</h2>
+        <p className="pp-sub" style={{ margin: 0 }}>Pick a game, set the rules, invite your crew.</p>
+      </div>
+      {GAMES.map((g) =>
+        g.comingSoon ? (
+          <div key={g.key} className="pp-game-card pp-game-soon">
+            <span className="pp-game-badge pp-game-badge-soon"><GameIcon icon={g.icon} size={30} tone="dim" /></span>
+            <span className="pp-home-row-text">
+              <span className="pp-game-name">{g.name}</span>
+              <span className="pp-home-row-sub">{g.blurb}</span>
+            </span>
+            <span className="pp-soon-tag">Coming soon</span>
+          </div>
+        ) : (
+          <div key={g.key} className="pp-game-card">
+            <span className="pp-game-badge"><GameIcon icon={g.icon} size={30} tone="gold" /></span>
+            <span className="pp-home-row-text">
+              <span className="pp-game-eyebrow">{g.eyebrow}</span>
+              <span className="pp-game-name">{g.name}</span>
+              <span className="pp-home-row-sub">{g.blurb}</span>
+            </span>
+            <button type="button" className="pp-play-btn" aria-label={"Play " + g.name} onClick={() => onPlay(g)}>PLAY</button>
+          </div>
+        )
+      )}
+    </section>
   );
 }
