@@ -77,7 +77,7 @@ export function RecapPreview() {
               <h1 className="pp-h1 pp-league-title">{SUIT_CH.spade} {state.leagueName} {SUIT_CH.diamond}</h1>
               <span className="pp-badge-role">{myTeam.name}</span>
             </div>
-            <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={noop}>Log Out</button>
+            <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={noop}>Home</button>
           </div>
           <div className="pp-nav-wrap">
             <nav className="pp-nav">

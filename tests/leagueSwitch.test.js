@@ -35,6 +35,7 @@ import { createSupabaseStore } from "../src/storage/supabase.js";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AccountBar, LeagueSwitcher } from "../src/components/atoms.jsx";
+import { LandingScreen } from "../src/components/LandingScreen.jsx";
 
 const LEAGUE = "8ea81188-8bb6-5aae-bef2-fba50410aa24";
 
@@ -164,5 +165,37 @@ describe("the league switcher", () => {
     );
     expect(html).toContain("Signed in as scott@example.test");
     expect(html).toContain('aria-label="Switch league"');
+  });
+});
+
+/* Home, not Log Out (Scott, 2026-11-04). The league header's corner button goes to the
+ * front page signed in; Log Out moved to the front page, below the leagues. The header is
+ * App.jsx and this suite has no DOM, so what is pinned here is the front page's half:
+ * signed in, Log Out is there and is the only way out; signed out, it is not drawn. */
+describe("the front page's Log Out", () => {
+  const base = {
+    leagues: [{ id: "a", name: "Sunday Crew", role: "manager", teamName: "Gridiron Gang" }],
+    leaguesLoading: false,
+    onSignInWithEmail: () => {},
+    onRedeemInvite: () => {},
+    onCreateLeague: () => {},
+    onOpenLeague: () => {},
+    onSignOut: () => {},
+    error: null,
+    setError: () => {},
+  };
+
+  it("is offered to a signed-in account, with the address it would sign out", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(LandingScreen, { ...base, account: { email: "scott@example.com" } }),
+    );
+    expect(html).toContain("Log Out");
+    expect(html).toContain("Signed in as scott@example.com");
+    expect(html).toContain("Sunday Crew");
+  });
+
+  it("is not drawn for somebody who is not signed in", () => {
+    const html = renderToStaticMarkup(React.createElement(LandingScreen, { ...base, account: null }));
+    expect(html).not.toContain("Log Out");
   });
 });

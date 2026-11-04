@@ -439,6 +439,11 @@
 .pp-hint-bad{ color:#ffb4a8; }
 .pp-hint-good{ color:var(--ok); }
 
+/* The front page's account line: who you are signed in as, and Log Out (2026-11-04).
+   Below the leagues card and set apart from it, so Log Out is not mistaken for "back". */
+.pp-account-foot{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; padding:0 4px; }
+.pp-account-foot .pp-hint{ margin-top:0; word-break:break-all; }
+
 /* The "or" between the join-code doors and the email door on the login screen. */
 .pp-or{
   text-align:center; font-size:11px; color:var(--text-faint); text-transform:uppercase;
