@@ -46,6 +46,7 @@ import { CommissionerTab } from "./components/commissioner.jsx";
 import { MySeatCard } from "./components/table.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 import { TitleBall } from "./components/games.jsx";
+import { useFreshVersion } from "./hooks/useFreshVersion.js";
 
 
 
@@ -82,6 +83,11 @@ export default function App() {
     dismissOpError,
     ops,
   } = league;
+
+  /* An old copy of the site kept by a phone reloads itself onto the new one when it
+   * comes back into view - but never with a save still on its way (Scott, 2026-11-05,
+   * "I still see Log Out until I refresh"). src/hooks/useFreshVersion.js. */
+  useFreshVersion(() => saveState.status !== "saving" && saveState.status !== "error");
 
   /* Why the last magic link failed, if it did - captured on the first render so that
    * dismissing the banner does not bring it straight back. */
