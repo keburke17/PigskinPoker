@@ -85,7 +85,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         <li><strong>1. The roster is dealt.</strong> {autoWeek ? "Every week after the first is dealt for you at " + advanceDeadline + "; the first one waits for your commissioner." : "Your commissioner presses Deal."} Until then there is genuinely nothing for you to do, and My Team will show empty slots.</li>
         <li><strong>2. Set your lineup.</strong> My Team - tap a player's card, then tap HERE on any spot he can go. Bench to starter, starter to bench, or two starters trading places - a WR from the FLEX to WR, say.</li>
         <li><strong>3. Submit a scheme.</strong> Same screen, at the bottom. Block, Steal, Redraw or No Action. You can change it as often as you like {autoSchemes ? "until " + schemeDeadline : "until it is processed"}.</li>
-        <li><strong>4. Schemes are processed.</strong> {autoSchemes ? "At " + schemeDeadline + ", on the clock - like waivers. Submit nothing by then and you get No Action." : "When your commissioner presses Process Schemes."} All blocks resolve first, then steals and redraws together in random order. Your roster can change here - someone may take a starter you did not protect.</li>
+        <li><strong>4. Schemes are processed.</strong> {autoSchemes ? "At " + schemeDeadline + ", on the clock - like waivers. Submit nothing by then and you get No Action." : "When your commissioner presses Process Schemes."} All blocks resolve first, then steals and redraws together in random order. Your roster can change here - someone may take any player you did not protect, bench included.</li>
         <li><strong>5. The weekend.</strong> Rosters get locked, which closes scheme submission. Lineup swaps stay open per player until that player's real game starts.</li>
         <li><strong>6. Results.</strong> {autoWeek ? "The week is scored at " + advanceDeadline + ", once every game of the NFL week is final, and the next week is dealt the same morning." : "The commissioner enters or pulls the stats and finalizes."} Standings points are awarded and the next week opens.</li>
       </RuleCard>
@@ -169,8 +169,8 @@ export function HelpTab({ state, role, team, onGoTo }) {
 
       <RuleCard title="Words we use">
         <li><strong>Scheme</strong> - your one action for the week: Block, Steal, Redraw or No Action.</li>
-        <li><strong>Block</strong> - protect one of your starters from being stolen.</li>
-        <li><strong>Steal</strong> - drop a player at a position, take a random unprotected starter at that position from another team.</li>
+        <li><strong>Block</strong> - protect one player on your roster, bench included, from being stolen.</li>
+        <li><strong>Steal</strong> - drop a player at a position, take a random unprotected player at that position from another team's roster - starters and bench alike.</li>
         <li><strong>Redraw</strong> - drop a player at a position, take a random free agent at that same position.</li>
         <li><strong>FLEX</strong> - a starting slot dealt a WR or a RB. After the deal you can move a WR, RB or TE into it.</li>
         <li><strong>Standings points</strong> - what you earn for your finishing place in a week. The season table sums these, not raw scores.</li>

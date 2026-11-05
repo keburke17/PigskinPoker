@@ -144,8 +144,9 @@ Two things follow, and both are deliberate:
 his position (Scott's ruling, 2026-10-26, OQ-32). "Top healthy" is the best depth-chart rank
 among the players who can be dealt that week, so when a team's RB1 is out his RB2 gets the
 odds. QB, TE and Coach stay even - the pool holds one of each per NFL team, so each is
-already the top man - and so do redraws. A player the commissioner added by hand has no
-depth-chart rank and takes the normal odds.
+already the top man. A player the commissioner added by hand has no depth-chart rank and
+takes the normal odds. Since 2026-11-05 (OQ-36) steals and redraws lean the same way - see
+Schemes.
 
 If the pool cannot fill every team - too few Coaches, say - the deal is refused with a
 message saying so, rather than dealing partial rosters. That message names the byes when
@@ -163,9 +164,9 @@ Implemented in `src/engine/deal.js`.
 Each week every manager picks exactly one of four actions. **Schemes are private** - other
 managers see the resulting rosters, never the moves.
 
-- **Block** - protect one of your own players from being stolen this week.
+- **Block** - protect one of your own players, starter or bench, from being stolen this week.
 - **Steal** - drop a player at a position of your choosing, and take a random *unprotected*
-  player at that same position from another team's starters.
+  player at that same position from another team's roster - starters and bench alike.
 - **Redraw** - drop a player at a position of your choosing, and get a random free agent at
   that exact position.
 - **No Action.**
@@ -174,8 +175,12 @@ Rules that apply throughout:
 
 - **The Coach can never be selected for a scheme** - not stolen, not redrawn, not blocked.
 - **Replacements always match the position dropped.** Never flexible.
-- **Only starters can be stolen.** A bench player is not a valid target, which is why Block
-  is about your starters: blocking a bench player would protect someone never at risk.
+- **The bench can be stolen** (Scott, 2026-11-05, OQ-36). It used to be starters only, which
+  let a manager hide his best player on the bench until schemes had run. The victim's
+  free-agent replacement goes into whichever spot was emptied.
+- **Steals and redraws lean toward the 1s.** Each NFL team's top healthy RB and WR is twice
+  as likely to be the one stolen or drawn, exactly as in the deal. QB, TE and Coach are an
+  even pick.
 - **Dropped players return to the free-agent pool immediately**, and can be picked up within
   the same round of processing.
 - **A steal with no legal target is skipped**, with a note in the activity log, and the

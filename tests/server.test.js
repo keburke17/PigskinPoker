@@ -537,6 +537,23 @@ gate()("the weekly cycle, server-side", () => {
     });
     expect(sub.status).toBe(200);
 
+    /* OQ-36, Scott 2026-11-05: the bench can be stolen, so a Block may protect a bench
+     * player too. It used to be refused as "not your own starter". */
+    const myRoster = dealt.body.view.teams.find((t) => t.id === T1).roster;
+    const benchQb = myRoster.bench.find((pid) => {
+      const p = dealt.body.view.playerPool.find((x) => x.id === pid);
+      return p && p.position === "QB";
+    });
+    expect(benchQb).toBeTruthy();
+    const benchBlock = await ops.submitScheme(db, {
+      leagueId, token: mgr, teamId: T1, scheme: { type: "block", position: "QB", playerId: benchQb },
+    });
+    expect(benchBlock.status).toBe(200);
+    const backToStarter = await ops.submitScheme(db, {
+      leagueId, token: mgr, teamId: T1, scheme: { type: "block", position: "QB", playerId: qb },
+    });
+    expect(backToStarter.status).toBe(200);
+
     /* REGRESSION: the commissioner must be able to see THAT a manager submitted.
      *
      * His Weeks panel offers "N of M teams have submitted", but the browser read it
@@ -588,14 +605,14 @@ gate()("the weekly cycle, server-side", () => {
       .not.toBe(before.body.view._meta.versions.period);
   });
 
-  it("OQ-B: refuses a Block on a player who is not your own starter", async () => {
+  it("OQ-B: refuses a Block on a player who is not on your own roster", async () => {
     const mgr = await asManager(T1);
     const { data: rows } = await db.from("players").select("legacy_id").eq("position", "QB").limit(50);
     const view = (await ops.submitScheme(db, {
       leagueId, token: mgr, teamId: T1,
       scheme: { type: "block", position: "QB", playerId: rows[0].legacy_id },
     }));
-    // Either it is not their starter (400) or the phase has closed (409) - both are
+    // Either he is not on their roster (400) or the phase has closed (409) - both are
     // refusals, and neither silently accepts a block on someone else's player.
     expect([400, 409]).toContain(view.status);
   });

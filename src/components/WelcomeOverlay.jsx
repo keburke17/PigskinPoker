@@ -116,7 +116,7 @@ function ManagerBasics({ state }) {
         <li><strong>Play the hands you want.</strong> You are dealt into every hand while you are seated. Sit out from My Team to skip one and keep your seat, or leave the table and give it up - your record stays yours either way.</li>
       ) : null}
       <li><strong>Fresh roster every week.</strong> 12 random players - 6 starters (Coach, QB, WR, RB, TE, FLEX) and 6 bench. Nothing carries over, so a bad week is only a week.</li>
-      <li><strong>One scheme per week.</strong> Block protects a starter, Steal takes an unprotected starter off another team, Redraw swaps a player for a random free agent. No Action is a real choice, and it is what you get if you submit nothing.</li>
+      <li><strong>One scheme per week.</strong> Block protects one of your players, Steal takes an unprotected player off another team's roster (bench too), Redraw swaps a player for a random free agent. No Action is a real choice, and it is what you get if you submit nothing.</li>
       {autoProcessSchemes(state) ? (
         <li><strong>Schemes close at {schemeDeadlineWords(state)}.</strong> On the clock, like waivers - not when somebody gets round to it. Miss it and you get No Action for the week.</li>
       ) : null}

@@ -1084,6 +1084,11 @@ protect a man who was never at risk. Starters are the only players the rule can 
 If bench players are ever made stealable, this answer has to be re-read before that ships -
 at that point "one player from your roster" and "one of your own starters" stop agreeing.
 
+**Re-read 2026-11-05 (OQ-36): the bench became stealable, and Scott's own words won.** A
+Block now protects any one player on your roster, bench included, and the server checks
+"your own roster" rather than "your own starters". Still never another team's player, and
+still never a coach.
+
 ### OQ-C. Weekly ties are broken by season-to-date standing. **[ANSWERED 2026-09-06: confirmed]**
 
 In `finalizeCurrentPeriod` (line 740) the `tb` array is the team's **cumulative** totals
@@ -2341,7 +2346,8 @@ way.
   form was offered and not wanted.
 - **Redraws stay even.** A redraw still picks any free agent at the position at random. With
   more top players dealt, the free agents left lean slightly towards the backups, so a redraw
-  is a touch weaker than it was.
+  is a touch weaker than it was. **Changed 2026-11-05 (OQ-36): redraws and steals now take
+  the same 2-to-1 lean.**
 - **A table's hands deal the same way**, since a hand is a week dealt.
 
 **Reversible in one line.** `TOP_OF_CHART_WEIGHT` in `src/engine/deal.js` is the whole dial:
@@ -2493,3 +2499,47 @@ running them without a team of their own. Scott, 2026-10-30: leave them that way
 
 **Found on the way:** My Team's Rename button was refused for a manager. Fixed separately,
 as OQ-26.
+
+### OQ-36. A steal can take a bench player. **[ANSWERED 2026-11-05 by Scott: yes - and Block covers the bench, and Steal and Redraw lean toward the 1s]**
+
+**The hole.** A Steal only ever looked at another team's **starters**, and lineup swaps stay
+open from the deal until schemes run. So a manager could bench his best player on Tuesday,
+let schemes process Thursday morning, and move him back before kickoff - protected without
+spending his Block. Scott: **"the steal should be able to steal anyone from rosters."**
+
+**What changed - three things, one ruling:**
+
+1. **Steal reaches the whole roster.** The target is a random unprotected player at that
+   position on any other team's roster, starters and bench alike. The victim's free-agent
+   replacement goes into the spot that was emptied, bench or starting.
+2. **Block covers the bench.** Scott: block **"anyone on your roster, even if that player is
+   on your bench."** This is OQ-B's own wording finally meaning what it says; the server now
+   refuses only a player who is not on your roster.
+3. **Steal and Redraw lean toward the 1s, like the deal (OQ-32).** Each NFL team's top
+   healthy RB and WR is twice as likely to be the one picked. Scott's worry: a steal that
+   could reach the bench would otherwise land on "a whole mess of terrible players". QB, TE
+   and Coach stay an even pick, as in the deal.
+
+**What it does to the league.**
+
+- **Hiding a player on the bench no longer protects him.** The only protection is a Block.
+- **A Steal has roughly twice the targets** at RB and WR. Without the lean that would make
+  it noticeably weaker - most of the new targets are players their own managers chose to
+  sit. With it, a starting 1 and a benched 1 are equally exposed.
+- **Block is worth more**, since your bench star is now at risk and the 1s are the likelier
+  targets.
+- **A redraw is a little better than it was**, having been a touch weaker since OQ-32.
+
+**Two calls made while building it, worth knowing:**
+
+- **"A 1" is measured against the whole week's pool, not against who is left.** If a team's
+  RB1 sits on a roster that blocked him, his RB2 does NOT become a 1 for that steal. The
+  lean favours the players the depth chart rates - the deal's definition exactly.
+- **The lean shares the deal's dial.** `TOP_OF_CHART_WEIGHT` in `src/engine/deal.js` drives
+  all three; set it to 1 and the deal, steals and redraws all go back to even together.
+
+**Nothing already played moves.** It applies from the next scheme run on. Parity records the
+bench rule by writing it into the lifted artifact (`tests/parity.test.js`), so the rest of
+scheme processing is still compared move for move; the lean is invisible to parity because
+its pools carry no depth ranks, and with none the pick is the artifact's even pick, random
+number for random number.

@@ -21,7 +21,7 @@
  * healthy" is the best depth-chart rank among the players who can be dealt this week, so
  * when a team's RB1 is out his RB2 gets the better odds. QB, TE and Coach are untouched -
  * the pool carries one of each per NFL team, so every one of them is already the top man
- * - and so are redraws. A player the commissioner added by hand has no depth-chart rank
+ * - and, until OQ-36 below, so were redraws. A player the commissioner added by hand has no depth-chart rank
  * and takes the normal odds. `TOP_OF_CHART_WEIGHT` is the whole dial: set it to 1 and the
  * deal is exactly the even shuffle it was before, down to the random numbers it draws.
  */
@@ -74,6 +74,35 @@ function dealPile(state, pos, players, rng) {
     .map((id) => ({ id, key: Math.pow(rng(), 1 / (top.has(id) ? TOP_OF_CHART_WEIGHT : 1)) }))
     .sort((a, b) => a.key - b.key)
     .map((x) => x.id);
+}
+
+/* OQ-36, Scott 2026-11-05: Steal and Redraw lean the same way the deal does. Picks ONE
+ * of `candidates` (players at `pos`, each with an `id`), with each NFL team's top
+ * healthy RB or WR TOP_OF_CHART_WEIGHT times as likely as anyone else.
+ *
+ * "Top" is measured against the WHOLE week's available pool at that position - the same
+ * set the deal ranks - not against `candidates`. Otherwise a team's RB2 would become its
+ * "1" for a steal simply because the real RB1 sits in the free agents, and the lean would
+ * favour whoever happened to be left rather than the players the depth chart rates.
+ *
+ * With nobody weighted among the candidates it is exactly the old even pick - one rng()
+ * call, floor(rng() * n) - so parity and every pool without depth ranks draw the same
+ * random numbers they always did. Do not "simplify" that branch away. */
+export function pickWeighted(state, pos, candidates, rng = defaultRng) {
+  if (candidates.length === 0) return null;
+  const even = () => candidates[Math.floor(rng() * candidates.length)];
+  if (!WEIGHTED_POSITIONS.has(pos) || TOP_OF_CHART_WEIGHT === 1) return even();
+  const pool = (state.playerPool || []).filter((p) => p.position === pos && isPlayerAvailable(state, p));
+  const top = topOfChartIds(state, pool);
+  if (!candidates.some((c) => top.has(c.id))) return even();
+  const weightOf = (c) => (top.has(c.id) ? TOP_OF_CHART_WEIGHT : 1);
+  const total = candidates.reduce((sum, c) => sum + weightOf(c), 0);
+  let r = rng() * total;
+  for (const c of candidates) {
+    r -= weightOf(c);
+    if (r < 0) return c;
+  }
+  return candidates[candidates.length - 1];
 }
 
 export function dealRosters(state, teamIds, rng = defaultRng) {

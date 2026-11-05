@@ -2405,3 +2405,25 @@ header and the team card, and survived a reload.
 **Not done.** The editor still closes on Save whether or not the write lands; the banner is
 what tells you it did not. Carrying a per-write result back to the component is issue #58's
 territory.
+
+## A steal can take a bench player (2026-11-05, OQ-36)
+
+**Rules change, Scott's.** Three parts: a Steal's targets are every unprotected player at the
+position on another team's roster, bench included; a Block may protect anyone on your own
+roster; and both a steal's victim and a redraw's free agent are picked with the deal's
+2-to-1 top-of-the-chart lean at RB and WR.
+
+- `src/engine/schemes.js` - the victim list walks the bench after the starters, and the
+  replacement goes into whichever spot was emptied.
+- `src/engine/deal.js` - `pickWeighted`, one weighted pick sharing `TOP_OF_CHART_WEIGHT`.
+  With nobody ranked among the candidates it is `floor(rng() * n)`, the artifact's pick.
+- `server/operations.js` - `submitScheme` checks a Block is on your roster, not your starters.
+- `src/recap/moves.js` - `fromTeamId` looked only at starters, so a bench steal would have
+  lost whose roster it came from in the recap.
+- The scheme form offers your whole roster for a Block; the Rules, Help and welcome screens
+  say the bench can be stolen.
+
+**Parity.** `tests/parity.test.js` writes the bench rule into the lifted artifact as three
+text patches, each asserting the line it replaces still exists, rather than dropping the
+scheme comparisons. The older "every target blocked" tests now empty the bench at that
+position first, since one Block can no longer cover two QBs.
