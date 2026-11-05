@@ -2,8 +2,25 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { apiPlugin } from "./vite-plugin-api.js";
 
+/* Which build this is (2026-11-05). Netlify sets COMMIT_REF on every deploy; anywhere
+ * else the build time stands in. The id is baked into the bundle AND written to
+ * /version.json, and a page whose id no longer matches the file is an old copy a phone
+ * kept - src/hooks/useFreshVersion.js reloads it. */
+const BUILD_ID = process.env.COMMIT_REF || "local-" + Date.now();
+
+function versionFile() {
+  return {
+    name: "pigskin-version-file",
+    apply: "build",
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ build: BUILD_ID }) + "\n" });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), apiPlugin()],
+  plugins: [react(), apiPlugin(), versionFile()],
+  define: { __APP_BUILD__: JSON.stringify(BUILD_ID) },
   server: { port: 5173 },
   test: {
     environment: "node",
