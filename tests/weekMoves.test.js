@@ -27,7 +27,7 @@ import {
 import { moveChip, moveHeadline, parseMove, weekMoves } from "../src/components/weekMoves.js";
 import { schemeTicketWords, stripTags } from "../src/components/schemeTicket.jsx";
 import { finishedPeriods, liveRows, resultsFor, scoreboardPages, standingsThrough } from "../src/components/weekByWeek.jsx";
-import { dealtState, emptyFreeAgents, fillStats, starter } from "./helpers/fixtures.js";
+import { clearBench, dealtState, emptyFreeAgents, fillStats, onRoster, sameSpot, starter } from "./helpers/fixtures.js";
 
 const scheme = (type, position, playerId) => ({ type, position, playerId, submittedAt: "2026-10-16T12:00:00.000Z" });
 const nameOf = (s, id) => getPlayer(s, id).name;
@@ -51,8 +51,8 @@ describe("weekMoves reads the engine's own sentences", () => {
     s.schemes = { team_0: scheme("steal", "QB", dropped) };
     const next = processSchemes(s, seededRng(11));
     const got = starter(next, "team_0", "QB");
-    const victim = s.teams.find((t) => t.id !== "team_0" && t.roster.starters.QB === got);
-    const fill = starter(next, victim.id, "QB");
+    const victim = s.teams.find((t) => t.id !== "team_0" && onRoster(s, t.id).includes(got));
+    const fill = sameSpot(s, next, victim.id, got);
 
     const thief = tmOf(next, "team_0");
     expect(thief.scheme).toBe("steal");
@@ -101,6 +101,7 @@ describe("weekMoves reads the engine's own sentences", () => {
 
   it("reads a steal that found no target", () => {
     const s = dealtState(2, 4);
+    clearBench(s, "QB", ["team_1"]);
     s.schemes = {
       team_0: scheme("steal", "QB", starter(s, "team_0", "QB")),
       team_1: scheme("block", "QB", starter(s, "team_1", "QB")),

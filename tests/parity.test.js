@@ -34,11 +34,59 @@ const LEGACY_SRC = path.join(ROOT, "LegacyProject", "PigskinPokerCode.jsx");
 const PURE_REGION = [242, 857];
 
 let L; // the legacy module
+
+/* RULES CHANGE, 2026-11-05 - OQ-36, Scott: THE BENCH CAN BE STOLEN. The artifact's steal
+ * only ever looked at another team's starters, which let a manager hide his best player
+ * on the bench until schemes had run. Now a steal's target is anyone at that position on
+ * another team's roster, starters first and bench after, and the victim's free-agent
+ * replacement goes into whichever slot was emptied.
+ *
+ * Rather than stop comparing schemes, the lifted artifact gets that one rule written into
+ * it here, as text, and everything else about it is still checked move for move. Each
+ * patch asserts the line it replaces is still there, so a moved artifact fails loudly.
+ *
+ * NOT patched, because parity cannot see it: the second half of OQ-36, Steal and Redraw
+ * leaning toward each NFL team's top RB and WR. The parity pools carry no depth ranks, and
+ * `pickWeighted` (src/engine/deal.js) falls back to the artifact's even pick, random
+ * number for random number, when nobody is ranked. tests/schemes.test.js covers the lean. */
+function applyRuleChanges(body) {
+  const swaps = [
+    [
+      [
+        '        POSITIONS.concat(["FLEX"]).forEach((slot) => {',
+        "          const pid = t.roster.starters[slot];",
+      ],
+      [
+        '        POSITIONS.concat(["FLEX"]).map((slot) => ({ area: "starters", slot, pid: t.roster.starters[slot] }))',
+        '          .concat(t.roster.bench.map((pid, index) => ({ area: "bench", index, pid })))',
+        "          .forEach(({ area, slot, index, pid }) => {",
+      ],
+    ],
+    [
+      ["              victims.push({ team: t, slot, playerId: pid });"],
+      ["              victims.push({ team: t, area, slot, index, playerId: pid });"],
+    ],
+    [
+      ["      target.team.roster.starters[target.slot] = replacementId; // may be null if pool empty"],
+      [
+        '      if (target.area === "starters") target.team.roster.starters[target.slot] = replacementId;',
+        "      else target.team.roster.bench[target.index] = replacementId;",
+      ],
+    ],
+  ];
+  const eol = body.includes("\r\n") ? "\r\n" : "\n";
+  for (const [from, to] of swaps) {
+    const text = from.join(eol);
+    expect(body.includes(text), "artifact line moved: " + from[0].trim()).toBe(true);
+    body = body.replace(text, () => to.join(eol));
+  }
+  return body;
+}
 const realRandom = Math.random;
 
 beforeAll(async () => {
   const lines = fs.readFileSync(LEGACY_SRC, "utf8").split("\n");
-  const body = lines.slice(PURE_REGION[0] - 1, PURE_REGION[1]).join("\n");
+  const body = applyRuleChanges(lines.slice(PURE_REGION[0] - 1, PURE_REGION[1]).join("\n"));
 
   // Guard: if the region ever picks up JSX, fail loudly rather than mysteriously.
   expect(body).not.toMatch(/<\/[A-Za-z]|\/>/);
@@ -310,6 +358,14 @@ describe("parity with the original artifact", () => {
       freezeClock();
       const s = dealtFixture(11, 3);
       const qb = (id) => s.teams.find((t) => t.id === id).roster.starters.QB;
+      /* Since OQ-36 a bench QB is a target as well, and a Block covers only one player.
+       * Emptying the other teams' bench QB slots keeps this the no-victim case. */
+      s.teams.forEach((t) => {
+        t.roster.bench = t.roster.bench.map((pid) => {
+          const p = s.playerPool.find((x) => x.id === pid);
+          return t.id !== "team_0" && p && p.position === "QB" ? null : pid;
+        });
+      });
       s.schemes = {
         team_0: { type: "steal", position: "QB", playerId: qb("team_0"), submittedAt: "x" },
         team_1: { type: "block", position: "QB", playerId: qb("team_1"), submittedAt: "x" },

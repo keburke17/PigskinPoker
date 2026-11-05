@@ -19,7 +19,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  POSITIONS,
   SCHEME_POSITIONS,
   getPlayer,
   nowStamp,
@@ -56,7 +55,8 @@ export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) 
   if (!team.roster) return <EmptyState>No roster dealt yet this period - nothing to schedule.</EmptyState>;
 
   const rosterIds = teamRosterPlayerIds(team);
-  const candidatePlayers = (type === "block" ? POSITIONS.concat(["FLEX"]).map((s) => team.roster.starters[s]).filter(Boolean) : rosterIds)
+  /* OQ-36 (2026-11-05): the bench can be stolen, so a Block may protect anyone on it. */
+  const candidatePlayers = rosterIds
     .map((pid) => getPlayer(state, pid))
     .filter((p) => p && position && p.position === position);
 
@@ -98,7 +98,7 @@ export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) 
         <label className="pp-label">Play Scheme</label>
         <select className="pp-select" value={type} disabled={disabled} onChange={(e) => { setType(e.target.value); setPosition(""); setPlayerId(""); }}>
           <option value="noaction">No Action</option>
-          <option value="block">Block - protect a starter</option>
+          <option value="block">Block - protect a player</option>
           <option value="steal">Steal - take from another team</option>
           <option value="redraw">Redraw - drop for a random replacement</option>
         </select>
@@ -114,12 +114,12 @@ export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) 
           </div>
           {position && (
             <div className="pp-field">
-              <label className="pp-label">{type === "block" ? "Starter to protect" : "Player to drop"}</label>
+              <label className="pp-label">{type === "block" ? "Player to protect" : "Player to drop"}</label>
               <select className="pp-select" value={playerId || ""} disabled={disabled} onChange={(e) => setPlayerId(e.target.value)}>
                 <option value="">Choose a player...</option>
                 {candidatePlayers.map((p) => <option key={p.id} value={p.id}>{playerLabel(p)}</option>)}
               </select>
-              {candidatePlayers.length === 0 ? <p className="pp-sub">No eligible {position}s on your roster{type === "block" ? " starting lineup" : ""}.</p> : null}
+              {candidatePlayers.length === 0 ? <p className="pp-sub">No eligible {position}s on your roster.</p> : null}
             </div>
           )}
         </>

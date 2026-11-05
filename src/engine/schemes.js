@@ -16,6 +16,13 @@
  * it - freeAgentIdOfPosition computes its own. Dead local, removed so the no-unused-vars
  * lint rule stays on. Nothing else was touched. Recorded in docs/MIGRATION-NOTES.md.
  *
+ * AND A SECOND - SCOTT'S RULING OF 2026-11-05 (OQ-36): THE BENCH CAN BE STOLEN. It used to
+ * be starters only, which let a manager sit his best player until schemes had run and move
+ * him back before kickoff - protection without spending his Block. Now every player at
+ * that position on another team's roster is a target, a Block may protect anyone on your
+ * own roster, and both a steal's victim and a redraw's free agent are picked with the
+ * deal's top-of-the-chart lean (`pickWeighted` in deal.js) rather than evenly.
+ *
  * KNOWN GAP - OQ-B (docs/OPEN-QUESTIONS.md): a block is not validated as being on the
  * acting team's own starting lineup. The submission form allows nothing else, so this
  * is unreachable today, but the server must enforce it once writes move server-side in
@@ -27,6 +34,7 @@ import { isPlayerAvailable } from "./availability.js";
 import { deepClone, nowStamp, periodLabel, shuffle, uid } from "./helpers.js";
 import { allRosteredPlayerIds, getPlayer, slotForPlayer } from "./state.js";
 import { POSITIONS } from "./constants.js";
+import { pickWeighted } from "./deal.js";
 
 export function processSchemes(state, rng = defaultRng) {
   const next = deepClone(state);
@@ -75,8 +83,8 @@ export function processSchemes(state, rng = defaultRng) {
     const candidates = next.playerPool.filter(
       (p) => p.position === pos && isPlayerAvailable(next, p) && !rostered.has(p.id)
     );
-    if (candidates.length === 0) return null;
-    return candidates[Math.floor(rng() * candidates.length)].id;
+    const pick = pickWeighted(next, pos, candidates, rng);
+    return pick ? pick.id : null;
   };
 
   shuffled.forEach(([teamId, sc]) => {
@@ -90,8 +98,13 @@ export function processSchemes(state, rng = defaultRng) {
       const victims = [];
       teams.forEach((t) => {
         if (t.id === teamId || !t.roster) return;
-        POSITIONS.concat(["FLEX"]).forEach((slot) => {
-          const pid = t.roster.starters[slot];
+        /* OQ-36: starters AND bench. Starters are listed first and the bench after, so a
+         * team with nobody on the bench at that position offers exactly the list it
+         * always did. */
+        const spots = POSITIONS.concat(["FLEX"])
+          .map((slot) => ({ area: "starters", slot, pid: t.roster.starters[slot] }))
+          .concat((t.roster.bench || []).map((pid, index) => ({ area: "bench", index, pid })));
+        spots.forEach(({ area, slot, index, pid }) => {
           if (pid) {
             const pl = getPlayer(next, pid);
             /* A PLAYER WHO IS NOT PLAYING CANNOT BE STOLEN EITHER (OQ-25). Since the deal
@@ -100,7 +113,7 @@ export function processSchemes(state, rng = defaultRng) {
              * postponed after the deal. Stealing a guaranteed zero would spend a team's one
              * action for the week on nothing, which is not a trap worth leaving open. */
             if (pl && pl.position === sc.position && !protectedIds.has(pid) && isPlayerAvailable(next, pl)) {
-              victims.push({ team: t, slot, playerId: pid });
+              victims.push({ id: pid, team: t, area, slot, index, playerId: pid });
             }
           }
         });
@@ -120,14 +133,16 @@ export function processSchemes(state, rng = defaultRng) {
         });
         return;
       }
-      const target = victims[Math.floor(rng() * victims.length)];
+      const target = pickWeighted(next, sc.position, victims, rng);
       const stolenPlayer = getPlayer(next, target.playerId);
       // remove dropped player from acting team, place stolen player in same slot
       if (loc.area === "starters") team.roster.starters[loc.slot] = target.playerId;
       else team.roster.bench[loc.index] = target.playerId;
       // victim loses stolen player, gets FA replacement of same position in same slot
       const replacementId = freeAgentIdOfPosition(sc.position);
-      target.team.roster.starters[target.slot] = replacementId; // may be null if pool empty
+      // may be null if pool empty
+      if (target.area === "starters") target.team.roster.starters[target.slot] = replacementId;
+      else target.team.roster.bench[target.index] = replacementId;
       const replacementPlayer = getPlayer(next, replacementId);
       activity.push({
         id: uid("act", rng),

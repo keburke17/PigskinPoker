@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { FLEX_POSITIONS, getPlayer, processSchemes, seededRng, slotAcceptsPosition } from "../src/engine/index.js";
-import { dealtState, emptyFreeAgents, rosteredIds, starter, team } from "./helpers/fixtures.js";
+import { FLEX_POSITIONS, getPlayer, pickWeighted, processSchemes, seededRng, slotAcceptsPosition } from "../src/engine/index.js";
+import { clearBench, dealtState, emptyFreeAgents, onRoster, rosteredIds, starter, team } from "./helpers/fixtures.js";
 
 const scheme = (type, position, playerId) => ({
   type,
@@ -55,17 +55,16 @@ describe("processSchemes", () => {
       const newQb = starter(next, "team_0", "QB");
       expect(newQb).not.toBe(dropped);
 
-      // the stolen player came off some other team, which now holds a different QB
-      const victim = s.teams.find(
-        (t) => t.id !== "team_0" && Object.values(t.roster.starters).includes(newQb)
-      );
+      // the stolen player came off some other team's roster - starters or, since OQ-36,
+      // the bench - and that team no longer holds him
+      const victim = s.teams.find((t) => t.id !== "team_0" && onRoster(s, t.id).includes(newQb));
       expect(victim).toBeDefined();
-      const victimAfter = team(next, victim.id);
-      expect(Object.values(victimAfter.roster.starters)).not.toContain(newQb);
+      expect(onRoster(next, victim.id)).not.toContain(newQb);
     });
 
     it("skips the steal when every candidate target is blocked (legacy 609-616)", () => {
       const s = dealtState(3, 4);
+      clearBench(s, "QB", ["team_1", "team_2"]);
       const before = JSON.stringify(s.teams);
       s.schemes = {
         team_0: scheme("steal", "QB", starter(s, "team_0", "QB")),
@@ -267,5 +266,145 @@ describe("a TE in the FLEX", () => {
     const replacement = getPlayer(next, starter(next, "team_0", "FLEX"));
     expect(replacement.position).toBe("TE");
     expect(replacement.id).not.toBe(flexTe);
+  });
+});
+
+/* OQ-36, Scott 2026-11-05. The bench can be stolen, a Block covers anyone on your roster,
+ * and Steal and Redraw lean toward each NFL team's top RB and WR the way the deal does. */
+describe("processSchemes - the bench can be stolen (OQ-36)", () => {
+  const benchAt = (s, id, pos) =>
+    team(s, id).roster.bench.find((pid) => pid && getPlayer(s, pid).position === pos);
+
+  it("takes a bench player when the only unprotected target is on the bench", () => {
+    const s = dealtState(2, 4);
+    const dropped = starter(s, "team_0", "QB");
+    const blockedStarter = starter(s, "team_1", "QB");
+    const benchQb = benchAt(s, "team_1", "QB");
+    expect(benchQb).toBeDefined();
+    const benchIndex = team(s, "team_1").roster.bench.indexOf(benchQb);
+    s.schemes = {
+      team_0: scheme("steal", "QB", dropped),
+      team_1: scheme("block", "QB", blockedStarter),
+    };
+    const next = processSchemes(s, seededRng(9));
+
+    expect(starter(next, "team_0", "QB")).toBe(benchQb);
+    expect(starter(next, "team_1", "QB")).toBe(blockedStarter);
+    const fill = team(next, "team_1").roster.bench[benchIndex];
+    expect(fill).not.toBe(benchQb);
+    expect(getPlayer(next, fill).position).toBe("QB");
+    expect(next.activityLog.find((e) => e.type === "steal").text).toMatch(/stole QB/);
+  });
+
+  it("a Block on a bench player protects him, on every seed", () => {
+    for (let seed = 1; seed <= 25; seed++) {
+      const s = dealtState(2, 4);
+      const benchQb = benchAt(s, "team_1", "QB");
+      const starterQb = starter(s, "team_1", "QB");
+      s.schemes = {
+        team_0: scheme("steal", "QB", starter(s, "team_0", "QB")),
+        team_1: scheme("block", "QB", benchQb),
+      };
+      const next = processSchemes(s, seededRng(seed));
+      expect(onRoster(next, "team_1")).toContain(benchQb);
+      expect(starter(next, "team_0", "QB")).toBe(starterQb);
+    }
+  });
+
+  it("over many seeds, steals land on bench players as well as starters", () => {
+    let bench = 0;
+    let starters = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const s = dealtState(4, 3);
+      s.schemes = { team_0: scheme("steal", "WR", starter(s, "team_0", "WR")) };
+      const got = starter(processSchemes(s, seededRng(seed)), "team_0", "WR");
+      const wasBench = s.teams.some((t) => t.id !== "team_0" && t.roster.bench.includes(got));
+      if (wasBench) bench++;
+      else starters++;
+    }
+    expect(bench).toBeGreaterThan(0);
+    expect(starters).toBeGreaterThan(0);
+  });
+});
+
+describe("pickWeighted - Steal and Redraw lean toward the 1s (OQ-36)", () => {
+  const rb = (id, team) => ({ id, name: id, position: "RB", team, status: "Active" });
+  const stateWith = (pool, ranks) => ({ ...dealtState(2, 1), playerPool: pool, _meta: { depthRanks: ranks } });
+
+  it("with nobody ranked it is the old even pick, random number for random number", () => {
+    const s = dealtState(4, 2);
+    const candidates = s.playerPool.filter((p) => p.position === "RB").slice(0, 7);
+    for (let seed = 1; seed <= 20; seed++) {
+      const even = candidates[Math.floor(seededRng(seed)() * candidates.length)];
+      expect(pickWeighted(s, "RB", candidates, seededRng(seed))).toBe(even);
+    }
+  });
+
+  it("makes a team's top RB about twice as likely as anyone else", () => {
+    const pool = [rb("a1", "AAA"), rb("a2", "AAA"), rb("b2", "BBB"), rb("b1", "BBB")];
+    const s = stateWith(pool, { a1: 1, a2: 2, b1: 1, b2: 2 });
+    const candidates = [pool[0], pool[1]]; // a1 is AAA's top RB, a2 is not
+    const rng = seededRng(2026);
+    let top = 0;
+    const N = 3000;
+    for (let i = 0; i < N; i++) if (pickWeighted(s, "RB", candidates, rng).id === "a1") top++;
+    expect(top / N).toBeGreaterThan(0.62);
+    expect(top / N).toBeLessThan(0.72); // 2-to-1 is 0.667
+  });
+
+  it("measures 'top' against the whole pool, not the candidates", () => {
+    // a1 is AAA's real RB1 and is not a candidate (say he is already on a roster), so a2
+    // is NOT promoted to a 1 just because he is the best AAA back left in the list. Same
+    // for b2 beside BBB's b1.
+    const pool = [rb("a1", "AAA"), rb("a2", "AAA"), rb("b2", "BBB"), rb("b1", "BBB")];
+    const s = stateWith(pool, { a1: 1, a2: 2, b2: 2, b1: 1 });
+    const candidates = [pool[1], pool[2]];
+    for (let seed = 1; seed <= 20; seed++) {
+      const even = candidates[Math.floor(seededRng(seed)() * candidates.length)];
+      expect(pickWeighted(s, "RB", candidates, seededRng(seed))).toBe(even);
+    }
+  });
+
+  it("leaves QB, TE and Coach even", () => {
+    const qbs = [
+      { id: "q1", name: "q1", position: "QB", team: "AAA", status: "Active" },
+      { id: "q2", name: "q2", position: "QB", team: "BBB", status: "Active" },
+    ];
+    const s = stateWith(qbs, { q1: 1, q2: 1 });
+    for (let seed = 1; seed <= 10; seed++) {
+      expect(pickWeighted(s, "QB", qbs, seededRng(seed))).toBe(qbs[Math.floor(seededRng(seed)() * 2)]);
+    }
+  });
+
+  it("a redraw lands on the top free-agent RB about twice as often", () => {
+    let topHits = 0;
+    let runs = 0;
+    let evenRuns = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      const s = dealtState(2, 6);
+      // Rank by pool order within NFL team, as the deal tests do.
+      const seen = {};
+      const depthRanks = {};
+      for (const p of s.playerPool) {
+        const key = p.team + "|" + p.position;
+        seen[key] = (seen[key] || 0) + 1;
+        depthRanks[p.id] = seen[key];
+      }
+      s._meta = { depthRanks };
+      const rostered = rosteredIds(s);
+      const free = s.playerPool.filter((p) => p.position === "RB" && !rostered.has(p.id));
+      const tops = new Set(free.filter((p) => depthRanks[p.id] === 1).map((p) => p.id));
+      const share = tops.size / free.length;
+      s.schemes = { team_0: scheme("redraw", "RB", starter(s, "team_0", "RB")) };
+      const got = starter(processSchemes(s, seededRng(seed)), "team_0", "RB");
+      // Expected share with 2-to-1 odds: 2t / (2t + (1 - t)).
+      runs += (2 * share) / (1 + share);
+      evenRuns += share;
+      if (tops.has(got)) topHits++;
+    }
+    const expected = runs / 300;
+    expect(Math.abs(topHits / 300 - expected)).toBeLessThan(0.08);
+    // And it is a real lean, clear of the even odds (about 0.57 here, against 0.73).
+    expect(topHits / 300).toBeGreaterThan(evenRuns / 300 + 0.05);
   });
 });

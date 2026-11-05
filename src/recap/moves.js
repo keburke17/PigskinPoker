@@ -20,7 +20,8 @@ function ownerOf(state, playerId) {
   if (!playerId) return null;
   for (const t of state.teams) {
     if (!t.roster) continue;
-    if (Object.values(t.roster.starters).includes(playerId)) return t.id;
+    /* The bench too: since OQ-36 (2026-11-05) a steal can take a bench player. */
+    if (Object.values(t.roster.starters).includes(playerId) || (t.roster.bench || []).includes(playerId)) return t.id;
   }
   return null;
 }
@@ -33,7 +34,7 @@ function ownerOf(state, playerId) {
  * @returns {Array<{teamId, type, position, playerId, gotId?, fromTeamId?, skipped?, attempts?}>}
  *   `playerId` is the player named on the scheme (blocked, or dropped). For a steal or a
  *   redraw `gotId` is who ended up in his slot, `skipped` says nothing changed, and a
- *   steal's `fromTeamId` is whose starter it took. A block's `attempts` counts the other
+ *   steal's `fromTeamId` is whose roster it took him from. A block's `attempts` counts the other
  *   teams that tried to steal at that position.
  */
 export function schemeMoves(before, after) {

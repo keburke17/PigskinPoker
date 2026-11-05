@@ -224,6 +224,12 @@ in a league that is actually being played is worse than a bug everyone has adapt
   with no ranks falls back to the plain shuffle, which is why parity did not move - **do not
   "simplify" that fallback away**, it is what keeps the artifact's deal reproducible.
   `TOP_OF_CHART_WEIGHT` is the dial; 1 restores the even deal exactly.
+- **A steal can take a BENCH player, and a Block can protect one** (`src/engine/schemes.js`).
+  **OQ-36, Scott 2026-11-05.** The artifact stole starters only, which let a manager hide a
+  star on the bench until schemes ran; `LegacyProject/` still does, and `tests/parity.test.js`
+  patches the rule into it. Steal and Redraw also take the deal's 2-to-1 lean toward each
+  team's top RB and WR (`pickWeighted` in `src/engine/deal.js`), falling back to the even
+  pick with no ranks - **keep that fallback** for the same reason as the deal's.
 - **A TE may START in the FLEX, but the deal never PUTS one there** (`FLEX_POSITIONS` /
   `slotAcceptsPosition` in `src/engine/state.js`). **OQ-33, Scott 2026-10-26.** The flex and
   the bench flex are still dealt a WR or RB, so every team still holds exactly 2 TEs; a

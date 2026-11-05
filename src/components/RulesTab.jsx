@@ -93,7 +93,7 @@ export function RulesTab({ state }) {
       ? <>Pick one scheme - Block, Steal or Redraw. Schemes process <strong>{schemeDeadlineWords(state)}</strong>.</>
       : <>Pick one scheme - Block, Steal or Redraw. Schemes process when your {boss} runs them.</>,
     <>To Steal or Redraw, you <strong>drop a player at the same position</strong> you&apos;re going after. Drop a WR, get a WR.</>,
-    <>Who you steal is <strong>random</strong>. Who you redraw is <strong>random</strong>. Blocks go first, then every steal and redraw runs in a <strong>random order</strong>.</>,
+    <>Who you steal is <strong>random</strong> - from anyone on their roster, bench included. Who you redraw is <strong>random</strong>. Both lean toward each NFL team&apos;s top RB and WR. Blocks go first, then every steal and redraw runs in a <strong>random order</strong>.</>,
     weekly
       ? <>Set your 6 starters. Every lineup locks at <strong>the {word}&apos;s first kickoff</strong>.</>
       : <>Set your 6 starters. Each locks at <strong>his own kickoff</strong>.</>,
@@ -122,9 +122,10 @@ export function RulesTab({ state }) {
       title: "Schemes",
       summary: "Block, Steal or Redraw - " + (schemeClock ? "process " + schemeDeadlineWords(state) : "one a " + word),
       body: [
-        <><strong>Block</strong> - protect one starter from steals.</>,
-        <><strong>Steal</strong> - drop a player, take a random unblocked starter at that same position from another team.</>,
+        <><strong>Block</strong> - protect one player on your roster from steals - bench included.</>,
+        <><strong>Steal</strong> - drop a player, take a random unblocked player at that same position from another team&apos;s roster. Bench players can be stolen too.</>,
         <><strong>Redraw</strong> - drop a player, get a random free agent at that same position.</>,
+        "Steals and redraws lean toward the 1s, like the deal: an NFL team's top healthy RB or WR is twice as likely to be picked.",
         "You always drop the position you're going after - drop an RB, get an RB.",
         "Blocks run first. Then every steal and redraw runs in a random order, so picking early gets you nothing.",
         "Coaches can't be schemed. Nobody sees your pick.",

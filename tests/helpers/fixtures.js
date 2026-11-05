@@ -41,6 +41,33 @@ export function dealtState(teamCount = 6, seed = 42) {
 export const team = (s, id) => s.teams.find((t) => t.id === id);
 export const starter = (s, id, slot) => team(s, id).roster.starters[slot];
 
+/** Every player id on a team's roster, starters and bench. */
+export const onRoster = (s, id) => {
+  const r = team(s, id).roster;
+  return [...Object.values(r.starters), ...r.bench];
+};
+
+/** Who holds `playerId` at the spot it sat in on `s` - starters or bench - now on `after`. */
+export const sameSpot = (s, after, teamId, playerId) => {
+  const r = team(s, teamId).roster;
+  const slot = Object.keys(r.starters).find((k) => r.starters[k] === playerId);
+  if (slot) return team(after, teamId).roster.starters[slot];
+  return team(after, teamId).roster.bench[r.bench.indexOf(playerId)];
+};
+
+/* Since OQ-36 (2026-11-05) the bench can be stolen. For the tests about a steal finding
+ * nobody, empty every bench slot at `pos` on the teams named, so a Block on the starter
+ * really does leave nothing to take. */
+export function clearBench(s, pos, teamIds) {
+  teamIds.forEach((id) => {
+    const r = team(s, id).roster;
+    r.bench = r.bench.map((pid) => {
+      const p = s.playerPool.find((x) => x.id === pid);
+      return p && p.position === pos ? null : pid;
+    });
+  });
+}
+
 /** Ids of every player currently on a roster. */
 export function rosteredIds(s) {
   const set = new Set();

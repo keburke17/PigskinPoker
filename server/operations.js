@@ -1202,20 +1202,20 @@ export async function submitScheme(db, { leagueId, token, teamId, scheme, expect
     return fail(409, "You are not in this hand.", { reason: "not-in-hand" });
   }
 
-  /* OQ-B: a Block must protect one of your OWN STARTERS. The artifact's form allowed
+  /* OQ-B: a Block must protect one of your OWN players. The artifact's form allowed
    * nothing else but the engine never re-checked, which stops being harmless the
-   * moment a request can be crafted by hand. Provisionally confirmed; awaiting the
-   * original designer's final word. */
+   * moment a request can be crafted by hand. It was "your own starters" until OQ-36
+   * (Scott, 2026-11-05) made the bench stealable - from then on anyone on your roster
+   * can be at risk, so anyone on your roster can be blocked. Still never a coach. */
   if (scheme.type === "block") {
     const player = playerRow(ctx.rows, scheme.playerId);
     const owned = ctx.rows.roster_slots.find(
       (r) =>
         r.period_id === ctx.period.id &&
         r.team_id === team.id &&
-        r.area === "starter" &&
         r.player_id === player?.id
     );
-    if (!owned) return fail(400, "You can only block one of your own starters.");
+    if (!owned) return fail(400, "You can only block a player on your own roster.");
   }
 
   const existing = ctx.rows.schemes.find(
