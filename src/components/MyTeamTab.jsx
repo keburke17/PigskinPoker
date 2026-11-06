@@ -70,7 +70,7 @@ export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, 
         {/* The scheme sentence that sat here is now the Ticket at the top of every tab
           * (schemeTicket.jsx). The one beside the Submit button stays - issue #27. */}
         <h3 className="pp-h3">Starting Lineup</h3>
-        <p className="pp-sub" style={{ marginBottom: 10 }}>Tap a player's card to move him. Every place he can go lights up HERE - tap one to make the move, or tap his card again to cancel.</p>
+        <p className="pp-sub" style={{ marginBottom: 10 }}>Tap a player's card to see everyone he can swap with, then tap one to make the move. Tap his card again to close the list.</p>
         <LineupEditor state={state} team={team} onSwap={onSwap} onMoveStarter={onMoveStarter} showStats={dealt} />
       </div>
 

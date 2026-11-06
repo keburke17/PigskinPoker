@@ -2427,3 +2427,8 @@ roster; and both a steal's victim and a redraw's free agent are picked with the 
 text patches, each asserting the line it replaces still exists, rather than dropping the
 scheme comparisons. The older "every target blocked" tests now empty the bench at that
 position first, since one Block can no longer cover two QBs.
+
+**Revised 2026-11-06: a list instead of HERE buttons** (OQ-34, Scott, after league
+feedback). Only `src/components/lineup.jsx` and its CSS changed: the picked card opens
+`PickList` under its row, built from the same `lineupMoveTargets` the HERE buttons used,
+and the dimming, MOVE and HERE faces are gone. No change to the engine or the server.

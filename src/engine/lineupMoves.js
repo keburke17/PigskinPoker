@@ -1,9 +1,9 @@
 /* Moving players around a lineup by tapping their cards (Scott, 2026-10-30, OQ-34).
  *
  * The lineup used to change one way: a dropdown under each starter swapped him for a
- * bench player who fit. Scott asked for the ESPN-style card instead - tap a card, every
- * place that player can go lights up HERE, tap one - and for two moves the dropdown
- * could not make:
+ * bench player who fit. Scott asked for the card to be the button instead - tap a card
+ * and see where that player can go (first as HERE buttons, since 2026-11-06 as a list
+ * under the card) - and for two moves the dropdown could not make:
  *
  *   starter <-> starter   A WR in the FLEX trades places with the WR, an RB with the RB,
  *                         a TE with the TE. Only ever two players of the SAME position,

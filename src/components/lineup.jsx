@@ -7,22 +7,28 @@
  * asks src/engine/lineupLock.js about rather than reading `lockedPlayerIds`; and since
  * 2026-10-30 (OQ-34, Scott's pick of option A of three mockups) the dropdown is gone.
  *
- * TAP THE CARD. Every position card is a button, starter or bench. Tap one and it turns
- * gold and reads MOVE; every place that player can go swaps its card for a pulsing HERE;
- * everything else fades back. Tap a HERE to make the move, or the same card to cancel.
- * Which places light up is src/engine/lineupMoves.js - starter for bench either way
- * round, starter for starter of the same position, and the three-way TE-to-FLEX.
+ * TAP THE CARD. Every position card is a button, starter or bench. Tap one and it goes
+ * gold and a short list opens right under it: everyone he can trade places with, where
+ * they are now, and their average. Tap a line to make the move, or the card again (or
+ * Cancel) to close it. Which players are on the list is src/engine/lineupMoves.js -
+ * starter for bench either way round, starter for starter of the same position, and the
+ * three-way TE-to-FLEX.
  *
- * THE MESSAGE ONLY SPEAKS WHEN SOMEONE IS MOVING. "Moving X" while a card is picked, who
- * went where for four seconds after, then nothing. Scott asked for no "Cancelled" and no
- * standing header, so a cancel or a tap on a locked player says nothing - the locked
- * card shakes instead.
+ * THE LIST REPLACED THE HERE BUTTONS ON 2026-11-06. Scott built option A first (MOVE on the
+ * card, HERE on every place he could go). League feedback was that some managers missed
+ * the old dropdown and liked the pick-from-a-list mockup, option C, which keeps the list
+ * the dropdown had while opening it from the card. Nothing about who may go where changed.
+ *
+ * THE MESSAGE ONLY SPEAKS AFTER A MOVE: who went where, for four seconds, then nothing.
+ * Scott asked for no "Cancelled" and no standing header. A tap on a locked player says
+ * nothing - the locked card shakes instead.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   LINEUP_LOCK,
   STARTER_SLOTS,
+  abbrFor,
   formatKickoff,
   getPlayer,
   isPlayerLocked,
@@ -30,6 +36,7 @@ import {
   lineupLockMode,
   lineupMoveTargets,
   lockTimeFor,
+  playerSeasonAverage,
 } from "../engine/index.js";
 import { useNow } from "../hooks/useNow.js";
 import { RosterSlotRow } from "./roster.jsx";
@@ -92,7 +99,6 @@ export function LineupEditor({ state, team, onSwap, onMoveStarter, showStats }) 
    * offering targets for a move the server would refuse. */
   const livePick = pick && movable && idAt(pick) && !locked(idAt(pick)) ? pick : null;
   const targets = livePick ? lineupMoveTargets(roster, livePick, positionOf, locked) : [];
-  const targetAt = (at) => targets.find((t) => sameSpot(t, at)) || null;
 
   const nameOf = (id) => {
     const p = getPlayer(state, id);
@@ -109,51 +115,47 @@ export function LineupEditor({ state, team, onSwap, onMoveStarter, showStats }) 
     later(() => setMessage((m) => (m === shown ? null : m)), 4000);
   };
 
+  const shakeCard = (id) => {
+    setShake(id);
+    later(() => setShake(null), 350);
+  };
+
+  /* Tapping a card opens its list, or closes it if it is already open. */
   const tap = (at) => {
     const id = idAt(at);
     if (livePick && sameSpot(livePick, at)) {
       setPick(null);
-      setMessage(null);
-      return;
-    }
-    const target = livePick ? targetAt(at) : null;
-    if (target) {
-      if (target.locked) {
-        setShake(id);
-        later(() => setShake(null), 350);
-        return;
-      }
-      const movingId = idAt(livePick);
-      if (livePick.area === "bench") {
-        onSwap(at.slot, livePick.index);
-        finish([[movingId, placeWords(at)], [id, "to the bench"]], [movingId, id]);
-      } else if (at.area === "bench") {
-        onSwap(livePick.slot, at.index);
-        finish([[id, placeWords(livePick)], [movingId, "to the bench"]], [movingId, id]);
-      } else if (target.fill != null) {
-        const fillId = roster.bench[target.fill];
-        onMoveStarter(livePick.slot, at.slot, target.fill);
-        finish(
-          [[movingId, placeWords(at)], [fillId, placeWords(livePick)], [id, "to the bench"]],
-          [movingId, fillId, id]
-        );
-      } else {
-        onMoveStarter(livePick.slot, at.slot, null);
-        finish([[movingId, placeWords(at)], [id, placeWords(livePick)]], [movingId, id]);
-      }
       return;
     }
     if (!id) return;
     if (locked(id)) {
       setPick(null);
-      setMessage(null);
-      setShake(id);
-      later(() => setShake(null), 350);
+      shakeCard(id);
       return;
     }
-    const next = lineupMoveTargets(roster, at, positionOf, locked).filter((t) => !t.locked).length;
     setPick(at);
-    setMessage({ moving: true, who: id, count: next });
+  };
+
+  /* Choosing a line in the list makes the move. */
+  const choose = (target) => {
+    if (!livePick || target.locked) return;
+    const at = target.area === "starter" ? { area: "starter", slot: target.slot } : { area: "bench", index: target.index };
+    const id = target.playerId;
+    const movingId = idAt(livePick);
+    if (livePick.area === "bench") {
+      onSwap(at.slot, livePick.index);
+      finish([[movingId, placeWords(at)], [id, "to the bench"]], [movingId, id]);
+    } else if (at.area === "bench") {
+      onSwap(livePick.slot, at.index);
+      finish([[id, placeWords(livePick)], [movingId, "to the bench"]], [movingId, id]);
+    } else if (target.fill != null) {
+      const fillId = roster.bench[target.fill];
+      onMoveStarter(livePick.slot, at.slot, target.fill);
+      finish([[movingId, placeWords(at)], [fillId, placeWords(livePick)], [id, "to the bench"]], [movingId, fillId, id]);
+    } else {
+      onMoveStarter(livePick.slot, at.slot, null);
+      finish([[movingId, placeWords(at)], [id, placeWords(livePick)]], [movingId, id]);
+    }
   };
 
   const row = (at, key) => {
@@ -162,43 +164,44 @@ export function LineupEditor({ state, team, onSwap, onMoveStarter, showStats }) 
     const player = getPlayer(state, id);
     const isLocked = locked(id);
     const picked = sameSpot(livePick, at);
-    const target = livePick && !picked ? targetAt(at) : null;
     const classes = [];
     if (picked) classes.push("pp-move-picked");
-    else if (livePick && !target) classes.push("pp-move-dim");
     if (id && flash.includes(id)) classes.push("pp-move-flash");
     const card = movable ? (
       <MoveCard
         slot={slot}
         position={player ? player.position : null}
-        mode={picked ? "picked" : target ? (target.locked ? "blocked" : "here") : "card"}
+        picked={picked}
         locked={isLocked}
         shake={!!id && shake === id}
-        label={
-          !player
-            ? slot + " - empty"
-            : picked
-            ? "Cancel moving " + player.name
-            : target
-            ? "Move here, " + slot + ", " + player.name
-            : "Move " + player.name
-        }
+        label={!player ? slot + " - empty" : picked ? "Close the list for " + player.name : "Move " + player.name}
         onClick={() => tap(at)}
       />
     ) : null;
     return (
-      <RosterSlotRow
-        key={key}
-        slot={slot}
-        player={player}
-        state={state}
-        statLine={at.area === "starter" ? stats[at.slot] : null}
-        locked={isLocked}
-        showStats={!!showStats}
-        bench={at.area === "bench"}
-        card={card}
-        className={classes.join(" ")}
-      />
+      <Fragment key={key}>
+        <RosterSlotRow
+          slot={slot}
+          player={player}
+          state={state}
+          statLine={at.area === "starter" ? stats[at.slot] : null}
+          locked={isLocked}
+          showStats={!!showStats}
+          bench={at.area === "bench"}
+          card={card}
+          className={classes.join(" ")}
+        />
+        {picked ? (
+          <PickList
+            state={state}
+            player={player}
+            targets={targets}
+            roster={roster}
+            onChoose={choose}
+            onCancel={() => setPick(null)}
+          />
+        ) : null}
+      </Fragment>
     );
   };
 
@@ -224,60 +227,72 @@ function BenchHeading() {
   );
 }
 
-/* The position card as a button. Its face is the ordinary card until a move is under way:
- * MOVE on the one picked, HERE on every place he can go, LOCKED on a place he could go if
- * the player there were free to move. */
-export function MoveCard({ slot, position, mode, locked, shake, label, onClick }) {
+/* The position card as a button. It looks like the ordinary card, and goes gold while its
+ * list is open. */
+export function MoveCard({ slot, position, picked, locked, shake, label, onClick }) {
   const split = !!position && position !== slot;
   const classes = ["pp-pos-card", "pp-move-card", position ? "pp-pos-" + slot : "pp-pos-empty"];
-  if (mode === "picked") classes.push("pp-move-card-picked");
-  if (mode === "here") classes.push("pp-move-card-here");
-  if (mode === "blocked") classes.push("pp-move-card-blocked");
+  if (picked) classes.push("pp-move-card-picked");
   if (shake) classes.push("pp-move-shake");
-  let face;
-  if (mode === "picked" || mode === "here") {
-    face = (
-      <>
-        <span className="pp-pos-card-rank pp-move-word">{mode === "picked" ? "MOVE" : "HERE"}</span>
-        <span className="pp-pos-card-sub">{slot}</span>
-      </>
-    );
-  } else if (mode === "blocked") {
-    face = <span className="pp-pos-card-rank pp-move-word-small">LOCKED</span>;
-  } else {
-    const rankClass = "pp-pos-card-rank" + (slot.length > 4 ? " pp-pos-card-rank-long" : split ? " pp-pos-card-rank-split" : "");
-    face = (
-      <>
-        <span className={rankClass}>{slot}</span>
-        {split ? <span className="pp-pos-card-sub">{position}</span> : null}
-      </>
-    );
-  }
+  const rankClass = "pp-pos-card-rank" + (slot.length > 4 ? " pp-pos-card-rank-long" : split ? " pp-pos-card-rank-split" : "");
   return (
     <button
       type="button"
       className={classes.join(" ")}
       aria-label={label}
-      aria-pressed={mode === "picked"}
-      aria-disabled={locked || mode === "blocked" || !position ? true : undefined}
+      aria-expanded={picked}
+      aria-disabled={locked || !position ? true : undefined}
       onClick={onClick}
     >
-      {face}
+      <span className={rankClass}>{slot}</span>
+      {split ? <span className="pp-pos-card-sub">{position}</span> : null}
     </button>
   );
 }
 
+/* THE LIST (OQ-34, revised 2026-11-06). Everyone the picked player can trade places with,
+ * one line each, the same people the HERE buttons used to light up: where they are now,
+ * who they are, and their average. A player whose game has started stays in the list,
+ * greyed and marked LOCKED, so a manager sees why he cannot pick him. A three-way move says
+ * who comes off the bench. */
+function PickList({ state, player, targets, roster, onChoose, onCancel }) {
+  const nameOf = (id) => {
+    const p = getPlayer(state, id);
+    return p ? p.name : null;
+  };
+  return (
+    <div className="pp-pick-list">
+      <div className="pp-pick-list-head">Swap {player.name} with</div>
+      {targets.length === 0 ? <div className="pp-sub">Nobody on your roster fits here.</div> : null}
+      {targets.map((t) => {
+        const p = getPlayer(state, t.playerId);
+        const where = t.area === "starter" ? t.slot : "BN";
+        const average = p ? playerSeasonAverage(state, p) : null;
+        const fillName = t.fill != null ? nameOf(roster.bench[t.fill]) : null;
+        return (
+          <button
+            key={t.area + (t.area === "starter" ? t.slot : t.index)}
+            type="button"
+            className="pp-pick-option"
+            disabled={t.locked}
+            onClick={() => onChoose(t)}
+          >
+            <span className={"pp-pick-tag pp-pos-" + where}>{where === "Coach" ? "HC" : where}</span>
+            <span className="pp-pick-who">
+              {p ? p.name : "Empty"}
+              {p ? <small> {abbrFor(p.team)} {p.position === "Coach" ? "HC" : p.position}</small> : null}
+              {fillName ? <small className="pp-pick-note">{fillName} comes off the bench</small> : null}
+            </span>
+            <span className="pp-pick-right">{t.locked ? "LOCKED" : average ? "avg " + average.avg.toFixed(1) : ""}</span>
+          </button>
+        );
+      })}
+      <button type="button" className="pp-pick-cancel" onClick={onCancel}>Cancel</button>
+    </div>
+  );
+}
+
 function MoveMessage({ message, nameOf }) {
-  if (message.moving) {
-    return (
-      <div className="pp-move-message" role="status">
-        Moving <b>{nameOf(message.who)}</b>.{" "}
-        {message.count
-          ? message.count + " place" + (message.count === 1 ? "" : "s") + " he can go."
-          : "Nowhere he can go right now."}
-      </div>
-    );
-  }
   return (
     <div className="pp-move-message" role="status">
       {message.parts.filter(([id]) => id).map(([id, words], i) => (
