@@ -829,6 +829,50 @@ export function resultsFromGames(rows, { season, week }) {
   return out;
 }
 
+/* ------------------------------------------------- Last Digit's games -- */
+
+/**
+ * Every regular-season game of one season, with its final score once it has one - all a
+ * Last Digit board needs (OQ-37). Same file as the results and the kickoffs.
+ *
+ * @returns {{ season, games: Array<{ week, home, away, homeScore, awayScore, kickoff }> }}
+ *   home/away as the abbreviations src/engine/nflTeams.js writes; a score is null until
+ *   the game is over; kickoff is null when the schedule has no time for it yet.
+ */
+export async function fetchSeasonGames({ season, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(GAMES_URL);
+  if (!res.ok) throw new Error("nflverse games returned HTTP " + res.status);
+  return { season, games: seasonGamesFrom(parseCsv(await res.text()), { season }) };
+}
+
+/** Exported for testing and the fixture: one season's games out of the whole file. */
+export function seasonGamesFrom(rows, { season }) {
+  const wanted = String(season);
+  const out = [];
+  for (const r of rows) {
+    if (String(r.season) !== wanted) continue;
+    /* Regular season only. The file carries the playoffs as weeks 19-22 with a game_type
+     * of WC, DIV, CON and SB; Last Digit ends at Week 18. */
+    if (r.game_type && r.game_type !== "REG") continue;
+    const week = Number(r.week);
+    if (!Number.isInteger(week) || week < 1 || week > 18) continue;
+    /* Through our own names and back, so JAC/JAX and LA/LAR come out as one team each. */
+    const home = NFL_TEAM_ABBR[NFL_TEAMS[r.home_team]];
+    const away = NFL_TEAM_ABBR[NFL_TEAMS[r.away_team]];
+    if (!home || !away) continue;
+    const score = (v) => (v === "" || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+    out.push({
+      week,
+      home,
+      away,
+      homeScore: score(r.home_score),
+      awayScore: score(r.away_score),
+      kickoff: kickoffIso(r.gameday, r.gametime),
+    });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------- kickoffs -- */
 
 /**

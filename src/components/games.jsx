@@ -18,6 +18,8 @@
  * the source stays ASCII (CLAUDE.md, "CP() for every glyph").
  */
 
+import { CP } from "../engine/constants.js";
+
 /* Each icon draws in a 24x24 box at whatever `size` it is asked for. `tone` picks the
  * colours for where it sits: "gold" on a game's gold badge, "ivory" on a league's ivory
  * badge, "dim" on a coming-soon card, "title" beside a heading on the dark felt. */
@@ -139,12 +141,16 @@ export const GAMES = [
     eyebrow: "Any week",
     blurb: "2-13 seats. A new hand every week.",
   },
+  /* OQ-37 (Scott, 2026-11-05). The first of the two coming-soon slots, now live. Named
+   * Last Digit so nobody takes it for traditional squares; the tag says it scales. */
   {
-    key: "soon-1",
-    comingSoon: true,
+    key: "lastdigit",
+    mode: "lastdigit",
     icon: "goalpost",
-    name: "New Game",
-    blurb: "A new game is on the way.",
+    name: "Last Digit",
+    eyebrow: "Full season",
+    blurb: "Hold one NFL team. Score the last digit of its score, every week.",
+    tag: "Great for office pools " + CP(0x00b7) + " Up to 32 players",
   },
   {
     key: "soon-2",
@@ -157,5 +163,5 @@ export const GAMES = [
 
 /** The picture a league's row shows: its game's. */
 export function iconForGame(game) {
-  return game === "table" ? "football" : "trophy";
+  return game === "table" ? "football" : game === "lastdigit" ? "goalpost" : "trophy";
 }

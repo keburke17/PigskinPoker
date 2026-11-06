@@ -836,11 +836,11 @@ async function makeAccount(email) {
   return { token: data.session.access_token, userId: data.user.id };
 }
 
+/* All at once, not one by one: the Last Digit suite (OQ-37) makes two dozen accounts of
+ * its own, and deleting them in turn ran past vitest's 10-second hook limit. */
 const wipeAccounts = async () => {
-  while (createdUserIds.length) {
-    const id = createdUserIds.pop();
-    await db.auth.admin.deleteUser(id).catch(() => {});
-  }
+  const ids = createdUserIds.splice(0);
+  await Promise.all(ids.map((id) => db.auth.admin.deleteUser(id).catch(() => {})));
 };
 
 /* Once, at the end. It used to run in beforeEach, which was necessary while each test
@@ -848,7 +848,7 @@ const wipeAccounts = async () => {
  * and deleting them between tests would invalidate the very tokens the next test uses. */
 afterAll(async () => {
   if (available) await wipeAccounts();
-});
+}, 60000);
 
 
 
@@ -3600,5 +3600,176 @@ gate()("OQ-31: the weekly recap", () => {
     const { data, error } = await browser.from("weekly_recaps").select("team_id").eq("league_id", leagueId);
     expect(error).toBeNull();
     expect(data.length).toBeGreaterThan(0);
+  });
+});
+
+/* ============================================================================
+ *  LAST DIGIT - OQ-37.
+ *
+ *  A game where each player holds one NFL team. What only the server can promise: one
+ *  join link fills it up to 32, a player arrives with no team, only the commissioner hands
+ *  teams out, no NFL team is held twice, and the door - joining AND handing out - shuts
+ *  at kickoff. The scores themselves are the engine's (tests/lastDigit.test.js); here the
+ *  feed is a stand-in, so nothing depends on what nflverse says today.
+ * ==========================================================================*/
+
+gate()("last digit", () => {
+  beforeEach(() => resetDemo());
+  const NAME = "Test Last Digit";
+  const cleanup = async () => { await db.from("leagues").delete().eq("name", NAME); };
+  const rand = () => Math.random().toString(36).slice(2);
+
+  /* A schedule with one game in Week 3, kicking off at `kick`. */
+  const feedWith = (kick, extra = []) => ({
+    fetchSeasonGames: async ({ season }) => ({
+      season,
+      games: [{ week: 3, home: "DET", away: "GB", homeScore: null, awayScore: null, kickoff: kick }, ...extra],
+    }),
+  });
+  const FUTURE = feedWith("2099-09-13T17:00:00.000Z");
+
+  async function makeGame({ draw = "random", joiners = 0, startWeek = 3 } = {}) {
+    const boss = await makeAccount("ld-boss-" + rand() + "@example.test");
+    const made = await ops.createLeague(db, {
+      accountToken: boss.token, name: NAME, year: 2033, mode: "lastdigit", startWeek, teamDraw: draw, teamName: "Scott",
+    });
+    expect(made.body).toMatchObject({ ok: true, mode: "lastdigit" });
+    const id = made.body.leagueId;
+    const inv = await ops.createInvite(db, { leagueId: id, token: boss.token, teamId: null, role: "manager" });
+    expect(inv.status).toBe(200);
+    const players = [];
+    for (let i = 0; i < joiners; i += 1) {
+      const acct = await makeAccount("ld-p" + i + "-" + rand() + "@example.test");
+      const r = await ops.redeemInvite(db, { code: inv.body.code, accountToken: acct.token, teamName: "Player " + i, feed: FUTURE });
+      players.push({ ...acct, status: r.status, body: r.body });
+    }
+    const view = async () => hydrate(await fetchLeagueRows(db, id));
+    return { id, boss, code: inv.body.code, players, view };
+  }
+
+  it("is created with its start week and draw, holds no player pool, and the commissioner plays", async () => {
+    const g = await makeGame({ draw: "manual", startWeek: 5 });
+    const { data: league } = await db.from("leagues").select("mode, start_week, team_draw, table_seats").eq("id", g.id).single();
+    expect(league).toEqual({ mode: "lastdigit", start_week: 5, team_draw: "manual", table_seats: null });
+    const { count } = await db.from("players").select("id", { count: "exact", head: true }).eq("league_id", g.id);
+    expect(count).toBe(0);
+
+    const v = await g.view();
+    expect(v._meta).toMatchObject({ mode: "lastdigit", startWeek: 5, teamDraw: "manual", seasonYear: 2033 });
+    expect(v.teams.map((t) => t.name)).toEqual(["Scott"]);
+    expect(Object.values(v._meta.nflTeams)).toEqual([null]);
+    expect((await ops.whoami(db, { leagueId: g.id, token: g.boss.token })).body.role).toBe("commissioner");
+    await cleanup();
+  });
+
+  it("refuses a start week outside 1 to 18 and a draw it does not know", async () => {
+    const { token } = await makeAccount("ld-bad-" + rand() + "@example.test");
+    for (const startWeek of [0, 19, "soon", null]) {
+      const r = await ops.createLeague(db, { accountToken: token, name: NAME, year: 2033, mode: "lastdigit", startWeek, teamDraw: "random" });
+      expect(r.status).toBe(400);
+    }
+    const r = await ops.createLeague(db, { accountToken: token, name: NAME, year: 2033, mode: "lastdigit", startWeek: 1, teamDraw: "hat" });
+    expect(r.status).toBe(400);
+    await cleanup();
+  });
+
+  it("lets everyone in through one link, with no team yet, and stops at 32", async () => {
+    const g = await makeGame({ joiners: 2 });
+    expect(g.players.map((p) => p.status)).toEqual([200, 200]);
+    const v = await g.view();
+    expect(v.teams).toHaveLength(3);
+    expect(Object.values(v._meta.nflTeams)).toEqual([null, null, null]);
+
+    // Fill the game to 32 directly, then one more person tries the link.
+    await db.from("teams").insert(Array.from({ length: 29 }, (_, i) => ({ league_id: g.id, name: "Filler " + i, legacy_id: "team_fill" + i + rand() })));
+    const late = await makeAccount("ld-late-" + rand() + "@example.test");
+    const r = await ops.redeemInvite(db, { code: g.code, accountToken: late.token, feed: FUTURE });
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/full/);
+    await cleanup();
+  });
+
+  it("deals a different NFL team to everyone waiting - and only the commissioner can", async () => {
+    const g = await makeGame({ joiners: 3 });
+    const manager = g.players[0].token;
+    expect((await ops.dealLastDigitTeams(db, { leagueId: g.id, token: manager, feed: FUTURE })).status).toBe(403);
+
+    const dealt = await ops.dealLastDigitTeams(db, { leagueId: g.id, token: g.boss.token, feed: FUTURE });
+    expect(dealt.status).toBe(200);
+    const held = Object.values(dealt.body.view._meta.nflTeams);
+    expect(held.every(Boolean)).toBe(true);
+    expect(new Set(held).size).toBe(4);
+
+    // Nobody is waiting now, so there is nothing to deal.
+    expect((await ops.dealLastDigitTeams(db, { leagueId: g.id, token: g.boss.token, feed: FUTURE })).status).toBe(409);
+    await cleanup();
+  });
+
+  it("lets the commissioner pick one team per player, and never the same team twice", async () => {
+    const g = await makeGame({ draw: "manual", joiners: 1 });
+    const v = await g.view();
+    const [mine, theirs] = v.teams.map((t) => t.id);
+
+    const a = await ops.setLastDigitTeam(db, { leagueId: g.id, token: g.boss.token, teamId: mine, nflTeam: "DET", feed: FUTURE });
+    expect(a.status).toBe(200);
+    expect(a.body.view._meta.nflTeams[mine]).toBe("DET");
+
+    const twice = await ops.setLastDigitTeam(db, { leagueId: g.id, token: g.boss.token, teamId: theirs, nflTeam: "DET", feed: FUTURE });
+    expect(twice.status).toBe(409);
+    expect((await ops.setLastDigitTeam(db, { leagueId: g.id, token: g.boss.token, teamId: theirs, nflTeam: "XYZ", feed: FUTURE })).status).toBe(400);
+    expect((await ops.setLastDigitTeam(db, { leagueId: g.id, token: g.players[0].token, teamId: theirs, nflTeam: "BUF", feed: FUTURE })).status).toBe(403);
+
+    const cleared = await ops.setLastDigitTeam(db, { leagueId: g.id, token: g.boss.token, teamId: mine, nflTeam: null, feed: FUTURE });
+    expect(cleared.body.view._meta.nflTeams[mine]).toBeNull();
+    await cleanup();
+  });
+
+  it("shuts joining and handing out at kickoff - but a team whose player quit can still be handed on", async () => {
+    const g = await makeGame({ draw: "manual", joiners: 1 });
+    const v = await g.view();
+    const theirs = v.teams[1].id;
+    await ops.setLastDigitTeam(db, { leagueId: g.id, token: g.boss.token, teamId: theirs, nflTeam: "KC", feed: FUTURE });
+
+    // The game was made in 2020, and its first game kicked off in 2021: it has started.
+    await db.from("leagues").update({ created_at: "2020-01-01T00:00:00Z" }).eq("id", g.id);
+    const KICKED = feedWith("2021-09-13T17:00:00.000Z");
+
+    const pick = await ops.setLastDigitTeam(db, { leagueId: g.id, token: g.boss.token, teamId: v.teams[0].id, nflTeam: "DET", feed: KICKED });
+    expect(pick.status).toBe(409);
+    expect(pick.body.reason).toBe("locked");
+    expect((await ops.dealLastDigitTeams(db, { leagueId: g.id, token: g.boss.token, feed: KICKED })).status).toBe(409);
+
+    const late = await makeAccount("ld-after-" + rand() + "@example.test");
+    const join = await ops.redeemInvite(db, { code: g.code, accountToken: late.token, feed: KICKED });
+    expect(join.status).toBe(409);
+    expect(join.body.error).toMatch(/kicked off/);
+
+    // The team-specific invite is how a quitter's team goes to somebody new, lock or no lock.
+    const handOn = await ops.createInvite(db, { leagueId: g.id, token: g.boss.token, teamId: theirs, role: "manager" });
+    const taker = await makeAccount("ld-taker-" + rand() + "@example.test");
+    const took = await ops.redeemInvite(db, { code: handOn.body.code, accountToken: taker.token, feed: KICKED });
+    expect(took.status).toBe(200);
+    expect((await ops.whoami(db, { leagueId: g.id, token: taker.token })).body.teamId).toBe(theirs);
+    await cleanup();
+  });
+
+  it("serves its members the season's games, and nobody else", async () => {
+    const g = await makeGame({ joiners: 1 });
+    const r = await ops.lastDigitGames(db, { leagueId: g.id, token: g.players[0].token, feed: FUTURE });
+    expect(r.status).toBe(200);
+    expect(r.body.season).toBe(2033);
+    expect(r.body.games[0]).toMatchObject({ week: 3, home: "DET", away: "GB" });
+
+    const stranger = await makeAccount("ld-stranger-" + rand() + "@example.test");
+    expect((await ops.lastDigitGames(db, { leagueId: g.id, token: stranger.token, feed: FUTURE })).status).toBe(401);
+    await cleanup();
+  });
+
+  it("leaves a season alone: no NFL teams to hand out, and no board of scores", async () => {
+    const token = await asCommissioner();
+    expect((await ops.setLastDigitTeam(db, { leagueId, token, teamId: T1, nflTeam: "DET", feed: FUTURE })).status).toBe(400);
+    expect((await ops.dealLastDigitTeams(db, { leagueId, token, feed: FUTURE })).status).toBe(400);
+    expect((await ops.lastDigitGames(db, { leagueId, token, feed: FUTURE })).status).toBe(400);
+    expect(hydrate(await fetchLeagueRows(db, leagueId))._meta.mode).toBe("season");
   });
 });

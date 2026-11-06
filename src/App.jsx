@@ -26,6 +26,7 @@ import { useLeague } from "./hooks/useLeague.js";
 import {
   emptyCumulative,
   hostTitle,
+  isLastDigit,
   isTable,
   uid,
   POSITIONS,
@@ -45,7 +46,14 @@ import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
 import { CommissionerTab } from "./components/commissioner.jsx";
 import { MySeatCard } from "./components/table.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
-import { TitleBall } from "./components/games.jsx";
+import { GoalpostIcon, TitleBall } from "./components/games.jsx";
+import {
+  LastDigitBoardTab,
+  LastDigitCommishTab,
+  LastDigitRulesTab,
+  LastDigitScheduleTab,
+  useLastDigitGames,
+} from "./components/lastDigit.jsx";
 import { useFreshVersion } from "./hooks/useFreshVersion.js";
 
 
@@ -88,6 +96,13 @@ export default function App() {
    * comes back into view - but never with a save still on its way (Scott, 2026-11-05,
    * "I still see Log Out until I refresh"). src/hooks/useFreshVersion.js. */
   useFreshVersion(() => saveState.status !== "saving" && saveState.status !== "error");
+
+  /* OQ-37: a Last Digit game's NFL scores, read only inside one and only once somebody is
+   * signed in to it. Up here with the other hooks because the render below returns early. */
+  const lastDigitData = useLastDigitGames(store, !!state && isLastDigit(state) && !!identity.role);
+  /* Which week the Schedule tab opens on - set by the board's "Full schedule" link so it
+   * lands on the week you were looking at. */
+  const [scheduleWeek, setScheduleWeek] = useState(null);
 
   /* Why the last magic link failed, if it did - captured on the first render so that
    * dismissing the banner does not bring it straight back. */
@@ -688,6 +703,7 @@ export default function App() {
 
   const isCommissioner = identity.role === "commissioner";
   const table = isTable(state);
+  const lastDigit = isLastDigit(state);
   /* A manager's team - and a commissioner's too, when they play: the dealer at a table
    * (issue #75), or a season commissioner, who gets a team when they create the league
    * (OQ-35). A commissioner with no team - a league made before that - has no My Team. */
@@ -702,7 +718,9 @@ export default function App() {
    * migration against a season people are playing. */
   const leagueId = route.name === "league" ? route.leagueId : null;
   const accountId = account ? account.userId : null;
-  const showWelcome = !welcomeDismissed && !!leagueId && !hasBeenWelcomed(accountId, leagueId);
+  /* The welcome card explains the poker week - the deal, schemes, lineups - so a Last Digit
+   * game, which has none of them, does not show it. Its Rules tab is the whole explanation. */
+  const showWelcome = !lastDigit && !welcomeDismissed && !!leagueId && !hasBeenWelcomed(accountId, leagueId);
   const dismissWelcome = () => {
     markWelcomed(accountId, leagueId);
     setWelcomeDismissed(true);
@@ -736,6 +754,16 @@ export default function App() {
    * Short labels alone did not fix that (five manager pills still want 410px of a 347px
    * row at 375px), so the nav also wraps on narrow screens - see .pp-nav in global.css.
    * Keep new labels short anyway: two rows of pills is fine, three is a menu. */
+  /* LAST DIGIT HAS FOUR TABS AND NO OTHERS (OQ-37). No rosters, no lineups, no week to
+   * run: the board, the NFL schedule, the rules, and the commissioner's setup. The board
+   * sits on `results` so a bare /l/<id> lands on it, as every league's main screen does. */
+  const LAST_DIGIT_NAV = [
+    { key: "results", label: "Board" },
+    { key: "schedule", label: "Schedule" },
+    { key: "rules", label: "Rules" },
+    ...(isCommissioner ? [{ key: "comm", label: "Commish" }] : []),
+    ...(siteAdmin ? [{ key: "admin", label: "Admin", route: { name: "admin" } }] : []),
+  ];
   const NAV = [
     { key: "results", label: table ? "Hand" : "Week" },
     ...(identity.role === "manager" || myTeam ? [{ key: "myteam", label: "My Team" }] : []),
@@ -756,7 +784,10 @@ export default function App() {
   ];
 
   return (
-    <div className="pp-root">
+    /* `ld-theme` is Last Digit's own look - the Game Program colours Scott picked
+     * (2026-11-05), cream paper with navy and red - so nobody mistakes it for the poker
+     * games, which keep the Midnight felt. It is only colour: see global.css. */
+    <div className={"pp-root" + (lastDigit ? " ld-theme" : "")}>
       {showWelcome ? (
         <WelcomeOverlay
           state={state}
@@ -780,7 +811,10 @@ export default function App() {
                 * Pigskin Poker where the eye already expects a brand, and costs 14px rather than a
                 * second row of header. */}
               <div className="pp-eyebrow">Pigskin Poker</div>
-              <h1 className="pp-h1 pp-league-title pp-title-with-ball"><TitleBall size="1.05em" /> {state.leagueName}</h1>
+              <h1 className="pp-h1 pp-league-title pp-title-with-ball">
+                {lastDigit ? <GoalpostIcon size="1.05em" tone="ivory" /> : <TitleBall size="1.05em" />} {state.leagueName}
+                {lastDigit ? <span className="ld-gtype">Last Digit</span> : null}
+              </h1>
               <span className="pp-badge-role">{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</span>
             </div>
             {/* HOME, NOT LOG OUT (Scott, 2026-11-04). The league switcher below already
@@ -815,7 +849,7 @@ export default function App() {
           {saveStatus === "error" && saveErrorDetail ? <ErrorBanner message={{ headline: "Save failed - retrying automatically.", detail: saveErrorDetail }} /> : null}
           <div className="pp-nav-wrap">
             <nav className="pp-nav">
-              {NAV.map((n) => (
+              {(lastDigit ? LAST_DIGIT_NAV : NAV).map((n) => (
                 <button
                   key={n.key}
                   className={"pp-nav-btn" + (tab === n.key ? " active" : "")}
@@ -826,6 +860,35 @@ export default function App() {
           </div>
         </div>
 
+        {lastDigit ? (
+          <div style={{ paddingTop: 14 }}>
+            {tab === "results" && (
+              <LastDigitBoardTab
+                state={state}
+                myTeam={myTeam}
+                data={lastDigitData}
+                onSeeSchedule={(week) => { setScheduleWeek(week); goToTab("schedule"); }}
+              />
+            )}
+            {tab === "schedule" && <LastDigitScheduleTab state={state} data={lastDigitData} initialWeek={scheduleWeek} />}
+            {tab === "rules" && <LastDigitRulesTab state={state} />}
+            {tab === "comm" && isCommissioner && (
+              <LastDigitCommishTab
+                state={state}
+                data={lastDigitData}
+                invites={invites}
+                onCreateInvite={onCreateInvite}
+                onRevokeInvite={onRevokeInvite}
+                onDeal={() => ops.dealLastDigitTeams()}
+                onSetTeam={(teamId, nflTeam) => ops.setLastDigitTeam(teamId, nflTeam)}
+                onDeleteLeague={onDeleteLeague}
+              />
+            )}
+            {!["results", "schedule", "rules", "comm"].includes(tab) || (tab === "comm" && !isCommissioner) ? (
+              <EmptyState>Last Digit has no screen here. <button className="pp-btn pp-btn-sm" onClick={() => goToTab("results")}>Go to the board</button></EmptyState>
+            ) : null}
+          </div>
+        ) : (
         <div style={{ paddingTop: 14 }}>
           {/* Your scheme on every tab until it processes, and on My Team and Rosters a small
             * line saying what it did (Scott, 2026-10-16). The Week screen carries the full
@@ -877,6 +940,7 @@ export default function App() {
             />
           )}
         </div>
+        )}
       </div>
     </div>
   );

@@ -55,6 +55,14 @@ import {
   TABLE_SEATS_MAX,
   SEASON_TEAMS_MAX,
   TABLE_SEATS_MIN,
+  LAST_DIGIT,
+  LAST_DIGIT_DRAWS,
+  LAST_DIGIT_MAX_PLAYERS,
+  LAST_DIGIT_WEEKS,
+  NFL_ABBRS,
+  dealLastDigit,
+  isLastDigit,
+  lastDigitLockAt,
   isTable,
   seatOf,
   seatsFree,
@@ -345,7 +353,7 @@ export async function whoami(db, { leagueId, token }) {
  * a league whose owner is "whoever holds this string" is the thing this phase exists to
  * get away from.
  */
-export async function createLeague(db, { accountToken, name, year, visibility = "members", mode = "season", seats = null, teamName = null }) {
+export async function createLeague(db, { accountToken, name, year, visibility = "members", mode = "season", seats = null, teamName = null, startWeek = null, teamDraw = null }) {
   const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to create a league.");
 
@@ -355,12 +363,21 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   if (!["members", "public"].includes(visibility)) return fail(400, "Unknown visibility.");
 
   /* Issue #75. A table is chosen here and only here - nothing changes a league's mode
-   * later, because a season's history means something a table's does not. */
-  if (!["season", "table"].includes(mode)) return fail(400, "Unknown league type.");
+   * later, because a season's history means something a table's does not. Last Digit
+   * (OQ-37) is chosen the same way, with its start week and how teams are handed out. */
+  if (!["season", "table", LAST_DIGIT].includes(mode)) return fail(400, "Unknown league type.");
   const table = mode === "table";
+  const lastDigit = mode === LAST_DIGIT;
   const seatCount = table ? Number(seats) : null;
   if (table && !(Number.isInteger(seatCount) && seatCount >= TABLE_SEATS_MIN && seatCount <= TABLE_SEATS_MAX)) {
     return fail(400, "A table has " + TABLE_SEATS_MIN + " to " + TABLE_SEATS_MAX + " seats.");
+  }
+  const firstWeek = lastDigit ? Number(startWeek) : null;
+  if (lastDigit && !(Number.isInteger(firstWeek) && firstWeek >= 1 && firstWeek <= LAST_DIGIT_WEEKS)) {
+    return fail(400, "Pick a starting week from 1 to " + LAST_DIGIT_WEEKS + ".");
+  }
+  if (lastDigit && !LAST_DIGIT_DRAWS.includes(teamDraw)) {
+    return fail(400, "Choose how teams are handed out: at random, or picked by you.");
   }
   /* Whoever creates a league plays in it: a dealer at their table, a commissioner in
    * their season (OQ-35). */
@@ -408,9 +425,11 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
 
   const leagueId = rows.leagues[0].id;
 
-  const { data: copied, error: poolError } = await db.rpc("copy_player_pool_into", {
-    target_league: leagueId,
-  });
+  /* LAST DIGIT DEALS NO PLAYERS, so it is not stocked with any: its board is the NFL
+   * teams' own scores. A season and a table are stocked exactly as before. */
+  const { data: copied, error: poolError } = lastDigit
+    ? { data: true, error: null }
+    : await db.rpc("copy_player_pool_into", { target_league: leagueId });
   if (poolError || !copied) {
     /* A league with no players cannot deal a week, and no screen in the app can add
      * them. Better to leave nothing behind than something unusable. */
@@ -422,7 +441,11 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
    * migration has reached this database yet. */
   const { error: visError } = await db
     .from("leagues")
-    .update(table ? { visibility, mode, table_seats: seatCount } : { visibility })
+    .update(
+      table ? { visibility, mode, table_seats: seatCount }
+        : lastDigit ? { visibility, mode, start_week: firstWeek, team_draw: teamDraw }
+        : { visibility }
+    )
     .eq("id", leagueId);
   if (visError) {
     /* Nobody is a member yet, so a league left here could be reached by nobody. Same
@@ -538,6 +561,141 @@ export async function setSeat(db, { leagueId, token, teamId, seat }) {
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
 }
 
+/* ------------------------------ Last Digit ------------------------------- */
+/*
+ * OQ-37. A player is a team row with an NFL team on it (`teams.nfl_team`). The board is
+ * NOT stored: it is src/engine/lastDigit.js run over the season's real scores, which the
+ * browser asks for with lastDigitGames and draws itself. So the only writes here are who
+ * holds which NFL team - dealt at random, or picked one at a time by the commissioner.
+ *
+ * Both close at the same moment joining does (lastDigitLockAt): the first kickoff, in the
+ * start week or later, after the game was made. After that the teams are fixed for the
+ * season, which is the whole fairness of the game - nobody can pick a team once its
+ * score is known.
+ */
+
+/* One read of games.csv serves every Last Digit game of the season for a few minutes. The
+ * file is ~2MB and changes a handful of times a week (docs/LIVE-DATA.md has nflverse's
+ * real cadence), so reading it on every board open would be pure waste. A test passes
+ * its own feed and is never cached. */
+const GAMES_TTL_MS = 5 * 60 * 1000;
+const gamesCache = new Map();
+
+async function seasonGames(season, feed) {
+  if (!feed) {
+    const hit = gamesCache.get(season);
+    if (hit && Date.now() - hit.at < GAMES_TTL_MS) return hit.games;
+  }
+  const source = feed ?? (await selectFeed());
+  if (!source.fetchSeasonGames) return [];
+  const { games } = await source.fetchSeasonGames({ season });
+  if (!feed) gamesCache.set(season, { at: Date.now(), games });
+  return games;
+}
+
+/** When this game's teams locked, or null while they are still open (or unknowable). */
+async function lastDigitClosedAt(view, feed, now = Date.now()) {
+  try {
+    const games = await seasonGames(view._meta.seasonYear, feed);
+    const at = lastDigitLockAt({ games, startWeek: view._meta.startWeek, createdAt: view._meta.createdAt });
+    return at != null && now >= Date.parse(at) ? at : null;
+  } catch {
+    /* A schedule we cannot read never locks anybody out - the commissioner can still set
+     * the game up, and the next read that works closes it. */
+    return null;
+  }
+}
+
+/** The season's games, for the board. Any member may read them. */
+export async function lastDigitGames(db, { leagueId, token, feed }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isLastDigit(ctx.view)) return fail(400, "Only a Last Digit game has a board of NFL scores.");
+  const season = ctx.view._meta.seasonYear;
+  try {
+    const games = await seasonGames(season, feed);
+    return good({ season, games, readAt: new Date().toISOString() });
+  } catch (e) {
+    return fail(502, "The NFL scores could not be read just now - try again in a minute. (" + (e?.message || "no reason given") + ")");
+  }
+}
+
+async function lastDigitGuard(db, leagueId, token, feed) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return { error: ctx.error };
+  if (!isCommissioner(ctx.session)) {
+    return { error: fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error) };
+  }
+  if (!isLastDigit(ctx.view)) return { error: fail(400, "Only a Last Digit game hands out NFL teams.") };
+  const closed = await lastDigitClosedAt(ctx.view, feed);
+  if (closed) {
+    return { error: fail(409, "The game has kicked off, so the teams are fixed for the season.", { reason: "locked", lockedAt: closed }) };
+  }
+  return { ctx };
+}
+
+/**
+ * Random draw: every player still waiting for a team gets one nobody holds. Players who
+ * already have a team keep it, so pressing it again after a late join deals only the
+ * newcomer. The seed is minted here, as the poker deal's is, so a browser cannot re-roll.
+ */
+export async function dealLastDigitTeams(db, { leagueId, token, feed }) {
+  const { ctx, error } = await lastDigitGuard(db, leagueId, token, feed);
+  if (error) return error;
+  const active = ctx.rows.teams.filter((t) => t.active);
+  const seed = newSeed();
+  const dealt = dealLastDigit(
+    active.map((t) => ({ teamId: t.id, nflTeam: t.nfl_team ?? null })),
+    seededRng(seedFromString(seed))
+  );
+  if (dealt.error) return fail(409, dealt.error);
+
+  for (const [teamUuid, abbr] of Object.entries(dealt.assign)) {
+    /* `is null` so a team picked by hand a moment ago is never overwritten by this. */
+    const { error: writeError } = await db.from("teams").update({ nfl_team: abbr }).eq("id", teamUuid).is("nfl_team", null);
+    if (writeError) return fail(409, "Two people changed the teams at once - reload and deal again. (" + writeError.message + ")");
+  }
+  await db.from("events").insert({
+    season_id: ctx.rows.seasons[0].id,
+    type: "deal",
+    text: "Teams dealt: " + Object.entries(dealt.assign)
+      .map(([id, abbr]) => (active.find((t) => t.id === id)?.name ?? "a player") + " " + abbr)
+      .join(", ") + ".",
+  });
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * Individual draw: give one player an NFL team, or take theirs away (`nflTeam: null`).
+ * One player per NFL team - the database's unique index says so too.
+ */
+export async function setLastDigitTeam(db, { leagueId, token, teamId, nflTeam = null, feed }) {
+  const { ctx, error } = await lastDigitGuard(db, leagueId, token, feed);
+  if (error) return error;
+  const team = teamRow(ctx.rows, teamId);
+  if (!team || !team.active) return fail(404, "Unknown player.");
+  const abbr = nflTeam == null || nflTeam === "" ? null : String(nflTeam).toUpperCase();
+  if (abbr != null && !NFL_ABBRS.includes(abbr)) return fail(400, "That is not an NFL team.");
+  if (abbr != null) {
+    const holder = ctx.rows.teams.find((t) => t.nfl_team === abbr && t.id !== team.id);
+    if (holder) return fail(409, holder.name + " already has " + abbr + ".", { reason: "taken" });
+  }
+  if ((team.nfl_team ?? null) === abbr) return good({ view: ctx.view });
+
+  const { error: writeError } = await db.from("teams").update({ nfl_team: abbr }).eq("id", team.id);
+  if (writeError) {
+    return String(writeError.message).includes("duplicate key")
+      ? fail(409, "Someone else just took " + abbr + ".", { reason: "taken" })
+      : fail(500, writeError.message);
+  }
+  await db.from("events").insert({
+    season_id: ctx.rows.seasons[0].id,
+    type: "deal",
+    text: abbr ? team.name + " holds " + abbr + "." : team.name + " no longer holds " + team.nfl_team + ".",
+  });
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
 /** Every league this account belongs to. The landing page's "your leagues" door. */
 export async function myLeagues(db, { accountToken }) {
   const user = await verifyAccount(db, accountToken);
@@ -551,7 +709,7 @@ export async function myLeagues(db, { accountToken }) {
   const leagueIds = members.map((m) => m.league_id);
   const { data: leagues } = await db
     .from("leagues")
-    .select("id, name, visibility, mode, table_seats, auto_process_schemes, tz")
+    .select("id, name, visibility, mode, table_seats, start_week, auto_process_schemes, tz")
     .in("id", leagueIds);
   const { data: teams } = await db
     .from("teams").select("id, name").in("id", members.map((m) => m.team_id).filter(Boolean));
@@ -620,7 +778,8 @@ export function leagueHomeFacts({ league, seasons = [], periods = [], seated = 0
     : [];
   const current = own.find((p) => p.phase !== "finalized") ?? own[own.length - 1] ?? null;
   return {
-    game: table ? "table" : "season",
+    game: table ? "table" : league?.mode === LAST_DIGIT ? LAST_DIGIT : "season",
+    startWeek: league?.mode === LAST_DIGIT ? (league?.start_week ?? null) : null,
     seats: table ? (league?.table_seats ?? null) : null,
     seated: table ? seated : null,
     period: current ? { type: current.type, number: current.number, phase: current.phase } : null,
@@ -736,7 +895,7 @@ export async function revokeInvite(db, { leagueId, token, inviteId }) {
  * Idempotent. Redeeming twice is a no-op rather than a second membership or an error,
  * which matters because "did that work?" is the most natural reason to press it again.
  */
-export async function redeemInvite(db, { code, accountToken, teamName = null }) {
+export async function redeemInvite(db, { code, accountToken, teamName = null, feed }) {
   const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to redeem an invite.");
 
@@ -786,6 +945,15 @@ export async function redeemInvite(db, { code, accountToken, teamName = null }) 
     if (!view) return fail(410, "That invite has no team to give you - ask for a new one.");
     if (isTable(view)) {
       if (seatsFree(view) < 1) return fail(409, "That table is full - every seat is taken.", { reason: "full" });
+    } else if (isLastDigit(view)) {
+      /* OQ-37: one player per NFL team, and the door shuts at kickoff - after that the
+       * teams are fixed, and a player arriving would have nothing to be dealt. */
+      if (view.teams.length >= LAST_DIGIT_MAX_PLAYERS) {
+        return fail(409, "That game is full - all " + LAST_DIGIT_MAX_PLAYERS + " NFL teams are spoken for.", { reason: "full" });
+      }
+      if (await lastDigitClosedAt(view, feed)) {
+        return fail(409, "That game has kicked off, so it is not taking new players. Ask the commissioner.", { reason: "started" });
+      }
     } else {
       if (view.teams.length >= SEASON_TEAMS_MAX) {
         return fail(409, "That league is full - it has " + SEASON_TEAMS_MAX + " teams.", { reason: "full" });

@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **1033 passed, 47 files**. If the output says
+2. `npm test` before committing: **1070 passed, 48 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -288,7 +288,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          44 suites
+tests/          48 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -393,7 +393,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-1033 tests. Three groups worth knowing about:
+1070 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -402,7 +402,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`, `notifyDb.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - 265 of the 1033
+  (started for you by `npm run dev`) and **skip themselves silently without it** - about 270 of the 1070
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -497,6 +497,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | **Weekly recap** | **Done, free.** A short, funny write-up of each team's week - finish, standings move, the steal that backfired, the bench that outscored the lineup - popping up once when a manager next opens the league after the finalize, then kept as a strip on My Team (OQ-31, Scott 2026-10-19). Written ONCE by the server at finalize (`src/recap/`, stored in `weekly_recaps`), from fill-in-the-blank lines in `src/recap/lines.js` that never repeat in a season - `scripts/recap-season-check.mjs` checks that. Two server-owned columns feed it and are deliberately absent from `decompose.js`: `periods.scheme_moves` (what each scheme did, captured when schemes run - the only moment it is known) and `seasons.recap_deck` (the lines used so far). **Nothing in the game reads a recap.** Regular-season weeks only; no AI - Scott chose free for now, and an AI writer later would change only where the words come from. |
 | **Injury report** | **Done, display only.** The NFL's injury report on every player - a QUES / DOUBT / OUT pill and a notepad with the practice days - read every three hours for every league, with no switch (OQ-29, Scott 2026-10-17). Its own table, `player_injuries`, and **nothing deals, scores or locks from it**: it never touches `players.status`, so a Questionable or Out player is dealt exactly as before. Keeping injured players out of the deal was raised and parked as a rules question. `src/engine/injuries.js` holds the dating rules; the file has no date column, so each day is saved as it arrives. |
 | **Table mode** | **Built 2026-10, issue #75, OQ-30 (Kyle, with Scott's agreement).** A second shape of league, chosen at creation (`leagues.mode`): a dealer, 2-13 seats (`leagues.table_seats`), and each player seated, sitting out or gone (`teams.seat`). A hand is a week dealt to whoever is seated; the deal snapshots them into `periods.participant_team_ids` and that snapshot, not `teams.seat`, is who plays it. Everything a table knows reaches the engine through `_meta` (`src/engine/table.js`), so **a state without it is a season** and parity is untouched. The tally is hands won and lost; no playoffs. **Not built: the poker-table view, and gamble mode (#85).** |
+| **Last Digit** | **Built 2026-11-05, OQ-37 (Scott).** A third game, chosen at creation (`leagues.mode = 'lastdigit'`), sharing NONE of poker's rules: each player holds one NFL team (`teams.nfl_team`) and scores the last digit of its real final score every week, from `leagues.start_week` to Week 18. Teams are dealt at random or picked by the commissioner (`leagues.team_draw`). **Nothing about a week is stored** - `src/engine/lastDigit.js` works the board out from nflverse's games.csv each time it is drawn, so do not add a scores table "for speed" without asking: it would be a second copy to disagree with the first. Its screens are `src/components/lastDigit.jsx` and its colours `.ld-theme` in global.css, scoped to that game alone. A Last Digit league still carries a blank poker season and week 1 in its rows, because members, invites and Delete League all hang off them - nothing ever deals it. **Its migration needs `db:push` before it works live.** |
 | **Backup import** | **Dropped 2026-09-07.** The commissioner's Backup tab - JSON export and restore - was removed, along with `src/storage/backup.js`. It existed to carry the Artifact league's history across, and that league was a worked example rather than real history, so there was nothing to carry. `npm run db:backup` is the only backup now, and it is Kyle's. OQ-7 records the decision and what a commissioner lost. **Since 2026-09-08 a commissioner can also DELETE a league outright** (OQ-18), which makes that the only copy of a league there is - and it is not on a schedule. |
 | **A phone-first shell** | The Scoreboard, roster and standings screens were rebuilt around the week in progress (issues #29, #30, OQ-G). What was NOT done: the sticky header is 217px of an 812px phone - title, role badge, save bar, account bar and a now two-row nav - and OQ-8's finding stands that every touch target is under the 44px minimum. Both are look-and-feel calls for the designer. |
 | **Public league directory** | `leagues.visibility` is a checked text column with room for a `'listed'` state; the directory itself is not built. |

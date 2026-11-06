@@ -131,7 +131,22 @@ function injuriesFrom(rows, seasonId, playerLegacy) {
  * hand form as people sit down and get up. From the deal on it is the snapshot the deal
  * wrote to `participant_team_ids` - so a player who sits out or leaves mid-hand still
  * plays out the hand they were dealt, and somebody who joins mid-hand waits for the next. */
-function tableMeta(league, teamRows, current, teamLegacy) {
+function tableMeta(league, teamRows, current, teamLegacy, season) {
+  /* OQ-37. Last Digit: who holds which NFL team, the start week and the draw, and the two
+   * facts the "teams lock at kickoff" rule needs - which season, and when the game was made.
+   * src/engine/lastDigit.js reads all of it. A season or a table never sees any of it. */
+  if (league.mode === "lastdigit") {
+    const nflTeams = {};
+    teamRows.forEach((t) => { nflTeams[t.legacy_id] = t.nfl_team || null; });
+    return {
+      mode: "lastdigit",
+      startWeek: league.start_week ?? 1,
+      teamDraw: league.team_draw || "random",
+      nflTeams,
+      seasonYear: season?.year ?? null,
+      createdAt: league.created_at ?? null,
+    };
+  }
   if (league.mode !== "table") return { mode: "season" };
   const seats = {};
   teamRows.forEach((t) => {
@@ -502,7 +517,7 @@ export function hydrateLeague(db, opts = {}) {
       tz: league.tz || "America/New_York",
       /* Issue #75: a table, rather than a season. Chosen once, at creation; see
        * src/engine/table.js for what each of these means and who reads them. */
-      ...tableMeta(league, teamRows, current, teamLegacy),
+      ...tableMeta(league, teamRows, current, teamLegacy, season),
       versions: buildVersionMap(db, season, current, slotsForCurrent, teamLegacy),
     },
   };

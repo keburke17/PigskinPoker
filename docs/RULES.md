@@ -480,6 +480,26 @@ first. See section 2.
 
 ---
 
+## 13. Last Digit - a different game
+
+Everything above is Pigskin Poker. **Last Digit shares none of it** - no deal, no schemes,
+no stat lines, no standings ladder. Enforced by `src/engine/lastDigit.js`; decided as OQ-37.
+
+- Every player holds **one NFL team for the whole season**, one player per team, up to 32.
+- Each week a player scores **the last digit of their team's final score**: 31 scores 1,
+  45 scores 5, 30 scores 0, 7 scores 7.
+- **A bye, or a game never played, keeps the week before's points.** A game with no score 60
+  hours after kickoff counts as never played.
+- The game runs **from its start week to Week 18**. Earlier weeks are not on the board. A bye
+  in the start week still copies the real NFL week before it.
+- **Most points after Week 18 wins.** Level on points goes to most 9s, then 8s, and on down
+  to 0s; level on everything shares the place.
+- Teams are handed out **at random** or **picked by the commissioner**, chosen when the game
+  is made. Joining and handing out both close at the first kickoff after the game was made,
+  in the start week or later.
+
+---
+
 ## Where the rules came from
 
 Pigskin Poker was designed and built by Scott as a single-file Claude Artifact, preserved

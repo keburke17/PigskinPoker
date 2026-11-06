@@ -1031,3 +1031,181 @@
 .pp-roster-head-name .pp-chip{ margin-left:6px; vertical-align:middle; }
 .pp-grid-chip{ display:inline-block; margin:3px 0 0; font-size:9px; padding:1px 6px; }
 .pp-grid-tag{ display:inline-block; width:auto; padding:0 4px; margin-top:2px; font-size:8.5px; }
+
+/* ==========================================================================
+ * LAST DIGIT (OQ-37, Scott 2026-11-05). Its own look so nobody mistakes it for the poker
+ * games: the "Game Program" colours he picked - cream paper, navy ink and a red accent,
+ * like a printed game-day programme. Everything is scoped under .ld-theme, which App.jsx
+ * puts on the root ONLY inside a Last Digit game, so the poker games keep the Midnight felt.
+ *
+ * Most of it is the same variables re-pointed; the rest is the handful of rules above that
+ * hard-code a dark-felt colour and would otherwise show green through the cream.
+ * ========================================================================== */
+.pp-root.ld-theme{
+  --bg:#f3ecdc; --bg-2:#e8dfca;
+  --surface:#fbf7ee; --surface-2:#f3ebd9; --surface-3:#e6dac0;
+  --border:#cdbf9f; --border-soft:rgba(27,37,64,0.2);
+  --text:#1b2540; --text-dim:#4f5873; --text-faint:#857f70;
+  --gold:#c8362f; --gold-bright:#a3241e; --gold-dim:#8a5a2b;
+  --ok:#2f7d4f; --danger:#b3261e; --danger-dim:#f4d7d2;
+  --shadow-card:0 1px 0 rgba(27,37,64,0.06), 0 6px 18px rgba(27,37,64,0.08);
+  --ld-ink-on-red:#fbf7ee;
+  --ld-bye:rgba(70,110,180,0.16); --ld-bye-strong:rgba(70,110,180,0.26); --ld-bye-ink:#2c4f8f;
+  --ld-line:rgba(205,191,159,0.7); --ld-me:rgba(200,54,47,0.08); --ld-me-solid:#f6e2da;
+  background: radial-gradient(ellipse at 50% -20%, #fffaf0 0%, transparent 62%), linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  color-scheme: light;
+}
+.ld-theme .pp-header{ background: linear-gradient(180deg, #efe6d2 0%, #f3ecdc 90%, rgba(243,236,220,0) 100%); }
+.ld-theme .pp-btn:hover{ background:#ddd0b3; }
+.ld-theme .pp-btn-gold{ color:var(--ld-ink-on-red); background:linear-gradient(180deg, #d4483f, var(--gold)); border-color:#9b2a24; }
+.ld-theme .pp-btn-gold:hover{ background:linear-gradient(180deg, #db564d, #b8302a); }
+.ld-theme .pp-btn-danger{ color:#7a1d17; border-color:#d9a49d; }
+.ld-theme .pp-btn-danger:hover{ background:#efc9c3; }
+.ld-theme .pp-nav-btn{ background:rgba(27,37,64,0.04); }
+.ld-theme .pp-nav-btn.active{ background:var(--gold); color:var(--ld-ink-on-red); }
+.ld-theme .pp-input, .ld-theme .pp-select, .ld-theme .pp-textarea{ background:#fffdf7; }
+.ld-theme .pp-select{ color-scheme: light; }
+.ld-theme .pp-select option, .ld-theme .pp-select optgroup{ background-color:#fffdf7 !important; color:#1b2540 !important; }
+.ld-theme .pp-warn{ color:#7a1d17; background:rgba(200,54,47,0.08); }
+.ld-theme .pp-hint-bad{ color:#a3241e; }
+.ld-theme .pp-tag{ background:rgba(27,37,64,0.05); }
+
+.ld-gtype{ display:inline-block; white-space:nowrap; vertical-align:middle; margin-left:8px; font-family:var(--font-body); font-size:11px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; padding:3px 8px; border-radius:20px; background:var(--gold); color:var(--ld-ink-on-red); }
+
+.ld-stack{ display:flex; flex-direction:column; gap:14px; }
+.ld-stack-tight{ display:flex; flex-direction:column; gap:8px; }
+.ld-note{ font-size:12px; color:var(--text-faint); margin:0; }
+.ld-linkbtn{ font:inherit; font-size:13px; background:none; border:0; color:var(--gold); cursor:pointer; padding:4px 0; font-weight:700; }
+
+/* This week's scores, with arrows through the weeks (4A). */
+.ld-glance-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.ld-gnav{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ld-navbtn{ font:inherit; font-size:20px; line-height:1; width:36px; height:36px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--gold-bright); cursor:pointer; }
+.ld-navbtn:disabled{ opacity:.35; cursor:default; }
+.ld-strip{ display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
+.ld-mini{ flex:none; min-width:118px; border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:7px 9px; display:flex; flex-direction:column; gap:3px; font-variant-numeric:tabular-nums; }
+.ld-mini.ours{ border-color:rgba(200,54,47,0.45); }
+.ld-mini-st{ font-size:10px; letter-spacing:.6px; font-weight:700; color:var(--text-faint); text-transform:uppercase; }
+.ld-mini-st.done{ color:var(--text-dim); }
+.ld-mini-ln{ display:flex; justify-content:space-between; gap:8px; font-size:13px; }
+.ld-mini-ln.lose{ color:var(--text-dim); }
+.ld-mini-t{ font-weight:700; }
+.ld-mini-t.held::after{ content:""; display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--gold); margin-left:4px; vertical-align:2px; }
+
+.ld-legend{ display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--text-dim); }
+.ld-key{ display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; margin-right:5px; }
+.ld-key-me{ background:var(--gold); }
+.ld-key-bye{ background:var(--ld-bye-strong); }
+
+/* The board: the team column and the TOTAL stay put while the weeks scroll under them. */
+.ld-board-wrap{ overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+.ld-board{ border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; width:max-content; min-width:100%; }
+.ld-board th, .ld-board td{ padding:0; text-align:center; }
+.ld-board thead th{ font-size:11px; font-weight:700; color:var(--text-dim); letter-spacing:.5px; padding:8px 0; background:var(--surface-2); border-bottom:1px solid var(--border); }
+.ld-board thead th.now{ color:var(--gold-bright); }
+.ld-board tbody td{ border-bottom:1px solid var(--ld-line); }
+.ld-board tbody tr:last-child td{ border-bottom:0; }
+.ld-sticky{ position:sticky; left:0; z-index:2; background:var(--surface); }
+.ld-board thead .ld-sticky{ background:var(--surface-2); z-index:3; }
+.ld-teamcell{ text-align:left !important; padding:8px 10px 8px 8px !important; border-right:1px solid var(--border); min-width:168px; }
+.ld-teamrow{ display:flex; align-items:center; gap:8px; }
+.ld-rank{ width:30px; flex:none; font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--gold); text-align:right; }
+.ld-abbr{ flex:none; width:38px; height:26px; border-radius:5px; background:#1b2540; color:#fbf7ee; font-weight:800; font-size:11px; display:inline-grid; place-items:center; letter-spacing:.3px; }
+.ld-who{ min-width:0; line-height:1.15; display:flex; flex-direction:column; }
+.ld-tn{ font-size:13px; font-weight:600; white-space:nowrap; }
+.ld-mn{ font-size:11.5px; color:var(--text-dim); white-space:nowrap; display:block; }
+.ld-cell{ width:40px; min-width:40px; height:46px; border-left:1px solid var(--ld-line); cursor:pointer; }
+.ld-wk{ border-left:1px solid var(--ld-line); }
+.ld-cell.now{ background:rgba(200,54,47,0.05); }
+.ld-cell:focus-visible{ outline:2px solid var(--gold); outline-offset:-2px; }
+.ld-dig{ font-family:var(--font-display); font-size:18px; font-weight:700; line-height:1; display:block; }
+.ld-dig.d9{ color:var(--gold-bright); }
+.ld-dig.d0{ color:var(--text-faint); }
+.ld-pend{ font-size:10px; color:var(--text-faint); letter-spacing:.4px; }
+.ld-bye{ background:var(--ld-bye); }
+.ld-tag{ display:block; font-size:9px; font-weight:800; letter-spacing:.6px; color:var(--ld-bye-ink); margin-top:3px; }
+.ld-board tr.me td{ background:var(--ld-me); }
+.ld-board tr.me td.ld-sticky, .ld-board tr.me td.ld-tot{ background:var(--ld-me-solid); }
+.ld-board tr.me td.ld-bye{ background:var(--ld-bye-strong); }
+.ld-tot{ position:sticky; right:0; z-index:2; background:var(--surface); font-family:var(--font-display); font-size:19px; font-weight:700; color:var(--gold-bright); min-width:58px; padding:0 10px !important; border-left:1px solid var(--border); box-shadow:-6px 0 8px -6px rgba(27,37,64,0.18); }
+.ld-board thead th.ld-tot{ background:var(--surface-2); z-index:3; font-family:var(--font-body); font-size:11px; }
+/* A phone. With the team column and the total both pinned, the full team name left room
+ * for ONE week between them at 375px. The abbreviation already says the team, so here it
+ * shows that and the player, and three or four weeks fit. */
+@media (max-width:520px){
+  .ld-board .ld-teamcell{ min-width:0; padding:6px 6px 6px 4px !important; }
+  .ld-board .ld-who .ld-tn{ display:none; }
+  .ld-board .ld-who .ld-mn{ font-size:12px; font-weight:600; color:var(--text); max-width:72px; overflow:hidden; text-overflow:ellipsis; }
+  .ld-board .ld-rank{ width:22px; font-size:12px; }
+  .ld-board .ld-abbr{ width:34px; height:24px; font-size:10px; }
+  .ld-board .ld-tot{ min-width:44px; font-size:16px; padding:0 6px !important; }
+  .ld-board thead .ld-teamcell{ padding-left:30px !important; }
+}
+.ld-detail{ border:1px solid var(--border); border-radius:10px; background:var(--surface-2); padding:12px 14px; font-size:13px; line-height:1.5; }
+.ld-detail b{ color:var(--gold-bright); }
+
+.ld-split{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; }
+.ld-panel{ border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:14px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+.ld-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.ld-chip{ font-size:11px; font-weight:800; padding:5px 7px; border-radius:5px; border:1px dashed var(--text-faint); color:var(--text-dim); letter-spacing:.3px; }
+
+/* The Tiebreaker (6B): points, 9s, 8s, 7s, 6s, names beside the teams. */
+.ld-tbt{ border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; width:100%; }
+.ld-tbt th{ font-size:11px; color:var(--text-dim); padding:4px 8px; border-bottom:1px solid var(--border); }
+.ld-tbt td{ padding:4px 8px; text-align:center; border-bottom:1px solid var(--ld-line); color:var(--text-dim); }
+.ld-tbt td:first-child{ text-align:left; color:var(--text); font-weight:600; white-space:nowrap; }
+.ld-tbm{ font-weight:400; color:var(--text-dim); margin-left:4px; }
+.ld-tbt tr.tied td{ background:rgba(200,54,47,0.1); color:var(--gold-bright); }
+.ld-tbt tr.tied .ld-tbm{ color:var(--gold); }
+
+/* After Week 18: the banner, and the podium under it. */
+.ld-banner{ display:flex; align-items:center; gap:16px; padding:18px 20px; border-radius:12px; background:var(--gold); color:var(--ld-ink-on-red); flex-wrap:wrap; }
+.ld-trophy{ flex:none; width:56px; height:56px; border-radius:50%; background:rgba(255,255,255,0.18); display:grid; place-items:center; }
+.ld-bt{ min-width:0; flex:1; }
+.ld-eb{ font-size:11px; letter-spacing:1.6px; text-transform:uppercase; font-weight:800; opacity:.85; }
+.ld-champ{ font-family:var(--font-display); font-size:clamp(20px, 5vw, 28px); font-weight:700; line-height:1.15; }
+.ld-champ-sub{ font-size:13px; opacity:.9; margin-top:2px; }
+.ld-big{ font-family:var(--font-display); font-size:34px; font-weight:700; line-height:1; text-align:right; }
+.ld-big small{ display:block; font-family:var(--font-body); font-size:11px; letter-spacing:1px; text-transform:uppercase; font-weight:700; opacity:.8; }
+.ld-podium{ display:grid; grid-template-columns:1fr 1.25fr 1fr; gap:10px; align-items:end; }
+.ld-step{ border-radius:10px; padding:12px 10px; text-align:center; border:1px solid var(--border); background:var(--surface); display:flex; flex-direction:column; gap:4px; align-items:center; min-width:0; }
+.ld-place{ font-family:var(--font-display); font-size:13px; font-weight:700; color:var(--gold-dim); }
+.ld-step-tm{ font-weight:700; font-size:14px; overflow-wrap:anywhere; }
+.ld-step-mg{ font-size:12px; color:var(--text-dim); }
+.ld-step-pt{ font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--gold-bright); }
+.ld-step.first{ background:var(--gold); color:var(--ld-ink-on-red); border-color:var(--gold); padding:20px 10px; }
+.ld-step.first .ld-place, .ld-step.first .ld-step-mg, .ld-step.first .ld-step-pt{ color:var(--ld-ink-on-red); }
+.ld-step.first .ld-step-pt{ font-size:30px; }
+.ld-step.first .ld-abbr{ background:var(--ld-ink-on-red); color:var(--gold); }
+@media (max-width:480px){ .ld-podium{ grid-template-columns:1fr; } .ld-step.first{ order:-1; } }
+
+/* The Schedule tab (5A): pick a week, a card per game. */
+.ld-weeks{ display:flex; gap:5px; overflow-x:auto; padding-bottom:4px; }
+.ld-wkbtn{ flex:none; font:inherit; font-size:13px; font-weight:700; min-width:40px; min-height:38px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text-dim); cursor:pointer; font-variant-numeric:tabular-nums; }
+.ld-wkbtn.now{ border-color:var(--gold-dim); color:var(--gold-bright); }
+.ld-wkbtn[aria-pressed="true"]{ background:var(--gold); color:var(--ld-ink-on-red); border-color:var(--gold); }
+.ld-sched-bar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.ld-check{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-dim); cursor:pointer; }
+.ld-check input{ width:18px; height:18px; accent-color:var(--gold); }
+.ld-games{ display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:10px; }
+.ld-game{ border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:10px 12px; display:flex; flex-direction:column; gap:6px; font-variant-numeric:tabular-nums; min-width:0; }
+.ld-game.ours{ border-color:rgba(200,54,47,0.45); }
+.ld-side{ display:flex; align-items:center; gap:8px; min-width:0; }
+.ld-side .ld-abbr{ width:34px; height:24px; font-size:10px; }
+.ld-side-nm{ flex:1; min-width:0; line-height:1.2; display:flex; flex-direction:column; }
+.ld-side-nm .ld-tn{ white-space:normal; overflow-wrap:anywhere; }
+.ld-side-mn{ font-size:11px; color:var(--gold-bright); }
+.ld-side-sc{ font-family:var(--font-display); font-size:20px; font-weight:700; }
+.ld-side.lose .ld-side-sc, .ld-side.lose .ld-tn{ color:var(--text-dim); }
+.ld-pts{ flex:none; font-size:11px; font-weight:800; padding:3px 6px; border-radius:4px; background:var(--gold); color:var(--ld-ink-on-red); }
+.ld-bye-ink{ color:var(--ld-bye-ink); }
+
+/* The commissioner's hand-out list. */
+.ld-assign{ display:flex; flex-direction:column; gap:6px; }
+.ld-arow{ display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:center; font-size:13px; }
+.ld-pick{ margin-top:3px; max-width:280px; }
+.ld-handover{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.ld-handover .pp-select{ max-width:260px; }
+
+/* The homepage's Last Digit card: the office-pool line under the description. */
+.pp-game-tag{ display:inline-block; margin-top:5px; font-size:11px; font-weight:700; letter-spacing:.3px; padding:3px 8px; border-radius:20px; background:rgba(232,194,90,0.14); color:var(--gold-bright); align-self:flex-start; }
