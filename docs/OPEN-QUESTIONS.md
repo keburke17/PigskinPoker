@@ -2424,6 +2424,15 @@ the move when either slot has a line.
 player who moves), and `src/components/lineup.jsx`. Parity is untouched: the artifact's
 engine never swapped a lineup at all, the dropdown did.
 
+**Revised 2026-11-06, by Scott: option C, the list.** After a week of play some managers
+said they missed the dropdown, and liked the pick-from-a-list mockup. So the card still
+opens the move, but instead of HERE buttons across the lineup, a short list opens right
+under the card: everyone that player can swap with, where they are now and their average,
+with a locked player shown greyed and marked LOCKED. Tap a line to make the move; tap the
+card again or Cancel to close it. **Nothing about who may go where moved** - the list is
+exactly the players the HERE buttons lit up, including the three-way TE-to-FLEX, which
+says who comes off the bench. The "who went where" message after a move stays.
+
 ---
 
 ### OQ-26. Who is allowed to name a team? **[ANSWERED 2026-10-30 by Scott: the manager names their own]**
