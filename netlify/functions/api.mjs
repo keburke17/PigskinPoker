@@ -83,6 +83,11 @@ const ROUTES = {
   setNotifyMembers: (db, p) => ops.setNotifyMembers(db, p),
   /* Issue #75: sit out, come back, leave or rejoin a table. */
   setSeat: (db, p) => ops.setSeat(db, p),
+  /* OQ-37, Last Digit: read the season's NFL scores for the board, and hand out teams -
+   * at random, or one player at a time. The last two are commissioner-only on the server. */
+  lastDigitGames: (db, p) => ops.lastDigitGames(db, p),
+  dealLastDigitTeams: (db, p) => ops.dealLastDigitTeams(db, p),
+  setLastDigitTeam: (db, p) => ops.setLastDigitTeam(db, p),
 };
 
 export async function handler(event) {

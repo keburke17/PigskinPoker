@@ -26,4 +26,5 @@ export * from "./playerPoints.js";
 export * from "./injuries.js";
 export * from "./standings.js";
 export * from "./table.js";
+export * from "./lastDigit.js";
 export * from "./playoffs.js";

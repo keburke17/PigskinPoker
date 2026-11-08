@@ -18,7 +18,7 @@ const SEP = " - ";
 
 /** "Season League" or "Weekly Table" - the game a league plays, as the cards name it. */
 export function gameName(game) {
-  return game === "table" ? "Weekly Table" : "Season League";
+  return game === "table" ? "Weekly Table" : game === "lastdigit" ? "Last Digit" : "Season League";
 }
 
 /** The game, the role, and the team: who you are in this league. */
@@ -41,6 +41,11 @@ export function leagueSubtitle(league) {
  * rule that does not exist (the email says the same thing, server/notifyFacts.js).
  */
 export function leagueStatus(league, now = Date.now()) {
+  /* Last Digit (OQ-37) has no week to run - its league row carries a poker week 1 that
+   * nothing ever deals - so it says which weeks it plays instead. */
+  if (league.game === "lastdigit") {
+    return Number.isInteger(league.startWeek) ? "Weeks " + league.startWeek + " to 18" : null;
+  }
   const p = league.period;
   if (!p || !p.phase) return null;
   if (league.seasonOver) return "Season over";

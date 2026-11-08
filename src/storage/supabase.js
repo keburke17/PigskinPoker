@@ -512,6 +512,11 @@ export function createSupabaseStore(config) {
     /* Issue #75: "seated", "sitting_out" or "left", for your own seat - or anybody's,
      * if you are the dealer. */
     setSeat: (teamId, seat) => call("setSeat", { teamId, seat }),
+    /* OQ-37, Last Digit. The scores are read through the server rather than straight from
+     * nflverse, so the browser sees exactly the games the server's lock rule sees. */
+    lastDigitGames: () => call("lastDigitGames", {}),
+    dealLastDigitTeams: () => call("dealLastDigitTeams", {}),
+    setLastDigitTeam: (teamId, nflTeam) => call("setLastDigitTeam", { teamId, nflTeam }),
 
     async mutateLeague(fn) {
       const view = await readView();

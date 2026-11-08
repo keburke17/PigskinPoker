@@ -27,6 +27,7 @@ import {
   parseInjuries,
   parseWeeklyStats,
   resultsFromGames,
+  seasonGamesFrom,
   seasonResultsFrom,
   weekStartsFromGames,
 } from "./nflverse.js";
@@ -110,6 +111,36 @@ export async function fetchGameResults({ season, week } = {}) {
     season,
     week: Number(week),
     results: resultsFromGames(parseCsv(read("results-week.csv")), { season, week }),
+  };
+}
+
+/**
+ * The recorded season's games, for a Last Digit board (OQ-37) - the live
+ * `fetchSeasonGames`'s shape.
+ *
+ * TWO RECORDINGS STITCHED TOGETHER, and the seam is deliberate. games.csv is this fixture
+ * season's real schedule with no scores in it; results-week.csv is a real past season's
+ * first weeks, finished and relabelled. So the recorded weeks come from the results file,
+ * scores and all, and every later week from the schedule, unplayed - which is exactly the
+ * shape of a season in progress. A recorded game keeps the schedule's kickoff for its
+ * home team where there is one, so the week still starts when the schedule says it does.
+ */
+export async function fetchSeasonGames({ season } = {}) {
+  const schedule = seasonGamesFrom(parseCsv(read("games.csv")), { season });
+  const played = seasonGamesFrom(parseCsv(read("results-week.csv")), { season });
+  const playedWeeks = new Set(played.map((g) => g.week));
+  const firstKick = {};
+  schedule.forEach((g) => {
+    if (g.kickoff && (!firstKick[g.week] || g.kickoff < firstKick[g.week])) firstKick[g.week] = g.kickoff;
+  });
+  const kickFor = (g) =>
+    schedule.find((s) => s.week === g.week && (s.home === g.home || s.away === g.home))?.kickoff || firstKick[g.week] || null;
+  return {
+    season,
+    games: [
+      ...played.map((g) => ({ ...g, kickoff: kickFor(g) })),
+      ...schedule.filter((g) => !playedWeeks.has(g.week)),
+    ],
   };
 }
 

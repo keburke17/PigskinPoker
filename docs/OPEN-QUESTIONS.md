@@ -2552,3 +2552,73 @@ bench rule by writing it into the lifted artifact (`tests/parity.test.js`), so t
 scheme processing is still compared move for move; the lean is invisible to parity because
 its pools carry no depth ranks, and with none the pick is the artifact's even pick, random
 number for random number.
+
+### OQ-37. Last Digit - a third game, with its own rules. **[ANSWERED 2026-11-05 by Scott: built from six rounds of mockups]**
+
+**What it is.** Not poker, and it shares none of poker's rules. Each player holds ONE NFL
+team for the whole season and scores the **last digit of that team's real final score**
+every week: 31 scores 1, 45 scores 5, 30 scores 0, 7 scores 7. Named Last Digit so nobody
+takes it for traditional squares (Scott: "I don't want people to think this is the
+traditional squares game"). Up to 32 players, one per NFL team. `src/engine/lastDigit.js`
+holds every rule; `tests/lastDigit.test.js` pins each one by Scott's own words.
+
+**Scott's rules, as he gave them:**
+
+- **A bye keeps the week before's points.** Lions score 45 in Week 5, so their Week 6 bye is
+  worth 5.
+- **A game that is never played is treated like a bye** (Bills-Bengals, 2023).
+- **Most points after Week 18 wins.** Teams level on points are ranked by most 9s, then most
+  8s, and on down. **The counts only matter when the points are exactly level** - 145 beats
+  144 however many 9s the 144 has. Level on every count shares the spot; after Week 1, every
+  team on a 9 is tied for first.
+- **A game can start mid-season.** The commissioner picks the start week at creation, and
+  may pick a week already played - its squares fill straight away from the real scores.
+  Weeks before it are left off the board. **A bye in the first week copies the real NFL week
+  before it**, even though the game had not started.
+- **Teams are handed out one of two ways,** chosen at creation: **random** (the commissioner
+  presses Deal Teams once everyone has joined) or **individual draw** (the commissioner picks
+  a team beside each player's name; a team already picked drops off everyone else's list).
+  The commissioner holds a team and plays too.
+- **One join link for everybody** - "I don't want to have to invite everyone individually".
+  A player joins with no team and waits for the commissioner.
+- **Scores come from nflverse's games.csv**, the file the site already reads for the Coach
+  card. Scott chose to keep the existing timing for now ("let's keep it how it is"), so no
+  faster score check was built.
+
+**The look**, each a lettered pick: just the points in a square (1A); a blue BYE square (2A);
+unheld teams in a strip under the board (3A); this week's scores in a strip above it, with
+arrows through the weeks (4A); a card per game on the Schedule tab (5A); the Tiebreaker as a
+small table of points, 9s, 8s, 7s and 6s with names (6B); the team column and the total
+pinned while the weeks scroll; a faded line between weeks; after Week 18, a champion banner
+with the 1st/2nd/3rd podium under it; and the "Game Program" colours - cream, navy and red -
+so it never looks like the poker games.
+
+**Calls made while building it, worth Scott knowing about:**
+
+- **When joining closes.** "Joining closes at the start week's kickoff" meets "a start week
+  already played is allowed" head-on: such a game would be closed before anyone could join.
+  So it closes at the **first kickoff, in the start week or later, after the game was made** -
+  for an ordinary game that is simply the start week's first kickoff. Handing out teams closes
+  at the same moment, so nobody can be given a team once its scores are known.
+- **But a game started in a week already played lets the commissioner see those scores before
+  he picks teams by hand.** That is the cost of allowing a past start week with an individual
+  draw; random draw has no such edge. Worth a thought if office pools use it.
+- **"Never played" means no score 60 hours after kickoff.** Long enough that a Monday-night
+  game, or nflverse posting late, is never mistaken for one. If nflverse ever went quiet that
+  long, a square would show NO GAME for a while - and correct itself the moment the score
+  arrives, because nothing about a week is stored: the board is worked out from the real
+  scores each time it is drawn.
+- **A bye only counts once its week has started.** Otherwise a schedule that failed to load
+  would read as eighteen byes and crown a champion of nothing.
+- **Someone who quits** leaves their team on the board, still scoring; the commissioner hands
+  it on with an invite made for that team (which works after kickoff).
+- **A player's name on the board is the name they type when they join**, renamable like any
+  team name.
+
+**Where it lives.** `leagues.mode = 'lastdigit'`, with `leagues.start_week` and
+`leagues.team_draw`, and `teams.nfl_team` for who holds what -
+`supabase/migrations/20261106000000_last_digit.sql`. **That migration must be applied to the
+live database (Kyle's `npm run db:push`) before anyone can create a Last Digit game there.**
+Until then the site works exactly as before; only the Create Game button would fail.
+
+**Nothing in Season League or the Weekly Table moved.** Parity passes unchanged.

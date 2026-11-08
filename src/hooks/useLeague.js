@@ -549,6 +549,16 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* OQ-37, Last Digit: hand out NFL teams - all at random, or one player at a time. */
+  const dealLastDigitTeams = useCallback(
+    () => immediate("dealLastDigitTeams", () => store.dealLastDigitTeams()),
+    [store, immediate]
+  );
+  const setLastDigitTeam = useCallback(
+    (teamId, nflTeam) => immediate("setLastDigitTeam:" + teamId, () => store.setLastDigitTeam(teamId, nflTeam)),
+    [store, immediate]
+  );
+
   /** Commissioner admin: low-frequency, genuinely league-wide. */
   const mutate = useCallback(
     (key, fn) => immediate(key, () => store.mutateLeague(fn)),
@@ -612,6 +622,8 @@ export function useLeague(store) {
       setAutoCycle,
       setNotifyMembers,
       setSeat,
+      dealLastDigitTeams,
+      setLastDigitTeam,
       processSchemes,
       finalizePeriod,
         mutate,
