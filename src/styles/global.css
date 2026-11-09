@@ -1070,7 +1070,11 @@
 .ld-theme .pp-hint-bad{ color:#a3241e; }
 .ld-theme .pp-tag{ background:rgba(27,37,64,0.05); }
 
-.ld-gtype{ display:inline-block; white-space:nowrap; vertical-align:middle; margin-left:8px; font-family:var(--font-body); font-size:11px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; padding:3px 8px; border-radius:20px; background:var(--gold); color:var(--ld-ink-on-red); }
+/* The game's name beside Pigskin Poker on the eyebrow line - a label, not a pill, so it
+ * does not read as a button next to Home (Scott, 2026-11-08, option A). */
+.ld-eyebrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ld-eyebrow-dot{ width:4px; height:4px; border-radius:50%; background:var(--border); flex:none; }
+.ld-eyebrow-game{ color:var(--gold); }
 
 .ld-stack{ display:flex; flex-direction:column; gap:14px; }
 .ld-stack-tight{ display:flex; flex-direction:column; gap:8px; }
