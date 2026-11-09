@@ -810,12 +810,25 @@ export default function App() {
                 * said which league you were looking at except the teams in it. The eyebrow keeps
                 * Pigskin Poker where the eye already expects a brand, and costs 14px rather than a
                 * second row of header. */}
-              <div className="pp-eyebrow">Pigskin Poker</div>
+              {/* THE GAME'S NAME RIDES ON THE EYEBROW in Last Digit (Scott, 2026-11-08). It
+                * used to be a red pill after the league name, which sat beside Home and read as a
+                * second button. Plain small capitals beside Pigskin Poker read as a label. */}
+              {lastDigit ? (
+                <div className="pp-eyebrow ld-eyebrow">
+                  <span>Pigskin Poker</span>
+                  <span className="ld-eyebrow-dot" aria-hidden="true" />
+                  <span className="ld-eyebrow-game">Last Digit</span>
+                </div>
+              ) : (
+                <div className="pp-eyebrow">Pigskin Poker</div>
+              )}
               <h1 className="pp-h1 pp-league-title pp-title-with-ball">
                 {lastDigit ? <GoalpostIcon size="1.05em" tone="ivory" /> : <TitleBall size="1.05em" />} {state.leagueName}
-                {lastDigit ? <span className="ld-gtype">Last Digit</span> : null}
               </h1>
-              <span className="pp-badge-role">{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</span>
+              {/* Its own line under the title. A span here sat BESIDE a short league name,
+                * because the title is inline-flex - the Last Digit pill used to hide that by
+                * making the title line long enough to push it down. */}
+              <div className="pp-badge-role">{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</div>
             </div>
             {/* HOME, NOT LOG OUT (Scott, 2026-11-04). The league switcher below already
               * reached the front page, but only for someone in two or more leagues - with
