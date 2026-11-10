@@ -2622,3 +2622,81 @@ live database (Kyle's `npm run db:push`) before anyone can create a Last Digit g
 Until then the site works exactly as before; only the Create Game button would fail.
 
 **Nothing in Season League or the Weekly Table moved.** Parity passes unchanged.
+
+---
+
+### OQ-38. Stat corrections that land after a week is finished. **[FOR SCOTT - raised 2026-11-10]**
+
+Raised by Scott on 2026-11-10, thinking ahead to taking manual stat entry away from the
+commissioner now that the stats come from the feed. Nothing is broken today; this is a gap
+in when the app stops listening, and closing it is a rules decision.
+
+**What happens today.** Until a week is finalized, corrections fix themselves: the
+three-hourly pull (`server/autoPull.js`) re-reads the whole week from nflverse and
+overwrites its own earlier numbers, and the Tuesday 6am finalize does one last pull first.
+**Once the week is finalized it is frozen.** The standings are written, the rosters are
+wiped, the next week is dealt, and nothing ever reads that week from the feed again. There
+is no way to reopen it. The NFL's official corrections mostly arrive a few days after the
+games - nflverse picks them up in its daily 5am update - so most of them land AFTER our
+Tuesday finalize and are lost, silently. Nobody is told.
+
+(A line the commissioner typed by hand is never overwritten by the feed even before
+finalize. The feed's number is stored beside it, but the screen that shows the difference
+- stage 6 of the live-data plan - is not built, so those corrections are invisible too.
+That is part of why Scott is thinking about removing manual entry; it is a separate
+decision.)
+
+**What the big sites do.** ESPN, Yahoo and Sleeper all treat Monday night's result as
+provisional and keep re-scoring automatically until roughly Thursday - Yahoo until the
+first game of the next week, Sleeper "up to and including Thursdays", ESPN up to seven
+days. No commissioner is involved. Corrections have flipped real playoff matchups on
+those sites.
+
+**The case that makes it hard - Scott's example.** Last week of the regular season. The
+8th seed - the last playoff spot - finishes on 100 and the 9th on 99.9. The 9th seed's
+player gets a stat correction on Wednesday that puts them ahead. By the rules, the 9th
+seed should be in the playoffs and the 8th out. But the playoffs seeded themselves at
+Tuesday's finalize (OQ-16) and Round 1 rosters are already dealt.
+
+**Today:** the correction is never seen. The 8th seed plays Round 1, the 9th is out, and
+nobody knows.
+
+**The same problem, smaller, every week.** Standings points come from where a team
+finishes in the week (the reverse ladder, OQ-13), so one correction can swap two teams'
+places and move both their standings points - not only one score.
+
+**Options, from least change to most:**
+
+1. **Report only.** Keep checking a finished week until the next week's first kickoff. If
+   a correction would change any score, post it to the league's activity feed and tell
+   the commissioner - "Stat correction: Team A's Week 5 is 101.0, not 100.0; that would
+   have been 2nd, not 3rd" - and change nothing. Honest, simple, and leaves Scott's
+   example to the commissioner's judgement.
+2. **Re-score regular-season weeks, freeze the seeding.** Do what the big sites do for
+   ordinary weeks: re-score the finished week and fix the standings automatically, with a
+   note in the feed. But once the playoffs are seeded, the seeding stands; a correction
+   that would change WHO made the playoffs is reported, not applied. In Scott's example,
+   the 8th seed plays and the league is told the 9th "should" have.
+3. **Wait to seed.** Finalize the last regular-season week Tuesday as now, but do not seed
+   the playoffs or deal Round 1 until corrections have closed (say Thursday morning). The
+   bracket is then right in Scott's example. The cost: Round 1 is dealt two days later,
+   which squeezes the scheme deadline (3am Thursday today) for that round - it would have
+   to move, for that week only, or Round 1 has no scheme window.
+4. **Re-seed and re-deal if it changes.** Seed Tuesday as now. If a correction before
+   Round 1's first kickoff changes who is in, re-seed and deal Round 1 again. Gets the
+   bracket right without delaying anybody in the usual case - but everyone's dealt hand
+   for the round is thrown away, and any scheme already submitted is lost. After kickoff
+   it is too late, and it falls back to option 1 or 2.
+
+And separately, **the championship**: there is no next week to wait for, so it is either
+crowned Monday night and final (today), or crowned Monday night as provisional and made
+official Thursday morning, the way the big sites do it.
+
+**Recommendation:** option 2 for ordinary weeks, plus option 3 for the last
+regular-season week only, plus the provisional championship. Ordinary weeks behave like
+ESPN and Yahoo; the one week where a correction can change who is in the playoffs waits
+for corrections before seeding; and the title is not handed out on numbers the NFL has not
+finished checking. Option 3's real cost is that week's scheme deadline, which Scott would
+need to pick.
+
+**Not decided, not built.** Nothing in the app changed with this entry.
