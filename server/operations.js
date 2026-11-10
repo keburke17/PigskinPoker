@@ -1566,7 +1566,47 @@ async function runLifecycle(db, leagueId, ctx, apply) {
   const outcome = await apply(ctx);
   if (outcome.error) return fail(400, outcome.error, { reason: "invalid", view: ctx.view });
 
-  await persistBlob(db, ctx.rows, outcome.blob, {
+  /* CLAIM THE WEEK BEFORE WRITING IT. Every caller checked the phase on a read it made
+   * moments ago, and persistBlob writes unconditionally - so two runs that read the same
+   * 'pre-deal' week both dealt it, and the second saved over the first. That happened on
+   * 2026-11-10: a table's Week 3 was dealt twice by overlapping hourly runs, the managers
+   * were emailed the first deal (the outbox sends once per person per week), and the game
+   * kept the second. The tell was the second run's pool refresh hitting
+   * players_league_gsis_uniq on the players the first had just added.
+   *
+   * One conditional update is the lock: it moves the period's version on only if nobody
+   * has moved it since our read. Whoever claims first writes; anybody else is told the
+   * week has moved on and writes nothing - no rosters, no standings, no email. Deal,
+   * process schemes and finalize all come through here, so a double finalize is closed
+   * by the same line. */
+  let previous = ctx.rows;
+  if (ctx.period) {
+    const claimed = ctx.period.version + 1;
+    const { data: won, error: claimError } = await db
+      .from("periods")
+      .update({ version: claimed })
+      .eq("id", ctx.period.id)
+      .eq("version", ctx.period.version)
+      .eq("phase", ctx.period.phase)
+      .select("id");
+    if (claimError) return fail(500, claimError.message);
+    if (!won?.length) {
+      return fail(409, "This week has moved on - someone else just changed it. Your change wasn't saved.", {
+        reason: "stale",
+        key: "period",
+        view: hydrate(await fetchLeagueRows(db, leagueId)),
+      });
+    }
+    /* persistBlob carries versions forward from `previous`, so it must start from the
+     * version we just claimed - otherwise a write that leaves the period row unchanged
+     * would set its version back. */
+    previous = {
+      ...ctx.rows,
+      periods: ctx.rows.periods.map((p) => (p.id === ctx.period.id ? { ...p, version: claimed } : p)),
+    };
+  }
+
+  await persistBlob(db, previous, outcome.blob, {
     leagueKey: ctx.rows.leagues[0].name === "Pigskin Poker (Demo League)" ? "demo" : leagueId,
     year: ctx.rows.seasons[0].year,
   });
@@ -2917,6 +2957,11 @@ async function advanceOneLeague(db, { league, now, feed }) {
   return { steps };
 }
 
+/* A run that lost the claim in runLifecycle did nothing because something else already
+ * did it. That is the lock working, so it reads as a skip rather than a failed run. */
+const LOST_CLAIM = "another run got to this week first";
+const lostTheClaim = (out) => out.status === 409 && out.body?.reason === "stale";
+
 /** Score the week just played - but only once its football is genuinely over. */
 async function finalizeIfReady(db, { league, ctx, now, feed }) {
   const teamCount = periodTeamCount(ctx.view);
@@ -2968,6 +3013,7 @@ async function finalizeIfReady(db, { league, ctx, now, feed }) {
   if (fresh.error) return { steps, failure: "the league vanished mid-run" };
 
   const finalized = await runLifecycle(db, league.id, fresh, applyFinalize({ feed, by: "the schedule" }));
+  if (lostTheClaim(finalized)) return { steps: [...steps, { step: "finalize", did: false, why: LOST_CLAIM }] };
   if (finalized.status !== 200) {
     return { steps, failure: "finalize failed: " + (finalized.body?.error ?? finalized.status) };
   }
@@ -3013,6 +3059,7 @@ async function dealIfDue(db, { league, now, feed, ctx: known = null }) {
     db, league.id, beforeDeal,
     applyDeal({ poolRefresh, feed, by: "the schedule", now })
   );
+  if (lostTheClaim(dealt)) return { steps: [{ step: "deal", did: false, why: LOST_CLAIM }] };
   if (dealt.status !== 200) {
     return { steps: [], failure: "deal failed: " + (dealt.body?.error ?? dealt.status) };
   }
@@ -3039,6 +3086,7 @@ async function processOneLeague(db, { league, now }) {
   if (!verdict.eligible) return { steps: [{ step: "schemes", did: false, why: verdict.why }] };
 
   const out = await runLifecycle(db, league.id, ctx, applyProcessSchemes({ by: "the schedule" }));
+  if (lostTheClaim(out)) return { steps: [{ step: "schemes", did: false, why: LOST_CLAIM }] };
   if (out.status !== 200) {
     return { steps: [], failure: "process schemes failed: " + (out.body?.error ?? out.status) };
   }
