@@ -397,6 +397,36 @@ gate()("dealing a week tells the league", () => {
     expect(await outboxCount()).toBe(first);
   });
 
+  /* 2026-11-10: a table's Week 3 was dealt twice by two runs that overlapped. Both read
+   * the week as undealt, both dealt it, the email went out from the first deal and the
+   * game kept the second - so every manager was emailed a roster they did not have.
+   * runLifecycle now claims the week before writing it, so only one deal can land, and
+   * whichever one lands is the one in the email. */
+  it("deals a week once when two deals start together, and emails the roster that was kept", async () => {
+    await setNotify(true);
+    const token = await commissionerToken();
+    const one = await managerOf("demo_team_1", "notify-one@example.test");
+
+    const fin = await ops.finalizePeriod(db, { leagueId, token });
+    expect(fin.status).toBe(200);
+
+    const both = await Promise.all([
+      ops.dealPeriod(db, { leagueId, token, refresh: false }),
+      ops.dealPeriod(db, { leagueId, token, refresh: false }),
+    ]);
+    expect(both.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(both.filter((r) => r.status === 409)).toHaveLength(1);
+
+    const view = hydrate(await fetchLeagueRows(db, leagueId));
+    const team = view.teams.find((t) => t.id === "demo_team_1");
+    const qb = view.playerPool.find((p) => p.id === team.roster.starters.QB);
+
+    const { data } = await db
+      .from("notifications").select("payload").eq("league_id", leagueId).eq("user_id", one.userId);
+    expect(data).toHaveLength(1);
+    expect(data[0].payload.text).toContain("QB - " + qb.name + " (");
+  });
+
   /* A mail problem must never undo a week. By the time anything is sent the rosters are
    * dealt and the standings have moved. */
   it("leaves the week dealt even when the message cannot be built", async () => {
