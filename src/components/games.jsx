@@ -153,7 +153,7 @@ export const GAMES = [
     name: gameName("table"),
     eyebrow: "Any week",
     blurb: "A new roster every week. Sit in when you want, sit out when you don't. Win the week, win the night.",
-    great: "Casual groups " + CP(0x00b7) + " 2-13 players " + CP(0x00b7) + " Join any week",
+    great: "Casual groups " + CP(0x00b7) + " 2-12 players a hand " + CP(0x00b7) + " Join any week",
   },
   /* OQ-37 (Scott, 2026-11-05). The first of the two coming-soon slots, now live. Named
    * Last Digit so nobody takes it for traditional squares. */

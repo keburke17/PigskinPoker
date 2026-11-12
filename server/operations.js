@@ -64,9 +64,14 @@ import {
   isLastDigit,
   lastDigitLockAt,
   isTable,
+  autoSeatIds,
+  lobbyLine,
+  lobbyOf,
   seatOf,
   seatsFree,
   tableDealProblem,
+  TABLE_FILLS,
+  TABLE_FILL_DEFAULT,
   seedFromString,
   seededRng,
   slotAcceptsPosition,
@@ -353,7 +358,7 @@ export async function whoami(db, { leagueId, token }) {
  * a league whose owner is "whoever holds this string" is the thing this phase exists to
  * get away from.
  */
-export async function createLeague(db, { accountToken, name, year, visibility = "members", mode = "season", seats = null, teamName = null, startWeek = null, teamDraw = null }) {
+export async function createLeague(db, { accountToken, name, year, visibility = "members", mode = "season", seats = null, fill = null, teamName = null, startWeek = null, teamDraw = null }) {
   const user = await verifyAccount(db, accountToken);
   if (!user) return fail(401, "Sign in to create a league.");
 
@@ -370,8 +375,12 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   const lastDigit = mode === LAST_DIGIT;
   const seatCount = table ? Number(seats) : null;
   if (table && !(Number.isInteger(seatCount) && seatCount >= TABLE_SEATS_MIN && seatCount <= TABLE_SEATS_MAX)) {
-    return fail(400, "A table has " + TABLE_SEATS_MIN + " to " + TABLE_SEATS_MAX + " seats.");
+    return fail(400, "A table deals " + TABLE_SEATS_MIN + " to " + TABLE_SEATS_MAX + " players a hand.");
   }
+  /* OQ-39. Who sits in from the lobby. Optional - a table made without saying gets the
+   * line, first come first seated - and the dealer can change it any time (setTableFill). */
+  const fillMode = table ? (fill == null ? TABLE_FILL_DEFAULT : fill) : null;
+  if (table && !TABLE_FILLS.includes(fillMode)) return fail(400, "Unknown way to fill seats.");
   const firstWeek = lastDigit ? Number(startWeek) : null;
   if (lastDigit && !(Number.isInteger(firstWeek) && firstWeek >= 1 && firstWeek <= LAST_DIGIT_WEEKS)) {
     return fail(400, "Pick a starting week from 1 to " + LAST_DIGIT_WEEKS + ".");
@@ -442,7 +451,7 @@ export async function createLeague(db, { accountToken, name, year, visibility = 
   const { error: visError } = await db
     .from("leagues")
     .update(
-      table ? { visibility, mode, table_seats: seatCount }
+      table ? { visibility, mode, table_seats: seatCount, table_fill: fillMode }
         : lastDigit ? { visibility, mode, start_week: firstWeek, team_draw: teamDraw }
         : { visibility }
     )
@@ -500,30 +509,47 @@ const defaultTeamName = (user) => {
 };
 
 /* Also the season commissioner's own team: `seat` is a table's column, and a season never
- * reads it, so the default it is born with is harmless there. */
-async function insertTeam(db, leagueId, name) {
+ * reads it, so the default it is born with is harmless there. `extra` is a table joiner's
+ * place in the lobby (OQ-39). */
+async function insertTeam(db, leagueId, name, extra = {}) {
   /* The legacy id is the team's identity everywhere the engine looks - the same
    * "team_" + hex shape the commissioner's Add Team makes in the browser. */
   const legacy = "team_" + randomBytes(5).toString("hex");
   const { data, error } = await db
     .from("teams")
-    .insert({ league_id: leagueId, name, legacy_id: legacy, seat: SEAT.SEATED })
+    .insert({ league_id: leagueId, name, legacy_id: legacy, seat: SEAT.SEATED, ...extra })
     .select("id, legacy_id")
     .single();
   if (error) return { error: error.message };
   return { id: data.id, legacyId: data.legacy_id };
 }
 
+/* OQ-39. The back of the line: one past the highest place anybody waiting holds. */
+function backOfLine(view) {
+  const places = lobbyLine(view).map((id) => lobbyOf(view, id).order).filter((o) => o != null);
+  return places.length ? Math.max(...places) + 1 : 1;
+}
+
+/* Out of the lobby entirely - seated, sitting out or gone. */
+const OFF_THE_LINE = { lobby_order: null, lobby_ready: false, lobby_hold: false };
+
 /**
- * Sit out, come back, leave, or rejoin.
+ * Deal in, join the line, sit out, leave.
  *
- * A player changes their own seat; the dealer can change anybody's (unseating a player is
- * the dealer setting them to "left"). Any phase: the hand in progress is fixed by the
- * snapshot the deal took, so a change made mid-hand applies from the next deal and nobody
- * is ever pulled out of cards they were dealt.
+ * OQ-39 (Scott, 2026-11-12) rewrote what a seat is. The 12 counts the HAND: at most
+ * `table_seats` are dealt in, and everybody else is in the lobby - waiting in line, or
+ * sitting out. So:
  *
- * THE ONE LIMIT IS SEATS. Sitting out keeps your seat; leaving gives it up. So moving FROM
- * "left" back to the table needs a seat to be free, and is refused when the table is full.
+ *   seated       in the next hand. ONLY THE DEALER puts somebody here by hand, and only
+ *                into an open seat; otherwise it is the deal filling seats from the line.
+ *   waiting      in the line. A player joins it themselves (coming back from sitting out
+ *                or leaving), or the dealer puts them there. Always at the back.
+ *   sitting_out  in the lobby, not in line. A player's own choice, or the dealer's.
+ *   left         gone from the table, record kept, membership kept. See removeFromTable
+ *                for the dealer taking somebody out of the league as well.
+ *
+ * Any phase. The hand in progress is the snapshot the deal took, so a change made
+ * mid-hand applies from the next deal, and nobody is pulled out of cards they hold.
  */
 export async function setSeat(db, { leagueId, token, teamId, seat }) {
   const ctx = await context(db, leagueId, token);
@@ -535,20 +561,44 @@ export async function setSeat(db, { leagueId, token, teamId, seat }) {
   if (!canActForTeam(ctx.session, team.id)) {
     return fail(AUTH_ERRORS.notYourTeam.status, AUTH_ERRORS.notYourTeam.error);
   }
+  const dealer = isCommissioner(ctx.session);
+  if (team.removed_at) {
+    return fail(409, dealer
+      ? "The dealer removed this player. Send them the invite - they come back with their record when they redeem it."
+      : "The dealer has removed you from this table.", { reason: "removed" });
+  }
   const from = seatOf(ctx.view, teamId);
   if (from === seat) return good({ view: ctx.view });
-  if (from === SEAT.LEFT && seatsFree(ctx.view) < 1) {
-    return fail(409, "The table is full - a seat has to come free first.", { reason: "full" });
+
+  let update;
+  if (seat === SEAT.SEATED) {
+    if (!dealer) return fail(403, "Only the dealer can deal a player in. Join the line and you will be seated when it is your turn.");
+    if (seatsFree(ctx.view) < 1) {
+      return fail(409, "Every seat in the next hand is taken - sit somebody out first.", { reason: "full" });
+    }
+    update = { seat, ...OFF_THE_LINE };
+  } else if (seat === SEAT.WAITING) {
+    /* Somebody coming back of their own accord has said they want in; somebody the dealer
+     * puts back in line has not, which only matters when players choose for themselves. */
+    update = { seat, lobby_order: backOfLine(ctx.view), lobby_ready: !dealer || ctx.session.teamId === team.id, lobby_hold: false };
+  } else {
+    update = { seat, ...OFF_THE_LINE };
   }
 
-  const { error } = await db.from("teams").update({ seat }).eq("id", team.id);
+  const { error } = await db.from("teams").update(update).eq("id", team.id);
   if (error) return fail(500, error.message);
 
   const verb = {
-    [SEAT.SEATED]: from === SEAT.LEFT ? "rejoined the table" : "is back in",
+    [SEAT.SEATED]: "was dealt in",
+    [SEAT.WAITING]: from === SEAT.LEFT ? "came back to the lobby" : "joined the line",
     [SEAT.SITTING_OUT]: "is sitting out",
     [SEAT.LEFT]: "left the table",
   }[seat];
+  await logSeat(db, ctx, team, verb);
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+async function logSeat(db, ctx, team, verb) {
   const byDealer = ctx.session.teamId !== team.id;
   await db.from("events").insert({
     season_id: ctx.rows.seasons[0].id,
@@ -557,8 +607,147 @@ export async function setSeat(db, { leagueId, token, teamId, seat }) {
     text: team.name + " " + verb + (byDealer ? " (the dealer)" : "") +
       (ctx.view.currentPeriod.phase === "pre-deal" ? "." : " from the next hand."),
   });
+}
 
+/* Dealer-only table operations share their opening. */
+async function dealerContext(db, leagueId, token) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return { error: ctx.error };
+  if (!isTable(ctx.view)) return { error: fail(400, "Only a table has a lobby.") };
+  if (!isCommissioner(ctx.session)) {
+    return { error: fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error) };
+  }
+  return { ctx };
+}
+
+/**
+ * OQ-39. How the table fills its open seats at the deal: "dealer" (by hand), "line"
+ * (first come, first seated - the default) or "player" (whoever said I'm In, in line
+ * order). The dealer can change it any time; the line is kept under all three, so
+ * switching never loses anybody's place.
+ */
+export async function setTableFill(db, { leagueId, token, fill }) {
+  const { ctx, error: refused } = await dealerContext(db, leagueId, token);
+  if (refused) return refused;
+  if (!TABLE_FILLS.includes(fill)) return fail(400, "Unknown way to fill seats.");
+  const { error } = await db.from("leagues").update({ table_fill: fill }).eq("id", leagueId);
+  if (error) return fail(500, error.message);
+  const words = { dealer: "the dealer decides", line: "first come, first seated", player: "players say I'm In" };
+  await db.from("events").insert({
+    season_id: ctx.rows.seasons[0].id,
+    period_id: ctx.period?.id ?? null,
+    type: "seat",
+    text: "Who sits in: " + words[fill] + ".",
+  });
   return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * OQ-39. The dealer puts the line in a new order. `order` is every waiting player's id,
+ * front first - all of them, so two dealers reordering at once cannot leave somebody with
+ * no place. Refused if the line has changed underneath it.
+ */
+export async function reorderLobby(db, { leagueId, token, order }) {
+  const { ctx, error: refused } = await dealerContext(db, leagueId, token);
+  if (refused) return refused;
+  const line = lobbyLine(ctx.view);
+  const wanted = Array.isArray(order) ? order : [];
+  const same = wanted.length === line.length && new Set(wanted).size === line.length &&
+    wanted.every((id) => line.includes(id));
+  if (!same) {
+    return fail(409, "The line changed while you were moving it - here it is as it stands now.", {
+      reason: "stale", view: ctx.view,
+    });
+  }
+  for (let i = 0; i < wanted.length; i += 1) {
+    const team = teamRow(ctx.rows, wanted[i]);
+    const { error } = await db.from("teams").update({ lobby_order: i + 1 }).eq("id", team.id);
+    if (error) return fail(500, error.message);
+  }
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * OQ-39. A flag on somebody waiting in line.
+ *
+ *   ready  "I'm In" - the player's own say (or the dealer's), read when players choose
+ *   hold   the dealer holding somebody back from the automatic fill
+ */
+export async function setLobbyFlag(db, { leagueId, token, teamId, flag, value }) {
+  const ctx = await context(db, leagueId, token);
+  if (ctx.error) return ctx.error;
+  if (!isTable(ctx.view)) return fail(400, "Only a table has a lobby.");
+  if (!["ready", "hold"].includes(flag)) return fail(400, "Unknown lobby setting.");
+  const team = teamRow(ctx.rows, teamId);
+  if (!team || !team.active) return fail(404, "Unknown player.");
+  if (flag === "hold" && !isCommissioner(ctx.session)) {
+    return fail(AUTH_ERRORS.notCommissioner.status, AUTH_ERRORS.notCommissioner.error);
+  }
+  if (!canActForTeam(ctx.session, team.id)) {
+    return fail(AUTH_ERRORS.notYourTeam.status, AUTH_ERRORS.notYourTeam.error);
+  }
+  if (seatOf(ctx.view, teamId) !== SEAT.WAITING) return fail(409, "Only somebody waiting in line has that.");
+  const { error } = await db.from("teams").update({ ["lobby_" + flag]: Boolean(value) }).eq("id", team.id);
+  if (error) return fail(500, error.message);
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/**
+ * OQ-39. The dealer removes a player from the table, and from the league.
+ *
+ * THEIR RECORD STAYS - their team row is kept, marked removed, and shows greyed in the
+ * table's record. Their account is noted on it, so redeeming a new invite gives them the
+ * same team back, record and all.
+ *
+ * A PLAYER IN THE HAND ON THE TABLE PLAYS IT OUT. They are not in the next hand from this
+ * moment, but they keep their membership - lineup, scheme - until this hand is finalized,
+ * when finalize takes it away. Anybody not in the hand loses it now.
+ *
+ * Not the dealer's own team, and not another commissioner's: take that role away first.
+ */
+export async function removeFromTable(db, { leagueId, token, teamId }) {
+  const { ctx, error: refused } = await dealerContext(db, leagueId, token);
+  if (refused) return refused;
+  const team = teamRow(ctx.rows, teamId);
+  if (!team || !team.active) return fail(404, "Unknown player.");
+  if (team.removed_at) return good({ view: ctx.view });
+  if (ctx.session.teamId === team.id) return fail(400, "That is your own seat - sit out instead.");
+
+  const { data: members, error: memberError } = await db
+    .from("league_members").select("id, user_id, role").eq("league_id", leagueId).eq("team_id", team.id);
+  if (memberError) return fail(500, memberError.message);
+  if ((members ?? []).some((m) => m.role === "commissioner")) {
+    return fail(409, "That player is a dealer here too. Make them a player first.");
+  }
+
+  const inHand = ctx.view.currentPeriod.phase !== "pre-deal" && periodTeamIds(ctx.view).includes(teamId);
+  const { error } = await db.from("teams").update({
+    seat: SEAT.LEFT,
+    ...OFF_THE_LINE,
+    removed_at: new Date().toISOString(),
+    removed_user_id: members?.[0]?.user_id ?? null,
+  }).eq("id", team.id);
+  if (error) return fail(500, error.message);
+
+  if (!inHand && members?.length) {
+    const { error: delError } = await db.from("league_members").delete().in("id", members.map((m) => m.id));
+    if (delError) return fail(500, delError.message);
+  }
+  await logSeat(db, ctx, team, inHand ? "was removed from the table, after this hand" : "was removed from the table");
+  return good({ view: hydrate(await fetchLeagueRows(db, leagueId)) });
+}
+
+/* OQ-39. Finalize is when a player removed mid-hand loses their membership. Called from
+ * applyFinalize's afterPersist, so the clock's finalize does it too. Best effort: a miss
+ * leaves a removed player able to see a table they are no longer dealt into, and the next
+ * finalize tries again. */
+async function dropRemovedMembers(client, ctx) {
+  if (!isTable(ctx.view)) return;
+  const removed = (ctx.rows.teams ?? []).filter((t) => t.removed_at).map((t) => t.id);
+  if (!removed.length) return;
+  const { error } = await client.from("league_members").delete()
+    .eq("league_id", ctx.rows.leagues[0].id).in("team_id", removed);
+  if (error) console.log("[table] removed members not dropped -", error.message);
 }
 
 /* ------------------------------ Last Digit ------------------------------- */
@@ -932,9 +1121,10 @@ export async function redeemInvite(db, { code, accountToken, teamName = null, fe
 
   await db.from("profiles").upsert({ user_id: user.id }, { onConflict: "user_id" });
 
-  /* AN INVITE THAT NAMES NO TEAM MAKES ONE. At a table that is sitting down: the team
-   * is theirs, record and all, if they leave and come back, and it is refused when every
-   * seat is taken. In a season (OQ-35) it is joining the league, refused at
+  /* AN INVITE THAT NAMES NO TEAM MAKES ONE. At a table that is joining the LOBBY, at the
+   * back of the line (OQ-39): never refused for being full, because the 12 counts the
+   * hand, not the membership. Somebody the dealer removed gets their old team back,
+   * record and all. In a season (OQ-35) it is joining the league, refused at
    * SEASON_TEAMS_MAX and once Week 1 has been dealt - the standings ladder is worth as
    * many points as there are teams, so a team arriving mid-season would change what
    * every later week is worth. A refusal does not use the invite up. */
@@ -944,7 +1134,18 @@ export async function redeemInvite(db, { code, accountToken, teamName = null, fe
     const view = rows ? hydrate(rows) : null;
     if (!view) return fail(410, "That invite has no team to give you - ask for a new one.");
     if (isTable(view)) {
-      if (seatsFree(view) < 1) return fail(409, "That table is full - every seat is taken.", { reason: "full" });
+      const back = (rows.teams ?? []).find((t) => t.removed_user_id === user.id);
+      const place = { seat: SEAT.WAITING, lobby_order: backOfLine(view), lobby_ready: true, lobby_hold: false };
+      if (back) {
+        const { error: backError } = await db.from("teams")
+          .update({ ...place, removed_at: null, removed_user_id: null }).eq("id", back.id);
+        if (backError) return fail(500, backError.message);
+        teamId = back.id;
+      } else {
+        const made = await insertTeam(db, invite.league_id, cleanTeamName(teamName) || defaultTeamName(user), place);
+        if (made.error) return fail(500, made.error);
+        teamId = made.id;
+      }
     } else if (isLastDigit(view)) {
       /* OQ-37: one player per NFL team, and the door shuts at kickoff - after that the
        * teams are fixed, and a player arriving would have nothing to be dealt. */
@@ -963,9 +1164,11 @@ export async function redeemInvite(db, { code, accountToken, teamName = null, fe
         return fail(409, "That league's season has started, so it is not taking new teams. Ask the commissioner.", { reason: "started" });
       }
     }
-    const made = await insertTeam(db, invite.league_id, cleanTeamName(teamName) || defaultTeamName(user));
-    if (made.error) return fail(500, made.error);
-    teamId = made.id;
+    if (!isTable(view)) {
+      const made = await insertTeam(db, invite.league_id, cleanTeamName(teamName) || defaultTeamName(user));
+      if (made.error) return fail(500, made.error);
+      teamId = made.id;
+    }
   }
 
   const { error } = await db.from("league_members").insert({
@@ -1736,6 +1939,9 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
   return async (ctx) => {
     const v = ctx.view;
     const teamIds = periodTeamIds(v);
+    /* OQ-39. Who the line fills into open seats - already counted in teamIds, and seated
+     * for good once this deal is written, so they are regulars from here on. */
+    const fromLine = isTable(v) ? autoSeatIds(v) : [];
     const tableProblem = tableDealProblem(v);
     if (tableProblem) return { error: tableProblem };
     if (teamIds.length === 0) return { error: "Add at least one team before dealing rosters." };
@@ -1770,6 +1976,9 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
       if (t) t.roster = roster;
     });
     blob.currentPeriod.phase = "dealt";
+    /* A table's hand is fixed at the deal: the snapshot decompose writes as the period's
+     * participants, so nothing about the lobby afterwards can change who is in it. */
+    if (isTable(v)) blob._meta = { ...(blob._meta || {}), seatedTeamIds: teamIds };
     blob.schemes = {};
     blob.statsEntry = {};
     blob.lockedPlayerIds = {};
@@ -1784,7 +1993,8 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
       type: "deal",
       text:
         "Rosters dealt" + (by === "commissioner" ? "" : " automatically") + " for " + label +
-        " (" + teamIds.length + " team" + (teamIds.length === 1 ? "" : "s") + ")." +
+        " (" + teamIds.length + " team" + (teamIds.length === 1 ? "" : "s") +
+        (fromLine.length ? ", " + fromLine.length + " from the lobby" : "") + ")." +
         poolRefreshNote(poolRefresh),
     });
 
@@ -1797,6 +2007,12 @@ function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
        * server/notify.js. */
       notify: "week_dealt",
       afterPersist: async (client) => {
+        if (fromLine.length) {
+          await client.from("teams")
+            .update({ seat: SEAT.SEATED, ...OFF_THE_LINE })
+            .eq("league_id", ctx.rows.leagues[0].id)
+            .in("legacy_id", fromLine);
+        }
         await client
           .from("periods")
           /* `dealt_at` IS READ BACK AS A DEADLINE, not just recorded: every "has this
@@ -1937,6 +2153,7 @@ function applyFinalize({ feed, by = "commissioner" } = {}) {
           .update({ phase: "finalized", finalized_at: new Date().toISOString() })
           .eq("id", ctx.period.id);
         if (recaps) await saveWeekRecaps(client, ctx, recaps);
+        await dropRemovedMembers(client, ctx);
         // Finalize advances to the next week, so a brand new period row now exists.
         await mapNewPeriod(client, ctx.rows.seasons[0].id, result.state.currentPeriod, {
           season: ctx.rows.seasons[0].year,

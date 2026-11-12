@@ -549,6 +549,25 @@ export function useLeague(store) {
     [store, immediate]
   );
 
+  /* OQ-39: the lobby. The server decides who may do what - the dealer, or a player for
+   * their own I'm In. */
+  const setTableFill = useCallback(
+    (fill) => immediate("setTableFill", () => store.setTableFill(fill)),
+    [store, immediate]
+  );
+  const reorderLobby = useCallback(
+    (order) => immediate("reorderLobby", () => store.reorderLobby(order)),
+    [store, immediate]
+  );
+  const setLobbyFlag = useCallback(
+    (teamId, flag, value) => immediate("setLobbyFlag:" + teamId, () => store.setLobbyFlag(teamId, flag, value)),
+    [store, immediate]
+  );
+  const removeFromTable = useCallback(
+    (teamId) => immediate("removeFromTable:" + teamId, () => store.removeFromTable(teamId)),
+    [store, immediate]
+  );
+
   /* OQ-37, Last Digit: hand out NFL teams - all at random, or one player at a time. */
   const dealLastDigitTeams = useCallback(
     () => immediate("dealLastDigitTeams", () => store.dealLastDigitTeams()),
@@ -622,6 +641,10 @@ export function useLeague(store) {
       setAutoCycle,
       setNotifyMembers,
       setSeat,
+      setTableFill,
+      reorderLobby,
+      setLobbyFlag,
+      removeFromTable,
       dealLastDigitTeams,
       setLastDigitTeam,
       processSchemes,

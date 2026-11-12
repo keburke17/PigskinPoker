@@ -13,7 +13,8 @@ import {
   TABLE_MIN_PLAYERS,
   SEASON_TEAMS_MAX,
   isTable,
-  seatsTaken,
+  SEAT,
+  seatOf,
   tableSeats,
   LINEUP_LOCK,
   POSITIONS,
@@ -1208,7 +1209,6 @@ function TableInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
   const [issued, setIssued] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
-  const full = seatsTaken(state) >= (tableSeats(state) || 0);
 
   const issue = async () => {
     setError(null); setIssued(null); setCopied(false);
@@ -1223,8 +1223,8 @@ function TableInvitePanel({ state, invites, onCreateInvite, onRevokeInvite }) {
       <h3 className="pp-h3">Invite Players</h3>
       <p className="pp-sub" style={{ marginBottom: 10 }}>
         One invite for the whole table: paste it in the group chat. Everyone who redeems it
-        takes a seat with a team of their own, until all {tableSeats(state)} seats are taken.
-        {full ? " The table is full right now, so it will turn people away until a seat comes free." : ""}
+        joins the lobby with a team of their own. Up to {tableSeats(state)} are dealt into a
+        hand, and the rest wait their turn - Dealer, Lobby is where you seat them.
       </p>
       <button className="pp-btn pp-btn-gold" onClick={issue}>Create Invite</button>
       {error ? <div className="pp-hint pp-hint-bad">{error}</div> : null}
@@ -1479,9 +1479,9 @@ function TableSetupChecklist({ state }) {
   const seated = periodTeamIds(state).length;
   const steps = [
     {
-      done: seatsTaken(state) > 1,
+      done: state.teams.filter((t) => seatOf(state, t.id) !== SEAT.LEFT).length > 1,
       label: "Invite players to your table",
-      note: "One invite, as many people as you have seats (" + tableSeats(state) + "). Each person who redeems it sits down with a team of their own.",
+      note: "One invite for everybody. Each person who redeems it joins the lobby with a team of their own, and up to " + tableSeats(state) + " are dealt into a hand.",
     },
     { done: !!(state._meta && state._meta.nflWeek), label: "Set the NFL week", note: "Optional - it is what Pull Stats reads from." },
     {
@@ -1533,7 +1533,7 @@ export function CommSetupScreen(props) {
         />
       )}
       {isTable(props.state) ? (
-        <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} />
+        <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} lobbyOps={props.lobbyOps} myTeamId={props.myTeamId} />
       ) : null}
       <CommNflWeekPanel state={props.state} onSetNflWeek={props.onSetNflWeek} />
       <div className="pp-card">
@@ -1590,7 +1590,7 @@ export function CommissionerTab(props) {
       ? ["stats", "seats", "weeks", "roster-mgmt", "pool", "scoring", "invite", "delete"]
       : ["stats", "teams", "weeks", "roster-mgmt", "pool", "scoring", "playoffs", "invite", "delete"];
   const openSub = sub || (midWeek ? "stats" : (setupPhase ? null : (table ? "seats" : "teams")));
-  const labels = { stats: "Enter Stats", teams: "Teams", seats: "Seats", weeks: table ? "Hands" : "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", playoffs: "Playoffs", invite: "Invite", delete: table ? "Delete Table" : "Delete League" };
+  const labels = { stats: "Enter Stats", teams: "Teams", seats: "Lobby", weeks: table ? "Hands" : "Weeks", "roster-mgmt": "Manage Rosters", pool: "Player Pool", scoring: "Scoring", playoffs: "Playoffs", invite: "Invite", delete: table ? "Delete Table" : "Delete League" };
   return (
     <div>
       {setupPhase ? (
@@ -1611,6 +1611,8 @@ export function CommissionerTab(props) {
           onSetAutoCycle={props.onSetAutoCycle}
           onSetNotifyMembers={props.onSetNotifyMembers}
           onSetSeat={props.onSetSeat}
+          lobbyOps={props.lobbyOps}
+          myTeamId={props.myTeamId}
           onDeal={props.onDeal}
           onProcessSchemes={props.onProcessSchemes}
           dealError={props.dealError}
@@ -1629,7 +1631,7 @@ export function CommissionerTab(props) {
           onSetAutoPullStats={props.onSetAutoPullStats}
         />
       )}
-      {openSub === "seats" && <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} />}
+      {openSub === "seats" && <TableSeatsPanel state={props.state} onSetSeat={props.onSetSeat} onRenameTeam={props.onRenameTeam} lobbyOps={props.lobbyOps} myTeamId={props.myTeamId} />}
       {openSub === "teams" && <CommTeamsPanel state={props.state} onAddTeam={props.onAddTeam} onRenameTeam={props.onRenameTeam} onRemoveTeam={props.onRemoveTeam} />}
       {openSub === "weeks" && <CommWeeksPanel state={props.state} onDeal={props.onDeal} onProcessSchemes={props.onProcessSchemes} dealError={props.dealError} submittedTeamIds={props.submittedTeamIds} onSetNflWeek={props.onSetNflWeek} onSetLineupLock={props.onSetLineupLock} onRefreshKickoffs={props.onRefreshKickoffs} kickoffReport={props.kickoffReport} onRefreshInjuries={props.onRefreshInjuries} injuryReport={props.injuryReport} onSetAutoCycle={props.onSetAutoCycle} onSetNotifyMembers={props.onSetNotifyMembers} />}
       {openSub === "roster-mgmt" && <CommManageRostersPanel state={props.state} onSwap={props.onSwap} onMoveStarter={props.onMoveStarter} onSubmitScheme={props.onSubmitScheme} />}

@@ -91,19 +91,19 @@ function dealerStep(state) {
     if (seated < TABLE_MIN_PLAYERS) {
       return {
         headline: "Get a second player to the table.",
-        detail: "A hand needs at least " + TABLE_MIN_PLAYERS + " players seated. Dealer " + ARROWED + " Invite makes one code for the whole table - everyone who redeems it takes a seat with a team of their own.",
+        detail: "A hand needs at least " + TABLE_MIN_PLAYERS + " players. Dealer " + ARROWED + " Invite makes one code for the whole table - everyone who redeems it joins the lobby with a team of their own, and Dealer " + ARROWED + " Lobby is where you seat them.",
         tab: "comm",
       };
     }
     return clockWillDeal(state)
       ? {
           headline: hand + " is dealt for you at " + advanceDeadlineWords(state) + ".",
-          detail: "Nothing to press - the clock deals it to whoever is seated then. You can still deal it now yourself if you would rather not wait.",
+          detail: "Nothing to press - the clock deals it to whoever is seated then, filling open seats from the lobby the way you chose. You can still deal it now yourself if you would rather not wait.",
           tab: "comm",
         }
       : {
           headline: "Deal " + hand + ".",
-          detail: seated + " players are seated, and each gets a fresh, random 12-player hand. Anyone sitting out is not dealt in, and anyone who sits down after the deal waits for the next hand.",
+          detail: seated + " players are in it, and each gets a fresh, random 12-player hand. Anyone in the lobby is not dealt in, and anyone who joins after the deal waits for the next hand.",
           tab: "comm",
         };
   }
@@ -159,18 +159,25 @@ function playerStep(state, team) {
   if (seat === SEAT.LEFT && !inHand) {
     return {
       headline: "You have left the table.",
-      detail: "Your team and your record are kept. Rejoin from My Team whenever a seat is free.",
+      detail: "Your team and your record are kept. Rejoin the lobby from My Team any time.",
       tab: "myteam",
     };
   }
-  if (phase === "pre-deal") {
+  if (phase === "pre-deal" && !inHand) {
     return seat === SEAT.SITTING_OUT
       ? {
           headline: "You are sitting out " + hand + ".",
-          detail: "Your seat is held for you. Come back from My Team before the deal and you are dealt in.",
+          detail: "You're in the lobby but not in line. Tap I'm Back on My Team to get in line for a seat.",
           tab: "myteam",
         }
       : {
+          headline: "You are in the lobby for " + hand + ".",
+          detail: "My Team shows your place in line, and whether you'll be dealt in.",
+          tab: "myteam",
+        };
+  }
+  if (phase === "pre-deal") {
+    return {
           headline: "Nothing to do yet.",
           detail:
             (clockWillDeal(state)
@@ -184,8 +191,10 @@ function playerStep(state, team) {
     return {
       headline: "You are not in " + hand + ".",
       detail: seat === SEAT.SEATED
-        ? "It was dealt before you took your seat. You are in the next hand."
-        : "You were sitting out when it was dealt. Come back from My Team to be dealt into the next one.",
+        ? "It was dealt before you were seated. You are in the next hand."
+        : seat === SEAT.WAITING
+          ? "It was dealt before you got a seat. You're in the lobby - My Team shows your place in line."
+          : "You were sitting out when it was dealt. Tap I'm Back on My Team to get in line for the next one.",
       tab: "myteam",
     };
   }

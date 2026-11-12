@@ -393,6 +393,8 @@ export default function App() {
   const onSetAutoCycle = (patch) => ops.setAutoCycle(patch);
   const onSetNotifyMembers = (enabled) => ops.setNotifyMembers(enabled);
   const onSetSeat = (teamId, seat) => ops.setSeat(teamId, seat);
+  /* OQ-39: the table's lobby. One object so the Dealer tab can hand it down whole. */
+  const lobbyOps = { fill: ops.setTableFill, reorder: ops.reorderLobby, flag: ops.setLobbyFlag, remove: ops.removeFromTable };
   const onProcessSchemes = () => ops.processSchemes();
   const onFinalize = () => ops.finalizePeriod();
   const onToggleRosterLock = () => ops.toggleRosterLock();
@@ -920,7 +922,7 @@ export default function App() {
             <ResultStrip state={state} team={myTeam} onSeeWeek={() => goToTab("results")} />
           ) : null}
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
-          {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} /> : null}
+          {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} lobbyOps={lobbyOps} /> : null}
           {tab === "myteam" && myTeam && (
             <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
           )}
@@ -938,7 +940,7 @@ export default function App() {
               onSetAutoPullStats={onSetAutoPullStats}
               onSetAutoCycle={onSetAutoCycle}
               onSetNotifyMembers={onSetNotifyMembers}
-              onSetSeat={onSetSeat}
+              onSetSeat={onSetSeat} lobbyOps={lobbyOps} myTeamId={myTeam ? myTeam.id : null}
               onAddTeam={onAddTeam} onRenameTeam={onRenameTeam} onRemoveTeam={onRemoveTeam}
               invites={invites} onCreateInvite={onCreateInvite} onRevokeInvite={onRevokeInvite}
               onDeal={onDeal} onProcessSchemes={onProcessSchemes} dealError={dealError}

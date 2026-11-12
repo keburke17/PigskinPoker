@@ -149,14 +149,32 @@ function tableMeta(league, teamRows, current, teamLegacy, season) {
   }
   if (league.mode !== "table") return { mode: "season" };
   const seats = {};
+  const lobby = {};
   teamRows.forEach((t) => {
     seats[t.legacy_id] = SEAT_STATES.includes(t.seat) ? t.seat : SEAT.SEATED;
+    /* OQ-39. The line, the "I'm In" and the dealer's hold - all server-owned, like the
+     * seat, and none of them carried back by decompose. */
+    lobby[t.legacy_id] = {
+      order: Number.isFinite(t.lobby_order) ? t.lobby_order : null,
+      ready: Boolean(t.lobby_ready),
+      hold: Boolean(t.lobby_hold),
+      removed: Boolean(t.removed_at),
+    };
   });
+  /* Before the deal the hand is worked out by the engine - seated players plus whoever the
+   * line fills in - so there is no snapshot to hand it. */
   const dealt = current && current.phase !== "pre-deal";
   const seatedTeamIds = dealt
     ? (current.participant_team_ids || []).map((id) => teamLegacy.get(id)).filter(Boolean)
-    : teamRows.filter((t) => seats[t.legacy_id] === SEAT.SEATED).map((t) => t.legacy_id);
-  return { mode: "table", tableSeats: league.table_seats ?? null, seats, seatedTeamIds };
+    : null;
+  return {
+    mode: "table",
+    tableSeats: league.table_seats ?? null,
+    tableFill: league.table_fill || "line",
+    seats,
+    lobby,
+    seatedTeamIds,
+  };
 }
 
 /**

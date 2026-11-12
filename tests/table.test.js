@@ -22,17 +22,26 @@ import {
   seededRng,
   tableDealProblem,
   tableRecord,
+  TABLE_FILL,
+  autoSeatIds,
+  lobbyLine,
+  nextHandTeamIds,
 } from "../src/engine/index.js";
 import { decomposeLeague } from "../src/storage/decompose.js";
 import { baseState, fillStats } from "./helpers/fixtures.js";
 
 /** A table of `n` players, seats as given (default: everybody seated). */
-function tableState(n, { seats = 8, seat = {}, seatedTeamIds } = {}) {
+function tableState(n, { seats = 8, seat = {}, seatedTeamIds, fill, lobby = {} } = {}) {
   const s = baseState(n);
   const seatMap = {};
   s.teams.forEach((t) => { seatMap[t.id] = seat[t.id] || SEAT.SEATED; });
-  s._meta = { mode: "table", tableSeats: seats, seats: seatMap };
-  s._meta.seatedTeamIds = seatedTeamIds ?? s.teams.filter((t) => seatMap[t.id] === SEAT.SEATED).map((t) => t.id);
+  s._meta = { mode: "table", tableSeats: seats, seats: seatMap, lobby };
+  if (fill) s._meta.tableFill = fill;
+  /* A snapshot only means anything once the hand is dealt - see handTeamIds. */
+  if (seatedTeamIds) {
+    s._meta.seatedTeamIds = seatedTeamIds;
+    s.currentPeriod.phase = "dealt";
+  }
   return s;
 }
 
@@ -88,10 +97,17 @@ describe("who is in the hand", () => {
 });
 
 describe("seats", () => {
-  it("counts sitting out as a taken seat, and leaving as a free one", () => {
+  /* OQ-39 (Scott, 2026-11-12): the 12 counts the hand. It used to count sitting out as a
+   * taken seat - a table of 12 with two sitting out dealt ten and let nobody in. */
+  it("counts only the seated against the hand - sitting out and leaving both free a seat", () => {
     const s = tableState(4, { seats: 5, seat: { team_1: SEAT.SITTING_OUT, team_2: SEAT.LEFT } });
-    expect(seatsTaken(s)).toBe(3);
-    expect(seatsFree(s)).toBe(2);
+    expect(seatsTaken(s)).toBe(2);
+    expect(seatsFree(s)).toBe(3);
+  });
+
+  it("refuses a hand bigger than the table deals", () => {
+    expect(tableDealProblem(tableState(4, { seats: 3 }))).toMatch(/at most 3/);
+    expect(tableDealProblem(tableState(3, { seats: 3 }))).toBeNull();
   });
 
   it("refuses a hand of fewer than two", () => {
@@ -205,5 +221,100 @@ describe("what a table says, and what a season still says", async () => {
     const s = baseState(3);
     expect(nextStep(s, "commissioner", null).headline).toBe("Deal Week 1.");
     expect(nextStep(s, "commissioner", null).detail).toMatch(/Commissioner -> Invite/);
+  });
+});
+
+/* OQ-39 (Scott, 2026-11-12). The lobby: whoever is not in the next hand waits in it, in a
+ * line, and the table's setting decides who moves from the line into an open seat. */
+describe("the lobby", () => {
+  const W = SEAT.WAITING;
+  /* team_0 and team_1 seated; team_2..team_4 waiting, in line 3rd, 1st, 2nd. */
+  const lobbyTable = (opts = {}) => tableState(5, {
+    seats: 4,
+    seat: { team_2: W, team_3: W, team_4: W },
+    ...opts,
+    lobby: { team_2: { order: 3 }, team_3: { order: 1 }, team_4: { order: 2 }, ...(opts.lobby || {}) },
+  });
+
+  it("keeps a line, front first", () => {
+    expect(lobbyLine(lobbyTable())).toEqual(["team_3", "team_4", "team_2"]);
+  });
+
+  it("puts anybody with no place recorded at the back, in league order", () => {
+    const s = lobbyTable({ lobby: { team_2: {}, team_4: {} } });
+    expect(lobbyLine(s)).toEqual(["team_3", "team_2", "team_4"]);
+  });
+
+  it("first come, first seated by default: fills the open seats from the front", () => {
+    const s = lobbyTable();
+    expect(autoSeatIds(s)).toEqual(["team_3", "team_4"]);
+    // ...and the hand the deal will deal is them plus the seated, in league order.
+    expect(periodTeamIds(s)).toEqual(["team_0", "team_1", "team_3", "team_4"]);
+  });
+
+  it("skips anybody the dealer is holding back", () => {
+    const s = lobbyTable({ lobby: { team_3: { order: 1, hold: true } } });
+    expect(autoSeatIds(s)).toEqual(["team_4", "team_2"]);
+  });
+
+  it("seats nobody by itself when the dealer decides", () => {
+    const s = lobbyTable({ fill: TABLE_FILL.DEALER });
+    expect(autoSeatIds(s)).toEqual([]);
+    expect(periodTeamIds(s)).toEqual(["team_0", "team_1"]);
+  });
+
+  it("when players choose, seats only those who said I'm In - by place in line", () => {
+    const s = lobbyTable({ fill: TABLE_FILL.PLAYER, lobby: { team_2: { order: 3, ready: true }, team_4: { order: 2, ready: true } } });
+    expect(autoSeatIds(s)).toEqual(["team_4", "team_2"]);
+  });
+
+  it("keeps the line under every setting, so switching to first come finds it there", () => {
+    const s = lobbyTable({ fill: TABLE_FILL.DEALER });
+    expect(lobbyLine(s)).toEqual(["team_3", "team_4", "team_2"]);
+    s._meta.tableFill = TABLE_FILL.LINE;
+    expect(autoSeatIds(s)).toEqual(["team_3", "team_4"]);
+  });
+
+  it("never fills past the table's hand size", () => {
+    const full = lobbyTable({ seats: 2 });
+    expect(autoSeatIds(full)).toEqual([]);
+    expect(tableDealProblem(full)).toBeNull();
+  });
+
+  it("does not count a sitting-out player as waiting", () => {
+    const s = lobbyTable({ seat: { team_2: W, team_3: SEAT.SITTING_OUT, team_4: W } });
+    expect(lobbyLine(s)).toEqual(["team_4", "team_2"]);
+  });
+
+  it("once dealt, the hand is the snapshot - the line fills the NEXT hand", () => {
+    const s = lobbyTable({ seatedTeamIds: ["team_0", "team_1"] });
+    expect(periodTeamIds(s)).toEqual(["team_0", "team_1"]);
+    expect(nextHandTeamIds(s)).toEqual(["team_0", "team_1", "team_3", "team_4"]);
+  });
+
+  it("deals a fresh roster to whoever the line filled in", () => {
+    const s = dealHand(lobbyTable());
+    expect(s.teams.find((t) => t.id === "team_3").roster).not.toBeNull();
+    expect(s.teams.find((t) => t.id === "team_2").roster).toBeNull();
+  });
+
+  it("leaves a season alone, whatever lobby data is lying around", () => {
+    const s = baseState(3);
+    s._meta = { mode: "season", lobby: { team_0: { order: 1 } }, seats: { team_0: W } };
+    expect(autoSeatIds(s)).toEqual([]);
+    expect(periodTeamIds(s)).toEqual(["team_0", "team_1", "team_2"]);
+  });
+});
+
+describe("the record keeps who has gone", () => {
+  it("marks a removed player, and the last hand they played", () => {
+    let s = tableState(3);
+    s = dealHand(s);
+    fillStats(s, periodTeamIds(s), 3);
+    s = finalizeCurrentPeriod(s).state;
+    s._meta.seats.team_2 = SEAT.LEFT;
+    s._meta.lobby = { team_2: { removed: true } };
+    const row = tableRecord(s).find((r) => r.teamId === "team_2");
+    expect(row).toMatchObject({ seat: SEAT.LEFT, removed: true, played: 1, lastHand: 1 });
   });
 });
