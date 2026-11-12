@@ -140,8 +140,8 @@ Two things follow, and both are deliberate:
   would be far worse than the problem. Same principle as the lineup lock: never act on a
   guess.
 
-**Each NFL team's top healthy RB and WR is twice as likely to be dealt** as anyone else at
-his position (Scott's ruling, 2026-10-26, OQ-32). "Top healthy" is the best depth-chart rank
+**Each NFL team's top healthy RB and WR is three times as likely to be dealt** as anyone
+else at his position (Scott's ruling, 2026-10-26, OQ-32; twice until 2026-11-12, OQ-38). "Top healthy" is the best depth-chart rank
 among the players who can be dealt that week, so when a team's RB1 is out his RB2 gets the
 odds. QB, TE and Coach stay even - the pool holds one of each per NFL team, so each is
 already the top man. A player the commissioner added by hand has no depth-chart rank and

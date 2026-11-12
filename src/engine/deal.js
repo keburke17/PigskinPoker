@@ -17,7 +17,8 @@
  * for the two cases where "we do not know" deliberately deals the player anyway.
  *
  * AND A SECOND - SCOTT'S RULING OF 2026-10-26 (OQ-32): each NFL team's top healthy RB and
- * WR that week is TWICE AS LIKELY to be dealt as anyone else at his position. "Top
+ * WR that week is THREE TIMES AS LIKELY to be dealt as anyone else at his position (twice
+ * until OQ-38, Scott 2026-11-12). "Top
  * healthy" is the best depth-chart rank among the players who can be dealt this week, so
  * when a team's RB1 is out his RB2 gets the better odds. QB, TE and Coach are untouched -
  * the pool carries one of each per NFL team, so every one of them is already the top man
@@ -40,8 +41,10 @@ const shortfall = (state, position, count) => {
   );
 };
 
-/* OQ-32. How much likelier a team's top healthy RB or WR is to be dealt than anyone else. */
-export const TOP_OF_CHART_WEIGHT = 2;
+/* OQ-32. How much likelier a team's top healthy RB or WR is to be dealt than anyone else.
+ * 2 from 2026-10-26; 3 since OQ-38 (Scott, 2026-11-12), for the deal, steals and redraws
+ * alike - this one dial drives all three. */
+export const TOP_OF_CHART_WEIGHT = 3;
 const WEIGHTED_POSITIONS = new Set(["RB", "WR"]);
 
 /** The ids of each NFL team's best-ranked player among `players` (one position, all

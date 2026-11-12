@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FLEX_POSITIONS, getPlayer, pickWeighted, processSchemes, seededRng, slotAcceptsPosition } from "../src/engine/index.js";
+import { FLEX_POSITIONS, TOP_OF_CHART_WEIGHT, getPlayer, pickWeighted, processSchemes, seededRng, slotAcceptsPosition } from "../src/engine/index.js";
 import { clearBench, dealtState, emptyFreeAgents, onRoster, rosteredIds, starter, team } from "./helpers/fixtures.js";
 
 const scheme = (type, position, playerId) => ({
@@ -340,7 +340,7 @@ describe("pickWeighted - Steal and Redraw lean toward the 1s (OQ-36)", () => {
     }
   });
 
-  it("makes a team's top RB about twice as likely as anyone else", () => {
+  it("makes a team's top RB TOP_OF_CHART_WEIGHT times as likely as anyone else", () => {
     const pool = [rb("a1", "AAA"), rb("a2", "AAA"), rb("b2", "BBB"), rb("b1", "BBB")];
     const s = stateWith(pool, { a1: 1, a2: 2, b1: 1, b2: 2 });
     const candidates = [pool[0], pool[1]]; // a1 is AAA's top RB, a2 is not
@@ -348,8 +348,8 @@ describe("pickWeighted - Steal and Redraw lean toward the 1s (OQ-36)", () => {
     let top = 0;
     const N = 3000;
     for (let i = 0; i < N; i++) if (pickWeighted(s, "RB", candidates, rng).id === "a1") top++;
-    expect(top / N).toBeGreaterThan(0.62);
-    expect(top / N).toBeLessThan(0.72); // 2-to-1 is 0.667
+    const expected = TOP_OF_CHART_WEIGHT / (TOP_OF_CHART_WEIGHT + 1); // 3-to-1 is 0.75
+    expect(Math.abs(top / N - expected)).toBeLessThan(0.05);
   });
 
   it("measures 'top' against the whole pool, not the candidates", () => {
@@ -376,7 +376,7 @@ describe("pickWeighted - Steal and Redraw lean toward the 1s (OQ-36)", () => {
     }
   });
 
-  it("a redraw lands on the top free-agent RB about twice as often", () => {
+  it("a redraw leans toward the top free-agent RBs", () => {
     let topHits = 0;
     let runs = 0;
     let evenRuns = 0;
@@ -397,14 +397,15 @@ describe("pickWeighted - Steal and Redraw lean toward the 1s (OQ-36)", () => {
       const share = tops.size / free.length;
       s.schemes = { team_0: scheme("redraw", "RB", starter(s, "team_0", "RB")) };
       const got = starter(processSchemes(s, seededRng(seed)), "team_0", "RB");
-      // Expected share with 2-to-1 odds: 2t / (2t + (1 - t)).
-      runs += (2 * share) / (1 + share);
+      // Expected share with w-to-1 odds: wt / (wt + (1 - t)).
+      const w = TOP_OF_CHART_WEIGHT;
+      runs += (w * share) / (w * share + (1 - share));
       evenRuns += share;
       if (tops.has(got)) topHits++;
     }
     const expected = runs / 300;
     expect(Math.abs(topHits / 300 - expected)).toBeLessThan(0.08);
-    // And it is a real lean, clear of the even odds (about 0.57 here, against 0.73).
+    // And it is a real lean, clear of the even odds.
     expect(topHits / 300).toBeGreaterThan(evenRuns / 300 + 0.05);
   });
 });

@@ -2311,7 +2311,7 @@ never appears (every recap write is caught and logged). But a week finalized bef
 migration gets no recap, and its scheme jokes need the moves recorded when that week's
 schemes ran.
 
-### OQ-32. Better odds for each team's top RB and WR in the deal. **[ANSWERED 2026-10-26 by Scott: 2-to-1, RB and WR only]**
+### OQ-32. Better odds for each team's top RB and WR in the deal. **[ANSWERED 2026-10-26 by Scott: 2-to-1, RB and WR only]** **Raised to 3-to-1 on 2026-11-12 - see OQ-38.**
 
 Until now every Active player at a position was equally likely to be dealt: a team's RB1
 and RB2 went into one shuffled pile together. Scott asked for **"the #1 for the week"** at
@@ -2622,3 +2622,39 @@ live database (Kyle's `npm run db:push`) before anyone can create a Last Digit g
 Until then the site works exactly as before; only the Create Game button would fail.
 
 **Nothing in Season League or the Weekly Table moved.** Parity passes unchanged.
+
+### OQ-38. The top-of-the-chart lean goes from 2-to-1 to 3-to-1. **[ANSWERED 2026-11-12 by Scott: 3-to-1, for the deal, steals and redraws]**
+
+**Why.** Scott, after his season-long league: the redraws and steals "were absolutely
+horrendous". The Weekly Table mattered more to him: if tables ever open to people who buy
+in, someone dealt bad players week after week "out of pure poor luck" will stop playing
+and go back to daily fantasy, where he picks every player himself. "People want to see
+Bijan Robinson in their lineups and not Evan Hull." A dud now and then is fine; a dud
+every week is not.
+
+**What changed.** `TOP_OF_CHART_WEIGHT` in `src/engine/deal.js` went from 2 to 3. It is the
+one dial behind the deal (OQ-32) and the Steal and Redraw picks (OQ-36), so all three
+moved together, in season leagues and tables alike. Still RB and WR only; QB, TE and Coach
+stay even. Weeks already dealt are not touched.
+
+**What it does to the league.** From a simplified simulation of a twelve-team week - about
+thirty NFL teams' backs at a position, byes allowed for - so read the numbers to a few
+points, not exactly:
+
+| | Even | 2-to-1 (before) | 3-to-1 (now) |
+|---|---|---|---|
+| A team's top RB/WR is dealt | 57% | 69% | 76% |
+| Any other RB/WR is dealt | 57% | 44% | 38% |
+| Free agents left who are a team's top man | 50% | 36% | 28% |
+| A Steal lands a top man | 50% | 76% | 86% |
+| A Redraw lands a top man | 50% | 52% | 53% |
+
+**The thing Scott knew before choosing it: a redraw barely moves.** The deal pulls more of
+the top men out of free agency before any redraw runs, and the stronger lean on the redraw
+very nearly cancels that out. The deal and steals get clearly better; a redraw stays about
+a coin flip. A heavier lean for steals and redraws alone was offered (3-to-1 deal, 5-to-1
+schemes: about 65% for a redraw, 91% for a steal) and Scott chose 3-to-1 everywhere. That
+remains a one-constant change if redraws still feel bad: split the dial in two.
+
+**Parity is untouched**, for the same reason as OQ-32: the artifact's pool has no depth
+ranks, and with none the deal and the picks are the artifact's own.
