@@ -16,7 +16,7 @@
  *   - the commissioner-driven weekly flow.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createStore } from "./storage/index.js";
 import { viewLeagueId } from "./storage/types.js";
 import { useRoute } from "./routing/useRoute.js";
@@ -47,6 +47,7 @@ import { CommissionerTab } from "./components/commissioner.jsx";
 import { MySeatCard } from "./components/table.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 import { GoalpostIcon, TitleBall } from "./components/games.jsx";
+import { gameNameParts } from "./components/homeStatus.js";
 import {
   LastDigitBoardTab,
   LastDigitCommishTab,
@@ -810,18 +811,20 @@ export default function App() {
                 * said which league you were looking at except the teams in it. The eyebrow keeps
                 * Pigskin Poker where the eye already expects a brand, and costs 14px rather than a
                 * second row of header. */}
-              {/* THE GAME'S NAME RIDES ON THE EYEBROW in Last Digit (Scott, 2026-11-08). It
-                * used to be a red pill after the league name, which sat beside Home and read as a
-                * second button. Plain small capitals beside Pigskin Poker read as a label. */}
-              {lastDigit ? (
-                <div className="pp-eyebrow ld-eyebrow">
-                  <span>Pigskin Poker</span>
-                  <span className="ld-eyebrow-dot" aria-hidden="true" />
-                  <span className="ld-eyebrow-game">Last Digit</span>
-                </div>
-              ) : (
-                <div className="pp-eyebrow">Pigskin Poker</div>
-              )}
+              {/* THE GAME'S NAME RIDES ON THE EYEBROW (Scott, 2026-11-08 for Last Digit,
+                * 2026-11-12 for Grab Bag). In Last Digit it used to be a red pill after the
+                * league name, which sat beside Home and read as a second button. Plain small
+                * capitals beside Pigskin Poker read as a label:
+                *   PIGSKIN POKER . GRAB BAG . WEEKLY */}
+              <div className="pp-eyebrow pp-eyebrow-row">
+                <span>Pigskin Poker</span>
+                {gameNameParts(lastDigit ? "lastdigit" : table ? "table" : "season").map((part) => (
+                  <Fragment key={part}>
+                    <span className="pp-eyebrow-dot" aria-hidden="true" />
+                    <span className="pp-eyebrow-game">{part}</span>
+                  </Fragment>
+                ))}
+              </div>
               <h1 className="pp-h1 pp-league-title pp-title-with-ball">
                 {lastDigit ? <GoalpostIcon size="1.05em" tone="ivory" /> : <TitleBall size="1.05em" />} {state.leagueName}
               </h1>

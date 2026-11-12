@@ -1072,9 +1072,11 @@
 
 /* The game's name beside Pigskin Poker on the eyebrow line - a label, not a pill, so it
  * does not read as a button next to Home (Scott, 2026-11-08, option A). */
-.ld-eyebrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.ld-eyebrow-dot{ width:4px; height:4px; border-radius:50%; background:var(--border); flex:none; }
-.ld-eyebrow-game{ color:var(--gold); }
+/* The game's name on the header eyebrow, every game: PIGSKIN POKER . GRAB BAG . WEEKLY.
+   --gold is each game's own (red under .ld-theme), so no colour is decided here. */
+.pp-eyebrow-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pp-eyebrow-dot{ width:4px; height:4px; border-radius:50%; background:var(--border); flex:none; }
+.pp-eyebrow-game{ color:var(--gold); }
 
 .ld-stack{ display:flex; flex-direction:column; gap:14px; }
 .ld-stack-tight{ display:flex; flex-direction:column; gap:8px; }
@@ -1211,5 +1213,15 @@
 .ld-handover{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .ld-handover .pp-select{ max-width:260px; }
 
-/* The homepage's Last Digit card: the office-pool line under the description. */
-.pp-game-tag{ display:inline-block; margin-top:5px; font-size:11px; font-weight:700; letter-spacing:.3px; padding:3px 8px; border-radius:20px; background:rgba(232,194,90,0.14); color:var(--gold-bright); align-self:flex-start; }
+/* Every homepage game card's last line: "GREAT FOR Office pools . Up to 32 players"
+   (Scott, 2026-11-12 - it was a gold pill on Last Digit alone). */
+.pp-game-great{ margin-top:3px; font-size:12px; color:var(--text); line-height:1.4; }
+.pp-game-great b{ color:var(--gold-bright); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; margin-right:5px; }
+
+/* Grab Bag Weekly's card on the homepage is teal, so the two Grab Bag cards are told apart
+   at a glance (Scott, 2026-11-12). The homepage ONLY - inside a Weekly league the colours
+   are unchanged until Scott reworks the Full Season look. */
+.pp-game-teal .pp-game-badge{ background: linear-gradient(180deg, #7ad8cd, #3fb4a8); }
+.pp-game-teal .pp-game-eyebrow, .pp-game-teal .pp-game-great b{ color:#7ad8cd; }
+.pp-game-teal .pp-play-btn{ border-color:#2d8a80; background: linear-gradient(180deg, #7ad8cd, #3fb4a8); color:#06221f; }
+.pp-game-teal .pp-play-btn:hover{ background: linear-gradient(180deg, #95e4da, #52c4b8); }

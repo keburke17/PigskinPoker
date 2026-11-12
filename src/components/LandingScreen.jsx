@@ -377,13 +377,13 @@ function GameList({ onPlay }) {
             <span className="pp-soon-tag">Coming soon</span>
           </div>
         ) : (
-          <div key={g.key} className="pp-game-card">
+          <div key={g.key} className={"pp-game-card" + (g.accent ? " pp-game-" + g.accent : "")}>
             <span className="pp-game-badge"><GameIcon icon={g.icon} size={30} tone="gold" /></span>
             <span className="pp-home-row-text">
               <span className="pp-game-eyebrow">{g.eyebrow}</span>
               <span className="pp-game-name">{g.name}</span>
               <span className="pp-home-row-sub">{g.blurb}</span>
-              {g.tag ? <span className="pp-game-tag">{g.tag}</span> : null}
+              {g.great ? <span className="pp-game-great"><b>Great for</b>{g.great}</span> : null}
             </span>
             <button type="button" className="pp-play-btn" aria-label={"Play " + g.name} onClick={() => onPlay(g)}>PLAY</button>
           </div>

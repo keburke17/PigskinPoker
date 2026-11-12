@@ -92,9 +92,9 @@ describe("the status line", () => {
 
   it("subtitles a league by game, role and team, and a table by its seats", () => {
     expect(leagueSubtitle({ game: "season", role: "manager", teamName: "Gridiron Gang" }))
-      .toBe("Season League - Gridiron Gang");
+      .toBe("Grab Bag \u00b7 Full Season - Gridiron Gang");
     expect(leagueSubtitle({ game: "table", role: "commissioner", teamName: "The House", seats: 8, seated: 6 }))
-      .toBe("Weekly Table - Dealer - The House - 6 of 8 seated");
+      .toBe("Grab Bag \u00b7 Weekly - Dealer - The House - 6 of 8 seated");
   });
 });
 
