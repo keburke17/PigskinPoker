@@ -29,6 +29,7 @@ const INK = {
   ivory: "#0c2318",
   dim: "#a9bdaf",
   title: "#ffdc84",
+  light: "#fbf7ee",
 };
 
 function Svg({ size, label, children, ...rest }) {
@@ -66,6 +67,7 @@ const BALL = {
   ivory: { fill: "#7a2e29", edge: "#4a1c18", lace: "#f8f3e4" },
   dim: { fill: "#2a4236", edge: "#a9bdaf", lace: "#a9bdaf" },
   title: { fill: "#8a5428", edge: "#ffdc84", lace: "#f8f3e4" },
+  light: { fill: "#5a3418", edge: "#fbf7ee", lace: "#f8f3e4" },
 };
 
 export function FootballIcon({ size = 24, tone = "gold", label }) {
@@ -129,13 +131,15 @@ export const GAMES = [
   /* Each card is a name, a line of what the game is (`blurb`) and a line of who it suits
    * (`great`, drawn after a "Great for" label) - Scott, 2026-11-12. The eyebrow says how
    * long a game runs; "Full season" means this one, since there is no other to play.
-   * `accent` recolours the card on the homepage ONLY: Weekly is teal there so the two
-   * Grab Bag cards are told apart at a glance. Inside a league nothing changes yet - Scott
-   * means to rework the Full Season look itself, and the colours wait for that. */
+   * `accent` is each game's colour ON THE HOMEPAGE ONLY - its card and the badge on each
+   * of your leagues: Full Season gold, Weekly teal, Last Digit red (Scott, 2026-11-12).
+   * Inside a league nothing changes yet - Scott means to rework the Full Season look
+   * itself, and the colours wait for that. */
   {
     key: "season",
     mode: "season",
     icon: "trophy",
+    accent: "gold",
     name: gameName("season"),
     eyebrow: "Full season",
     blurb: "A fresh 12-man roster every week. Block, steal or redraw, climb the standings, win the playoffs.",
@@ -157,6 +161,7 @@ export const GAMES = [
     key: "lastdigit",
     mode: "lastdigit",
     icon: "goalpost",
+    accent: "red",
     name: gameName("lastdigit"),
     eyebrow: "Full season",
     blurb: "Hold one NFL team all season. Score the last digit of its final score, every week.",
@@ -172,6 +177,17 @@ export const GAMES = [
 ];
 
 /** The picture a league's row shows: its game's. */
+/** A game's homepage colour - "gold", "teal" or "red" - from its GAMES entry. */
+export function accentForGame(game) {
+  const entry = GAMES.find((g) => g.mode === (game === "table" || game === "lastdigit" ? game : "season"));
+  return (entry && entry.accent) || "gold";
+}
+
+/** The icon ink that reads on an accent's badge: light on red, dark on gold and teal. */
+export function badgeTone(accent) {
+  return accent === "red" ? "light" : "gold";
+}
+
 export function iconForGame(game) {
   return game === "table" ? "football" : game === "lastdigit" ? "goalpost" : "trophy";
 }

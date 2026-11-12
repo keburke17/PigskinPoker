@@ -1218,10 +1218,15 @@
 .pp-game-great{ margin-top:3px; font-size:12px; color:var(--text); line-height:1.4; }
 .pp-game-great b{ color:var(--gold-bright); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; margin-right:5px; }
 
-/* Grab Bag Weekly's card on the homepage is teal, so the two Grab Bag cards are told apart
-   at a glance (Scott, 2026-11-12). The homepage ONLY - inside a Weekly league the colours
-   are unchanged until Scott reworks the Full Season look. */
-.pp-game-teal .pp-game-badge{ background: linear-gradient(180deg, #7ad8cd, #3fb4a8); }
-.pp-game-teal .pp-game-eyebrow, .pp-game-teal .pp-game-great b{ color:#7ad8cd; }
-.pp-game-teal .pp-play-btn{ border-color:#2d8a80; background: linear-gradient(180deg, #7ad8cd, #3fb4a8); color:#06221f; }
-.pp-game-teal .pp-play-btn:hover{ background: linear-gradient(180deg, #95e4da, #52c4b8); }
+/* EACH GAME'S COLOUR ON THE HOMEPAGE (Scott, 2026-11-12): Grab Bag Full Season gold,
+   Grab Bag Weekly teal, Last Digit red - on the Start a Game cards and on the badge of
+   each of your leagues. The homepage ONLY: inside a league the colours are unchanged until
+   Scott reworks the Full Season look. Gold's eyebrow stays the felt's green, as before. */
+.pp-accent-gold{ --acc:var(--gold); --acc-hi:var(--gold-bright); --acc-hover:linear-gradient(180deg, #ffe79a, #efcb63); --acc-edge:var(--gold-dim); --acc-text:var(--gold-bright); --acc-eyebrow:var(--ok); --acc-ink:#1c1a08; }
+.pp-accent-teal{ --acc:#3fb4a8; --acc-hi:#7ad8cd; --acc-hover:linear-gradient(180deg, #95e4da, #52c4b8); --acc-edge:#2d8a80; --acc-text:#7ad8cd; --acc-eyebrow:#7ad8cd; --acc-ink:#06221f; }
+.pp-accent-red{ --acc:#c8362f; --acc-hi:#e0605a; --acc-hover:linear-gradient(180deg, #ea7770, #d4483f); --acc-edge:#9b2a24; --acc-text:#f08a82; --acc-eyebrow:#f08a82; --acc-ink:#fbf7ee; }
+.pp-accent .pp-game-badge, .pp-league-badge.pp-accent{ background: linear-gradient(180deg, var(--acc-hi), var(--acc)); }
+.pp-accent .pp-game-eyebrow{ color:var(--acc-eyebrow); }
+.pp-accent .pp-game-great b{ color:var(--acc-text); }
+.pp-accent .pp-play-btn{ border-color:var(--acc-edge); background: linear-gradient(180deg, var(--acc-hi), var(--acc)); color:var(--acc-ink); }
+.pp-accent .pp-play-btn:hover{ background:var(--acc-hover); }

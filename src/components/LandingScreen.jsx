@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { ErrorBanner } from "./atoms.jsx";
-import { ChevronIcon, GAMES, GameIcon, TitleBall, iconForGame } from "./games.jsx";
+import { ChevronIcon, GAMES, GameIcon, TitleBall, accentForGame, badgeTone, iconForGame } from "./games.jsx";
 import { gameName, leagueStatus, leagueSubtitle } from "./homeStatus.js";
 
 export function LandingScreen({
@@ -346,7 +346,9 @@ function LeagueRow({ league, onOpen }) {
   const status = leagueStatus(league);
   return (
     <button type="button" className="pp-home-row" onClick={onOpen}>
-      <span className="pp-league-badge"><GameIcon icon={iconForGame(league.game)} size={26} tone="ivory" /></span>
+      <span className={"pp-league-badge pp-accent pp-accent-" + accentForGame(league.game)}>
+        <GameIcon icon={iconForGame(league.game)} size={26} tone={badgeTone(accentForGame(league.game))} />
+      </span>
       <span className="pp-home-row-text">
         <span className="pp-home-row-name">{league.name}</span>
         <span className="pp-home-row-sub">{leagueSubtitle(league)}</span>
@@ -377,8 +379,8 @@ function GameList({ onPlay }) {
             <span className="pp-soon-tag">Coming soon</span>
           </div>
         ) : (
-          <div key={g.key} className={"pp-game-card" + (g.accent ? " pp-game-" + g.accent : "")}>
-            <span className="pp-game-badge"><GameIcon icon={g.icon} size={30} tone="gold" /></span>
+          <div key={g.key} className={"pp-game-card pp-accent pp-accent-" + (g.accent || "gold")}>
+            <span className="pp-game-badge"><GameIcon icon={g.icon} size={30} tone={badgeTone(g.accent)} /></span>
             <span className="pp-home-row-text">
               <span className="pp-game-eyebrow">{g.eyebrow}</span>
               <span className="pp-game-name">{g.name}</span>
