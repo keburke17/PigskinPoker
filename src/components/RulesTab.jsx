@@ -46,7 +46,8 @@ export function RuleCard({ title, children }) {
 const TIEBREAKERS = ["standings points", "week wins", "coach wins", "total TDs", "total yards", "best single-player week"];
 
 function oddsWords(weight) {
-  return weight === 2 ? "twice as likely" : weight + " times as likely";
+  const words = { 2: "twice", 3: "three times", 4: "four times", 5: "five times" };
+  return (words[weight] || weight + " times") + " as likely";
 }
 
 export function RulesTab({ state }) {
@@ -125,7 +126,7 @@ export function RulesTab({ state }) {
         <><strong>Block</strong> - protect one player on your roster from steals - bench included.</>,
         <><strong>Steal</strong> - drop a player, take a random unblocked player at that same position from another team&apos;s roster. Bench players can be stolen too.</>,
         <><strong>Redraw</strong> - drop a player, get a random free agent at that same position.</>,
-        "Steals and redraws lean toward the 1s, like the deal: an NFL team's top healthy RB or WR is twice as likely to be picked.",
+        "Steals and redraws lean toward the 1s, like the deal: an NFL team's top healthy RB or WR is " + oddsWords(TOP_OF_CHART_WEIGHT) + " to be picked.",
         "You always drop the position you're going after - drop an RB, get an RB.",
         "Blocks run first. Then every steal and redraw runs in a random order, so picking early gets you nothing.",
         "Coaches can't be schemed. Nobody sees your pick.",

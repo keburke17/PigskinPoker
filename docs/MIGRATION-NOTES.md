@@ -2432,3 +2432,12 @@ position first, since one Block can no longer cover two QBs.
 feedback). Only `src/components/lineup.jsx` and its CSS changed: the picked card opens
 `PickList` under its row, built from the same `lineupMoveTargets` the HERE buttons used,
 and the dimming, MOVE and HERE faces are gone. No change to the engine or the server.
+
+## The top-of-chart lean goes to 3-to-1 (2026-11-12, OQ-38)
+
+**Rules change, Scott's.** `TOP_OF_CHART_WEIGHT` in `src/engine/deal.js` is 3, up from 2, so
+each NFL team's top healthy RB and WR is three times as likely as anyone else at his
+position to be dealt, stolen or redrawn. One constant drives all three. No schema, server or
+storage change. The Rules screen reads the constant for both of its sentences now (the
+Schemes one had "twice" typed in), and `tests/schemes.test.js` works its expected shares
+out from the constant rather than assuming 2. Parity is unchanged.

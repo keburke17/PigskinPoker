@@ -219,7 +219,7 @@ in a league that is actually being played is worse than a bug everyone has adapt
   is load-bearing.
 - **The RB and WR deal is weighted, and the QB / TE / Coach deal is not**
   (`src/engine/deal.js`). **OQ-32, Scott 2026-10-26:** each NFL team's top healthy RB and WR
-  is twice as likely to be dealt. The rank comes from `players.depth_rank` via
+  is three times as likely to be dealt (twice until OQ-38, Scott 2026-11-12). The rank comes from `players.depth_rank` via
   `_meta.depthRanks`, server-owned like `kickoffs` and absent from `decompose.js`. A pool
   with no ranks falls back to the plain shuffle, which is why parity did not move - **do not
   "simplify" that fallback away**, it is what keeps the artifact's deal reproducible.
@@ -227,7 +227,7 @@ in a league that is actually being played is worse than a bug everyone has adapt
 - **A steal can take a BENCH player, and a Block can protect one** (`src/engine/schemes.js`).
   **OQ-36, Scott 2026-11-05.** The artifact stole starters only, which let a manager hide a
   star on the bench until schemes ran; `LegacyProject/` still does, and `tests/parity.test.js`
-  patches the rule into it. Steal and Redraw also take the deal's 2-to-1 lean toward each
+  patches the rule into it. Steal and Redraw also take the deal's 3-to-1 lean toward each
   team's top RB and WR (`pickWeighted` in `src/engine/deal.js`), falling back to the even
   pick with no ranks - **keep that fallback** for the same reason as the deal's.
 - **A TE may START in the FLEX, but the deal never PUTS one there** (`FLEX_POSITIONS` /
