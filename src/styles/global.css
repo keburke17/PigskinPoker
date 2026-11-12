@@ -1072,9 +1072,11 @@
 
 /* The game's name beside Pigskin Poker on the eyebrow line - a label, not a pill, so it
  * does not read as a button next to Home (Scott, 2026-11-08, option A). */
-.ld-eyebrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.ld-eyebrow-dot{ width:4px; height:4px; border-radius:50%; background:var(--border); flex:none; }
-.ld-eyebrow-game{ color:var(--gold); }
+/* The game's name on the header eyebrow, every game: PIGSKIN POKER . GRAB BAG . WEEKLY.
+   --gold is each game's own (red under .ld-theme), so no colour is decided here. */
+.pp-eyebrow-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pp-eyebrow-dot{ width:4px; height:4px; border-radius:50%; background:var(--border); flex:none; }
+.pp-eyebrow-game{ color:var(--gold); }
 
 .ld-stack{ display:flex; flex-direction:column; gap:14px; }
 .ld-stack-tight{ display:flex; flex-direction:column; gap:8px; }
@@ -1211,5 +1213,20 @@
 .ld-handover{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .ld-handover .pp-select{ max-width:260px; }
 
-/* The homepage's Last Digit card: the office-pool line under the description. */
-.pp-game-tag{ display:inline-block; margin-top:5px; font-size:11px; font-weight:700; letter-spacing:.3px; padding:3px 8px; border-radius:20px; background:rgba(232,194,90,0.14); color:var(--gold-bright); align-self:flex-start; }
+/* Every homepage game card's last line: "GREAT FOR Office pools . Up to 32 players"
+   (Scott, 2026-11-12 - it was a gold pill on Last Digit alone). */
+.pp-game-great{ margin-top:3px; font-size:12px; color:var(--text); line-height:1.4; }
+.pp-game-great b{ color:var(--gold-bright); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; margin-right:5px; }
+
+/* EACH GAME'S COLOUR ON THE HOMEPAGE (Scott, 2026-11-12): Grab Bag Full Season gold,
+   Grab Bag Weekly teal, Last Digit red - on the Start a Game cards and on the badge of
+   each of your leagues. The homepage ONLY: inside a league the colours are unchanged until
+   Scott reworks the Full Season look. Gold's eyebrow stays the felt's green, as before. */
+.pp-accent-gold{ --acc:var(--gold); --acc-hi:var(--gold-bright); --acc-hover:linear-gradient(180deg, #ffe79a, #efcb63); --acc-edge:var(--gold-dim); --acc-text:var(--gold-bright); --acc-eyebrow:var(--ok); --acc-ink:#1c1a08; }
+.pp-accent-teal{ --acc:#3fb4a8; --acc-hi:#7ad8cd; --acc-hover:linear-gradient(180deg, #95e4da, #52c4b8); --acc-edge:#2d8a80; --acc-text:#7ad8cd; --acc-eyebrow:#7ad8cd; --acc-ink:#06221f; }
+.pp-accent-red{ --acc:#c8362f; --acc-hi:#e0605a; --acc-hover:linear-gradient(180deg, #ea7770, #d4483f); --acc-edge:#9b2a24; --acc-text:#f08a82; --acc-eyebrow:#f08a82; --acc-ink:#fbf7ee; }
+.pp-accent .pp-game-badge, .pp-league-badge.pp-accent{ background: linear-gradient(180deg, var(--acc-hi), var(--acc)); }
+.pp-accent .pp-game-eyebrow{ color:var(--acc-eyebrow); }
+.pp-accent .pp-game-great b{ color:var(--acc-text); }
+.pp-accent .pp-play-btn{ border-color:var(--acc-edge); background: linear-gradient(180deg, var(--acc-hi), var(--acc)); color:var(--acc-ink); }
+.pp-accent .pp-play-btn:hover{ background:var(--acc-hover); }

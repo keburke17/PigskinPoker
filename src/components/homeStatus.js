@@ -1,6 +1,6 @@
 /* The homepage's two lines under each league (Scott, 2026-11-04).
  *
- *   Season League - Commissioner - Gridiron Gang
+ *   Grab Bag . Full Season - Commissioner - Gridiron Gang
  *   Week 9 - Schemes due Thursday 3am EST
  *
  * The FACTS come from the server (`leagueHomeFacts` in server/operations.js, carried on
@@ -13,12 +13,27 @@
  */
 
 import { CYCLE_DEADLINES, describeDeadline, zoneLabel } from "../engine/index.js";
+import { CP } from "../engine/constants.js";
 
 const SEP = " - ";
 
-/** "Season League" or "Weekly Table" - the game a league plays, as the cards name it. */
+/* GRAB BAG (Scott, 2026-11-12). The two poker games had no name of their own - they were
+ * "Season League" and "Weekly Table", which described them rather than naming them. They
+ * now share one, Grab Bag, with how long each runs after it. The family name and the
+ * length are kept apart because the in-game header shows them as two words of the same
+ * line, and the site's own name (Pigskin Poker) may change separately. */
+export const GAME_FAMILY = "Grab Bag";
+const GAME_LENGTH = { season: "Full Season", table: "Weekly" };
+
+/** The game's name in two parts - ["Grab Bag", "Weekly"], or ["Last Digit"]. */
+export function gameNameParts(game) {
+  if (game === "lastdigit") return ["Last Digit"];
+  return [GAME_FAMILY, GAME_LENGTH[game === "table" ? "table" : "season"]];
+}
+
+/** "Grab Bag . Full Season", "Grab Bag . Weekly" or "Last Digit" - as the cards name it. */
 export function gameName(game) {
-  return game === "table" ? "Weekly Table" : game === "lastdigit" ? "Last Digit" : "Season League";
+  return gameNameParts(game).join(" " + CP(0x00b7) + " ");
 }
 
 /** The game, the role, and the team: who you are in this league. */
