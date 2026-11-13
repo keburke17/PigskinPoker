@@ -105,7 +105,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
 
       <RuleCard title="What each screen does">
         <li><strong>Week</strong> - the week in progress: your team and its score, what every team blocked, stole or redrew this week, and the live scoreboard with a projected standings-points column that is read-only until the week is finalized.</li>
-        <li><strong>My Team</strong> - your roster, your lineup swaps, and your scheme. The only screen where you do anything.{table ? " At a table it also holds your seat: sit out the next hand, come back, or leave." : ""}</li>
+        <li><strong>My Team</strong> - your roster, your lineup swaps, and your scheme. The only screen where you do anything.{table ? " At a table it also holds your seat: sit out the next hand, your place in the lobby line, I'm In, or leave." : ""}</li>
         {table ? (
           <li><strong>Table</strong> - the table's record: every player's hands won, lost and played, every finished hand and who won it, and the activity log.</li>
         ) : (
@@ -113,7 +113,7 @@ export function HelpTab({ state, role, team, onGoTo }) {
         )}
         <li><strong>Rosters</strong> - everybody's rosters and the free-agent pool.</li>
         <li><strong>Rules</strong> - the game itself: scoring rates, tiebreakers, playoffs. The numbers there are read from your league's own settings.</li>
-        {isCommissioner && table ? <li><strong>Dealer</strong> - Enter Stats and Hands run each hand; Seats shows who is in, sitting out or gone, and lets you move anyone; Invite makes the one code your players redeem for a seat; Player Pool and Scoring are setup; Manage Rosters acts on a player's behalf; Delete Table takes the table away from everyone at it and cannot be undone.</li> : null}
+        {isCommissioner && table ? <li><strong>Dealer</strong> - Enter Stats and Hands run each hand; Lobby is who sits in, the next hand, the line (drag to reorder), who is sitting out and who has gone, and lets you deal anyone in or remove them; Invite makes the one code your players redeem to join the lobby; Player Pool and Scoring are setup; Manage Rosters acts on a player's behalf; Delete Table takes the table away from everyone at it and cannot be undone.</li> : null}
         {isCommissioner && !table ? <li><strong>Commish</strong> - Enter Stats and Weeks run the week; Teams, Invite, Player Pool, Scoring and Playoffs are setup, and both settings panels also appear together on the setup screen before your first week is dealt; Manage Rosters acts on a manager's behalf; Delete League is the one escape hatch, and it takes the league away from everyone in it and cannot be undone.</li> : null}
       </RuleCard>
 

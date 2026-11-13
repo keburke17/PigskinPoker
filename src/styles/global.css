@@ -1230,3 +1230,41 @@
 .pp-accent .pp-game-great b{ color:var(--acc-text); }
 .pp-accent .pp-play-btn{ border-color:var(--acc-edge); background: linear-gradient(180deg, var(--acc-hi), var(--acc)); color:var(--acc-ink); }
 .pp-accent .pp-play-btn:hover{ background:var(--acc-hover); }
+
+/* ---------------------------------------------------------------------------------------
+   THE TABLE'S LOBBY (OQ-39, Scott 2026-11-12). The Dealer > Lobby list - who sits in, the
+   next hand, the line, sitting out, gone - and a player's own lobby card on My Team. Teal
+   is Grab Bag Weekly's colour; it marks the lobby here the way it marks the game on the
+   homepage.
+   --------------------------------------------------------------------------------------- */
+.pp-lobby-fill{ display:flex; flex-direction:column; gap:8px; margin:6px 0 14px; padding:12px; border:1px solid var(--gold-dim); border-radius: var(--radius); background: var(--surface-2); }
+.pp-lobby-fill-choices{ display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:8px; }
+.pp-lobby-fill-choice{ display:flex; gap:8px; align-items:flex-start; padding:9px 10px; border:1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor:pointer; min-width:0; }
+.pp-lobby-fill-choice.on{ border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.pp-lobby-fill-choice input{ margin-top:3px; flex:none; accent-color: var(--gold); }
+.pp-lobby-hint{ border-left:3px solid #3fb4a8; padding:4px 0 4px 9px; margin:0; }
+.pp-lobby-status{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.pp-lobby-chip{ display:inline-block; font-size:11.5px; font-weight:700; line-height:1.3; border-radius:999px; padding:2px 9px; background: var(--surface-3); color: var(--text); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.pp-lobby-chip.gold{ background: var(--gold); color:#2a1f05; }
+.pp-lobby-chip.full{ background: var(--red-dim); color:#f6c4bf; }
+.pp-lobby-chip.new{ background:#1d5a52; color:#c9f3ec; }
+.pp-lobby-chip.ok{ background:#1f5a3a; color:#d8f5e4; }
+.pp-lobby-sect{ margin-top:14px; }
+.pp-lobby-sect-h{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.pp-lobby-sect-h .pp-h3{ margin:0; }
+.pp-lobby-row{ flex-wrap:wrap; gap:8px; }
+.pp-lobby-who{ flex:1 1 150px; min-width:0; display:flex; flex-direction:column; }
+.pp-lobby-who .pp-roster-slot-meta{ margin-top:1px; }
+.pp-lobby-chips{ display:flex; gap:4px; flex-wrap:wrap; }
+.pp-lobby-btns{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.pp-lobby-pos{ font-family: var(--font-display); font-weight:700; color:#7ad8cd; min-width:20px; text-align:center; font-variant-numeric:tabular-nums; }
+.pp-lobby-grip{ cursor:grab; color: var(--text-faint); letter-spacing:-3px; padding:6px 6px 6px 2px; touch-action:none; user-select:none; flex:none; }
+.pp-lobby-row.dragging{ opacity:.55; border-color: var(--gold); }
+.pp-lobby-row.drop-at{ border-color:#3fb4a8; box-shadow: 0 -3px 0 #3fb4a8; }
+.pp-lobby-row.pp-lobby-gone{ opacity:.7; }
+.pp-lobby-empty{ border:1px dashed var(--border); border-radius: var(--radius-sm); padding:8px 10px; color: var(--text-faint); font-size:13px; margin-bottom:6px; }
+.pp-lobby-card{ border-color:#3fb4a8; }
+.pp-lobby-eyebrow{ color:#7ad8cd; }
+.pp-lobby-place{ font-family: var(--font-display); font-size:28px; font-weight:700; color:#7ad8cd; line-height:1.1; margin:2px 0 6px; }
+.pp-lobby-card .pp-lobby-btns{ margin-top:8px; }
+.pp-table-gone td{ color: var(--text-faint); }

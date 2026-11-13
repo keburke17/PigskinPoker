@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import * as ops from "../server/operations.js";
 import { fetchLeagueRows, hydrate } from "../server/league.js";
-import { slotAcceptsPosition } from "../src/engine/index.js";
+import { autoSeatIds, lobbyLine, nextHandTeamIds, periodTeamIds, slotAcceptsPosition, tableRecord } from "../src/engine/index.js";
 
 const SEED_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), "..", "supabase", "seed.sql"
@@ -3375,9 +3375,10 @@ gate()("table mode", () => {
     await cleanup();
   });
 
-  it("refuses a seat count outside 2 to 13, and a season is still a season", async () => {
+  /* OQ-39 (Scott, 2026-11-12): 12, not 13. */
+  it("refuses a hand size outside 2 to 12, and a season is still a season", async () => {
     const { token } = await makeAccount("seats-" + Math.random().toString(36).slice(2) + "@example.test");
-    for (const seats of [1, 14, "lots", null]) {
+    for (const seats of [1, 13, "lots", null]) {
       const r = await ops.createLeague(db, { accountToken: token, name: NAME, year: 2033, mode: "table", seats });
       expect(r.status).toBe(400);
     }
@@ -3387,15 +3388,26 @@ gate()("table mode", () => {
     await cleanup();
   });
 
-  it("gives everyone who redeems the invite their own seat, until the table is full", async () => {
-    const t = await makeTable(3, 3);
-    expect(t.players.map((p) => p.status)).toEqual([200, 200, 409]);
-    expect(t.players[2].body.error).toMatch(/full/);
+  /* OQ-39: the 12 counts the hand, so the invite never turns anybody away. Everyone who
+   * redeems it joins the lobby, at the back of the line, and the deal seats as many as
+   * there is room for. */
+  it("puts everyone who redeems the invite in the lobby line, however many there are", async () => {
+    const t = await makeTable(3, 4);
+    expect(t.players.map((p) => p.status)).toEqual([200, 200, 200, 200]);
 
     const v = await t.view();
-    expect(v.teams).toHaveLength(3);
-    expect(Object.values(v._meta.seats)).toEqual(["seated", "seated", "seated"]);
-    expect(await legacyOf(t.id, t.players[0].token)).toBeTruthy();
+    expect(v.teams).toHaveLength(5);
+    const joiners = await Promise.all(t.players.map((p) => legacyOf(t.id, p.token)));
+    expect(joiners.map((id) => v._meta.seats[id])).toEqual(["waiting", "waiting", "waiting", "waiting"]);
+    expect(lobbyLine(v)).toEqual(joiners);
+
+    // First come, first seated: the dealer plus the front two of the line.
+    const dealt = await ops.dealPeriod(db, { leagueId: t.id, token: t.dealer.token, refresh: false });
+    expect(dealt.status).toBe(200);
+    expect(dealt.body.view._meta.seatedTeamIds).toEqual([v.teams[0].id, joiners[0], joiners[1]]);
+    // ...who are seated for good now, and the other two keep their places.
+    expect(dealt.body.view._meta.seats[joiners[0]]).toBe("seated");
+    expect(lobbyLine(dealt.body.view)).toEqual([joiners[2], joiners[3]]);
     await cleanup();
   });
 
@@ -3415,7 +3427,7 @@ gate()("table mode", () => {
 
     const mine = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "sitting_out" });
     expect(mine.status).toBe(200);
-    expect(mine.body.view._meta.seatedTeamIds).not.toContain(aTeam);
+    expect(periodTeamIds(mine.body.view)).not.toContain(aTeam);
 
     const theirs = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: bTeam, seat: "left" });
     expect(theirs.status).toBe(403);
@@ -3468,26 +3480,131 @@ gate()("table mode", () => {
     await cleanup();
   });
 
-  it("keeps a leaver's team for them, and lets them back only into a free seat", async () => {
-    const t = await makeTable(2, 1);
-    const [a] = t.players;
+  it("keeps a leaver's team for them, and lets them back into the line, not past it", async () => {
+    const t = await makeTable(2, 2);
+    const [a, b] = t.players;
     const aTeam = await legacyOf(t.id, a.token);
+    const bTeam = await legacyOf(t.id, b.token);
+    expect((await ops.setSeat(db, { leagueId: t.id, token: t.dealer.token, teamId: aTeam, seat: "seated" })).status).toBe(200);
     await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "left" });
 
-    // Their seat went to somebody else...
-    const late = await makeAccount("late-" + Math.random().toString(36).slice(2) + "@example.test");
-    expect((await ops.redeemInvite(db, { code: t.code, accountToken: late.token })).status).toBe(200);
+    // Only the dealer seats somebody by hand - a player joins the line.
+    const self = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "seated" });
+    expect(self.status).toBe(403);
+    const back = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "waiting" });
+    expect(back.status).toBe(200);
+    expect(lobbyLine(back.body.view)).toEqual([bTeam, aTeam]); // the back of the line
+    expect(back.body.view.teams.map((x) => x.id)).toContain(aTeam);
 
-    // ...so coming back is refused, and their team is still there, still theirs.
-    const back = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "seated" });
-    expect(back.status).toBe(409);
-    expect((await t.view()).teams.map((x) => x.id)).toContain(aTeam);
+    // The dealer fills the one open seat; the next Deal In is refused.
+    expect((await ops.setSeat(db, { leagueId: t.id, token: t.dealer.token, teamId: bTeam, seat: "seated" })).status).toBe(200);
+    const full = await ops.setSeat(db, { leagueId: t.id, token: t.dealer.token, teamId: aTeam, seat: "seated" });
+    expect(full.status).toBe(409);
+    expect(full.body.reason).toBe("full");
+    await cleanup();
+  });
 
-    // A seat comes free; now they can.
-    const lateTeam = await legacyOf(t.id, late.token);
-    await ops.setSeat(db, { leagueId: t.id, token: late.token, teamId: lateTeam, seat: "left" });
-    const again = await ops.setSeat(db, { leagueId: t.id, token: a.token, teamId: aTeam, seat: "seated" });
-    expect(again.status).toBe(200);
+  it("is created with the way it fills seats, which the dealer can change, and only the dealer", async () => {
+    const dealer = await makeAccount("fill-" + Math.random().toString(36).slice(2) + "@example.test");
+    const bad = await ops.createLeague(db, { accountToken: dealer.token, name: NAME, year: 2033, mode: "table", seats: 4, fill: "dice" });
+    expect(bad.status).toBe(400);
+    const made = await ops.createLeague(db, { accountToken: dealer.token, name: NAME, year: 2033, mode: "table", seats: 4, fill: "dealer" });
+    expect(made.status).toBe(200);
+    const id = made.body.leagueId;
+    let v = hydrate(await fetchLeagueRows(db, id));
+    expect(v._meta.tableFill).toBe("dealer");
+
+    const changed = await ops.setTableFill(db, { leagueId: id, token: dealer.token, fill: "player" });
+    expect(changed.status).toBe(200);
+    expect(changed.body.view._meta.tableFill).toBe("player");
+
+    const inv = await ops.createInvite(db, { leagueId: id, token: dealer.token, teamId: null, role: "manager" });
+    const p = await makeAccount("fillp-" + Math.random().toString(36).slice(2) + "@example.test");
+    await ops.redeemInvite(db, { code: inv.body.code, accountToken: p.token });
+    const refused = await ops.setTableFill(db, { leagueId: id, token: p.token, fill: "line" });
+    expect(refused.status).toBe(403);
+
+    // A table made without saying fills from the line.
+    const plain = await ops.createLeague(db, { accountToken: dealer.token, name: NAME, year: 2034, mode: "table", seats: 4 });
+    expect(plain.status).toBe(200);
+    v = hydrate(await fetchLeagueRows(db, plain.body.leagueId));
+    expect(v._meta.tableFill).toBe("line");
+    await cleanup();
+  });
+
+  it("lets the dealer reorder the line and hold somebody back, and a player say I'm In", async () => {
+    const t = await makeTable(2, 3);
+    const ids = await Promise.all(t.players.map((p) => legacyOf(t.id, p.token)));
+
+    // A reorder must name exactly the line.
+    expect((await ops.reorderLobby(db, { leagueId: t.id, token: t.dealer.token, order: [ids[2], ids[0]] })).status).toBe(409);
+    const moved = await ops.reorderLobby(db, { leagueId: t.id, token: t.dealer.token, order: [ids[2], ids[0], ids[1]] });
+    expect(moved.status).toBe(200);
+    expect(lobbyLine(moved.body.view)).toEqual([ids[2], ids[0], ids[1]]);
+    expect((await ops.reorderLobby(db, { leagueId: t.id, token: t.players[0].token, order: [ids[0], ids[1], ids[2]] })).status).toBe(403);
+
+    // Held back: the fill skips them.
+    const held = await ops.setLobbyFlag(db, { leagueId: t.id, token: t.dealer.token, teamId: ids[2], flag: "hold", value: true });
+    expect(held.status).toBe(200);
+    expect(autoSeatIds(held.body.view)).toEqual([ids[0]]);
+    expect((await ops.setLobbyFlag(db, { leagueId: t.id, token: t.players[2].token, teamId: ids[2], flag: "hold", value: false })).status).toBe(403);
+
+    // Players choose: only an I'm In counts. They joined with one, so take one back.
+    await ops.setTableFill(db, { leagueId: t.id, token: t.dealer.token, fill: "player" });
+    const out = await ops.setLobbyFlag(db, { leagueId: t.id, token: t.players[0].token, teamId: ids[0], flag: "ready", value: false });
+    expect(out.status).toBe(200);
+    expect(autoSeatIds(out.body.view)).toEqual([ids[1]]);
+    await cleanup();
+  });
+
+  it("removes a player from the table and the league, keeps their record, and gives it back on a new invite", async () => {
+    const t = await makeTable(3, 2);
+    const [a] = t.players;
+    const aTeam = await legacyOf(t.id, a.token);
+
+    // Not the dealer's own seat.
+    const own = await legacyOf(t.id, t.dealer.token);
+    expect((await ops.removeFromTable(db, { leagueId: t.id, token: t.dealer.token, teamId: own })).status).toBe(400);
+    expect((await ops.removeFromTable(db, { leagueId: t.id, token: a.token, teamId: aTeam })).status).toBe(403);
+
+    const gone = await ops.removeFromTable(db, { leagueId: t.id, token: t.dealer.token, teamId: aTeam });
+    expect(gone.status).toBe(200);
+    expect(gone.body.view._meta.seats[aTeam]).toBe("left");
+    expect(gone.body.view._meta.lobby[aTeam].removed).toBe(true);
+    expect(gone.body.view.teams.map((x) => x.id)).toContain(aTeam); // the record stays
+    expect((await ops.whoami(db, { leagueId: t.id, token: a.token })).status).not.toBe(200);
+
+    // The dealer cannot put them back in line - they come back by redeeming the invite.
+    expect((await ops.setSeat(db, { leagueId: t.id, token: t.dealer.token, teamId: aTeam, seat: "waiting" })).status).toBe(409);
+    const back = await ops.redeemInvite(db, { code: t.code, accountToken: a.token });
+    expect(back.status).toBe(200);
+    expect(await legacyOf(t.id, a.token)).toBe(aTeam);
+    const v = await t.view();
+    expect(v._meta.seats[aTeam]).toBe("waiting");
+    expect(v._meta.lobby[aTeam].removed).toBe(false);
+    await cleanup();
+  });
+
+  it("lets a player removed mid-hand play it out, and takes their membership at the finalize", async () => {
+    const t = await makeTable(3, 2);
+    const [a] = t.players;
+    const aTeam = await legacyOf(t.id, a.token);
+    const dealt = await ops.dealPeriod(db, { leagueId: t.id, token: t.dealer.token, refresh: false });
+    expect(dealt.body.view._meta.seatedTeamIds).toContain(aTeam);
+
+    const gone = await ops.removeFromTable(db, { leagueId: t.id, token: t.dealer.token, teamId: aTeam });
+    expect(gone.status).toBe(200);
+    // Still in this hand, and still a member while it plays out...
+    expect(gone.body.view._meta.seatedTeamIds).toContain(aTeam);
+    expect((await ops.whoami(db, { leagueId: t.id, token: a.token })).status).toBe(200);
+    // ...but not in the next one.
+    expect(nextHandTeamIds(gone.body.view)).not.toContain(aTeam);
+
+    expect((await ops.processSchemes(db, { leagueId: t.id, token: t.dealer.token })).status).toBe(200);
+    const fin = await ops.finalizePeriod(db, { leagueId: t.id, token: t.dealer.token });
+    expect(fin.status).toBe(200);
+    expect((await ops.whoami(db, { leagueId: t.id, token: a.token })).status).not.toBe(200);
+    expect(tableRecord(fin.body.view).find((r) => r.teamId === aTeam)).toMatchObject({ played: 1, removed: true });
     await cleanup();
   });
 

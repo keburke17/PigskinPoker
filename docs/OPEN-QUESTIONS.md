@@ -2658,3 +2658,54 @@ remains a one-constant change if redraws still feel bad: split the dial in two.
 
 **Parity is untouched**, for the same reason as OQ-32: the artifact's pool has no depth
 ranks, and with none the deal and the picks are the artifact's own.
+
+---
+
+### OQ-39. The table's lobby: 12 a hand, a line, and three ways to fill a seat. **[ANSWERED 2026-11-12 by Scott: from two rounds of mockups]**
+
+**The request.** A weekly table of 10 plays for six weeks; two people want out and two
+others want in. Or 10 play for a while and two more join later, making 12. "Since it is
+just weekly, they should be able to join the game." Somebody who joins mid-hand waits in a
+lobby until the next hand is dealt; the dealer can add people and remove them; a removed
+player plays out a hand they were dealt and stays in the record. **Never more than 12 in a
+hand, never 13.**
+
+**This changes a rule from OQ-30**, which Kyle wrote down: *sitting out keeps your seat.*
+Under it a table of 12 with two sitting out dealt ten and let nobody in. Scott's rule:
+
+| Question | Answer |
+|---|---|
+| What does 12 count? | **The hand (B).** Anyone invited can be a member; at most 12 are dealt each hand (or fewer, if the dealer set a smaller table). Everyone else is in the lobby. |
+| Who moves people from the lobby into a seat? | **The dealer's choice, any time**, in Dealer -> Lobby and when the table is made: *Dealer decides* (E), *First come, first seated* (F, the default), or *Player says I'm In* (G). |
+| Is the line kept when the dealer decides, or players do? | **Yes.** One line under all three settings, so switching to F later finds it already there. |
+| Can the dealer change the order? | **Yes**: drag a name by its grip, or Up and Down. |
+| When does the door close? | **At the deal, which stays Tuesday (H) - for now.** See the note below. |
+| What is left of a removed player? | **Their record, greyed out (J).** A new invite gives them the same team back. |
+| The Dealer tab | **A plain list (D)**: in for the next hand, the line, sitting out, left the table. |
+
+**Small calls made while building it, shown to Scott on the mockup and not objected to:**
+
+- **Sitting out is not waiting.** A player who skips a hand is in the lobby but not in line.
+  I'm Back puts them at the back of the line.
+- **Players already in stay in.** After a hand, everybody who played is in the next one
+  unless they get up, as before. The line only fills seats that are open.
+- **Only the dealer seats somebody by hand.** A player joins the line; the deal (under F
+  and G) or the dealer (under E, or any time) seats them.
+- **The dealer can hold somebody back** from the automatic fill under F and G.
+- **Remove takes them out of the league as well as off the table.** Leave, by the player,
+  keeps their membership as before. A removed player in the hand on the table keeps their
+  membership until that hand is finalized, so they can play it out.
+- **The setting the dealer picks at creation is 2 to 12 players a hand**, defaulting to 12.
+  A table already made with 13 keeps all 13 members; the migration puts whoever sat down
+  last at the front of the line.
+
+**Note to come back to - the Tuesday deal may move (Scott, 2026-11-12).** A player often
+decides to skip a week only after the week is finalized, and by then Tuesday's deal has
+already put him in the next hand. Scott may move the deal to **Friday or Saturday and skip
+the Thursday games altogether**. For now the deal stays Tuesday; this is his to circle back
+to. Nothing in the lobby depends on the day - it fills at whatever moment the deal happens.
+
+**What it needs to go live.** `20261112000000_table_lobby.sql` applied with `npm run db:push`
+- Kyle's step. **Apply it BEFORE merging, or at the same time**: the new code writes the new
+columns (`lobby_order` and friends) whenever somebody joins a table, so a table invite
+redeemed against the old schema fails. Season and Last Digit leagues never touch them.

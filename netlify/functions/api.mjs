@@ -83,6 +83,12 @@ const ROUTES = {
   setNotifyMembers: (db, p) => ops.setNotifyMembers(db, p),
   /* Issue #75: sit out, come back, leave or rejoin a table. */
   setSeat: (db, p) => ops.setSeat(db, p),
+  /* OQ-39: the table's lobby - who sits in, the line's order, I'm In and Hold Back, and
+   * the dealer removing a player. */
+  setTableFill: (db, p) => ops.setTableFill(db, p),
+  reorderLobby: (db, p) => ops.reorderLobby(db, p),
+  setLobbyFlag: (db, p) => ops.setLobbyFlag(db, p),
+  removeFromTable: (db, p) => ops.removeFromTable(db, p),
   /* OQ-37, Last Digit: read the season's NFL scores for the board, and hand out teams -
    * at random, or one player at a time. The last two are commissioner-only on the server. */
   lastDigitGames: (db, p) => ops.lastDigitGames(db, p),

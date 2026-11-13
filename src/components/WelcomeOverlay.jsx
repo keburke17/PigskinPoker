@@ -137,7 +137,7 @@ function DealerBasics({ state }) {
   return (
     <ul className="pp-rule-list pp-overlay-list">
       <li><strong>Each hand is a week you drive.</strong> Deal, let players submit schemes, process the schemes, lock the rosters, enter stats, finalize. {anyClock(state) ? clockSentence(state).replace(/the week is/g, "the hand is").replace(/the next one dealt/g, "the next hand dealt") : "Nothing advances on its own."}</li>
-      <li><strong>Seats, not teams.</strong> Send one invite; everyone who redeems it sits down with a team of their own, up to your seat count. Dealer -&gt; Seats shows who is in, who is sitting out, and who has left.</li>
+      <li><strong>A lobby, not a team list.</strong> Send one invite; everyone who redeems it joins the lobby with a team of their own. Up to your hand size is dealt in each hand, and the rest wait in line. Dealer -&gt; Lobby shows who is in, the line, who is sitting out, and who has left.</li>
       <li><strong>The door closes at the deal.</strong> Whoever is seated when you deal plays the hand. Anyone who sits down or gets up after that changes the next hand, not this one.</li>
       <li><strong>Finalize ends the hand.</strong> It scores everyone, records who won, and opens the next hand. The table keeps a tally of hands won and lost - no standings, no playoffs.</li>
     </ul>

@@ -426,7 +426,7 @@ export function createSupabaseStore(config) {
     /* These three are about an ACCOUNT rather than a league, so they carry the account
      * token in the body. `call` would send it as the Authorization header, which the
      * server reads as a league session - correct everywhere else, wrong here. */
-    /* `opts` is issue #75's table: { mode: "table", seats, teamName }. A season sends
+    /* `opts` is issue #75's table: { mode: "table", seats, fill, teamName }. A season sends
      * { teamName } - its commissioner gets a team too (OQ-35). */
     createLeague: (name, year, visibility, opts = {}) =>
       callWithAccount("createLeague", { name, year, visibility, ...opts }),
@@ -509,9 +509,14 @@ export function createSupabaseStore(config) {
      * rather than one that has to know the other two's current values. */
     setAutoCycle: (patch) => call("setAutoCycle", patch),
     setNotifyMembers: (enabled) => call("setNotifyMembers", { enabled }),
-    /* Issue #75: "seated", "sitting_out" or "left", for your own seat - or anybody's,
-     * if you are the dealer. */
+    /* Issue #75 / OQ-39: "seated", "waiting", "sitting_out" or "left", for your own seat -
+     * or anybody's, if you are the dealer. Only the dealer can seat somebody by hand. */
     setSeat: (teamId, seat) => call("setSeat", { teamId, seat }),
+    /* OQ-39, the lobby. All dealer-only except "ready", which is a player's own I'm In. */
+    setTableFill: (fill) => call("setTableFill", { fill }),
+    reorderLobby: (order) => call("reorderLobby", { order }),
+    setLobbyFlag: (teamId, flag, value) => call("setLobbyFlag", { teamId, flag, value }),
+    removeFromTable: (teamId) => call("removeFromTable", { teamId }),
     /* OQ-37, Last Digit. The scores are read through the server rather than straight from
      * nflverse, so the browser sees exactly the games the server's lock rule sees. */
     lastDigitGames: () => call("lastDigitGames", {}),

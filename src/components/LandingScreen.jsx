@@ -16,6 +16,8 @@
 
 import { useEffect, useState } from "react";
 import { ErrorBanner } from "./atoms.jsx";
+import { FILL_CHOICES } from "./table.jsx";
+import { TABLE_SEATS_MAX } from "../engine/index.js";
 import { ChevronIcon, GAMES, GameIcon, TitleBall, accentForGame, badgeTone, iconForGame } from "./games.jsx";
 import { gameName, leagueStatus, leagueSubtitle } from "./homeStatus.js";
 
@@ -43,7 +45,10 @@ export function LandingScreen({
   /* Issue #75: a season or a table, chosen once. A table also needs its seats and a
    * name for the dealer's own team, because the dealer plays at it. */
   const [leagueMode, setLeagueMode] = useState("season");
-  const [seats, setSeats] = useState(6);
+  /* OQ-39: the most dealt into one hand (12, unless the dealer wants a smaller game),
+   * and who sits in from the lobby. */
+  const [seats, setSeats] = useState(12);
+  const [fill, setFill] = useState("line");
   const [myTeamName, setMyTeamName] = useState("");
   /* The name of the team an open invite makes for you (OQ-35). Blank is fine: it starts
    * as the front of your email address. Ignored by an invite for an existing team. */
@@ -75,7 +80,7 @@ export function LandingScreen({
     await onCreateLeague(
       leagueName,
       leagueMode === "table"
-        ? { mode: "table", seats, teamName: myTeamName.trim() || null }
+        ? { mode: "table", seats, fill, teamName: myTeamName.trim() || null }
         : leagueMode === "lastdigit"
           ? { mode: "lastdigit", startWeek, teamDraw, teamName: myTeamName.trim() || null }
           : { teamName: myTeamName.trim() || null }
@@ -271,12 +276,20 @@ export function LandingScreen({
                 ) : leagueMode === "table" ? (
                   <>
                     <div className="pp-field">
-                      <label className="pp-label">Seats</label>
+                      <label className="pp-label">Most Players In A Hand</label>
                       <select className="pp-input" value={seats} onChange={(e) => setSeats(Number(e.target.value))}>
-                        {Array.from({ length: 12 }, (_, i) => i + 2).map((n) => (
-                          <option key={n} value={n}>{n} players{n === 13 ? " (the most a deal can serve)" : ""}</option>
+                        {Array.from({ length: TABLE_SEATS_MAX - 1 }, (_, i) => i + 2).map((n) => (
+                          <option key={n} value={n}>{n} players{n === TABLE_SEATS_MAX ? " (the most)" : ""}</option>
                         ))}
                       </select>
+                      <span className="pp-sub">Anyone else you invite waits in the lobby.</span>
+                    </div>
+                    <div className="pp-field">
+                      <label className="pp-label">Who Sits In</label>
+                      <select className="pp-input" value={fill} onChange={(e) => setFill(e.target.value)}>
+                        {FILL_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.title}</option>)}
+                      </select>
+                      <span className="pp-sub">{(FILL_CHOICES.find((c) => c.value === fill) || FILL_CHOICES[0]).body} You can change this any time.</span>
                     </div>
                     <div className="pp-field">
                       <label className="pp-label">Your Team Name</label>
@@ -291,7 +304,7 @@ export function LandingScreen({
                 )}
                 <div className="pp-hint">
                   {leagueMode === "table"
-                    ? "You will be its dealer, and you take one of the seats yourself. Tables are private - people join with an invite you send them."
+                    ? "You will be its dealer, and you take one of the seats yourself. Tables are private - people join the lobby with an invite you send them."
                     : leagueMode === "lastdigit"
                       ? "You will be its commissioner, and you hold a team too. Then send one join link to everyone else - up to 32 players. Joining closes at kickoff. Games are private - only players can see them."
                       : "You will be its commissioner, and you play in it with a team of your own. Then send your invite link to everyone else - up to 12 teams. New leagues are private - only members can see them."}

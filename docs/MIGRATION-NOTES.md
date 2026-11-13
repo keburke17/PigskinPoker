@@ -2441,3 +2441,13 @@ position to be dealt, stolen or redrawn. One constant drives all three. No schem
 storage change. The Rules screen reads the constant for both of its sentences now (the
 Schemes one had "twice" typed in), and `tests/schemes.test.js` works its expected shares
 out from the constant rather than assuming 2. Parity is unchanged.
+
+## The table's lobby (2026-11-12, OQ-39)
+
+A table's seat count became the most dealt into one hand (2 to 12, was 2 to 13), and
+everybody else waits in a lobby: in a line, or sitting out. `teams.seat` gained `waiting`;
+`teams.lobby_order`, `lobby_ready`, `lobby_hold`, `removed_at` and `removed_user_id` and
+`leagues.table_fill` are new, all server-owned and absent from `decompose.js`. Before the
+deal the hand is worked out by `handTeamIds` (seated plus the line's fill) rather than read
+from a snapshot; once dealt it is the snapshot, as before. Season leagues are untouched and
+parity does not move: a state without `_meta` is still a season.
