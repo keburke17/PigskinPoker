@@ -820,10 +820,13 @@ export default function App() {
                 * 2026-11-12 for Grab Bag). In Last Digit it used to be a red pill after the
                 * league name, which sat beside Home and read as a second button. Plain small
                 * capitals beside Pigskin Poker read as a label:
-                *   PIGSKIN POKER . GRAB BAG . WEEKLY */}
+                *   PIGSKIN POKER . GRAB BAG
+                * The length - FULL SEASON or WEEKLY - came off the eyebrow on 2026-11-14 (Scott):
+                * the SEASON / WEEKLY badge after the league name says it now, and saying it twice
+                * cost a phone a whole extra line of header. Only the family name stays here. */}
               <div className="pp-eyebrow pp-eyebrow-row">
                 <span>Pigskin Poker</span>
-                {gameNameParts(lastDigit ? "lastdigit" : table ? "table" : "season").map((part) => (
+                {gameNameParts(lastDigit ? "lastdigit" : table ? "table" : "season").slice(0, 1).map((part) => (
                   <Fragment key={part}>
                     <span className="pp-eyebrow-dot" aria-hidden="true" />
                     <span className="pp-eyebrow-game">{part}</span>
