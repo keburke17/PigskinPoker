@@ -132,14 +132,14 @@ export const GAMES = [
    * (`great`, drawn after a "Great for" label) - Scott, 2026-11-12. The eyebrow says how
    * long a game runs; "Full season" means this one, since there is no other to play.
    * `accent` is each game's colour ON THE HOMEPAGE ONLY - its card and the badge on each
-   * of your leagues: Full Season gold, Weekly teal, Last Digit red (Scott, 2026-11-12).
-   * Inside a league nothing changes yet - Scott means to rework the Full Season look
-   * itself, and the colours wait for that. */
+   * of your leagues: Full Season orange, Weekly teal, Last Digit red (Scott, 2026-11-12;
+   * Full Season moved from gold to Pylon orange on 2026-11-14, to match its new in-league
+   * look, .sn-theme). */
   {
     key: "season",
     mode: "season",
     icon: "trophy",
-    accent: "gold",
+    accent: "orange",
     name: gameName("season"),
     eyebrow: "Full season",
     blurb: "A fresh 12-man roster every week. Block, steal or redraw, climb the standings, win the playoffs.",
@@ -177,13 +177,13 @@ export const GAMES = [
 ];
 
 /** The picture a league's row shows: its game's. */
-/** A game's homepage colour - "gold", "teal" or "red" - from its GAMES entry. */
+/** A game's homepage colour - "orange", "teal" or "red" - from its GAMES entry. */
 export function accentForGame(game) {
   const entry = GAMES.find((g) => g.mode === (game === "table" || game === "lastdigit" ? game : "season"));
   return (entry && entry.accent) || "gold";
 }
 
-/** The icon ink that reads on an accent's badge: light on red, dark on gold and teal. */
+/** The icon ink that reads on an accent's badge: light on red, dark on orange and teal. */
 export function badgeTone(accent) {
   return accent === "red" ? "light" : "gold";
 }

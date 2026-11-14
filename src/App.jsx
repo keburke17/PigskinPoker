@@ -48,6 +48,7 @@ import { MySeatCard } from "./components/table.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 import { GoalpostIcon, TitleBall } from "./components/games.jsx";
 import { gameNameParts } from "./components/homeStatus.js";
+import { LeagueTracker, ModeBadge } from "./components/leagueTracker.jsx";
 import {
   LastDigitBoardTab,
   LastDigitCommishTab,
@@ -789,8 +790,10 @@ export default function App() {
   return (
     /* `ld-theme` is Last Digit's own look - the Game Program colours Scott picked
      * (2026-11-05), cream paper with navy and red - so nobody mistakes it for the poker
-     * games, which keep the Midnight felt. It is only colour: see global.css. */
-    <div className={"pp-root" + (lastDigit ? " ld-theme" : "")}>
+     * games, which keep the Midnight felt. It is only colour: see global.css.
+     * `sn-theme` is Pylon orange, the Full Season look (Scott, 2026-11-14): charcoal
+     * and end-zone orange, so a season league cannot be mistaken for a Weekly table. */
+    <div className={"pp-root" + (lastDigit ? " ld-theme" : table ? "" : " sn-theme")}>
       {showWelcome ? (
         <WelcomeOverlay
           state={state}
@@ -817,10 +820,13 @@ export default function App() {
                 * 2026-11-12 for Grab Bag). In Last Digit it used to be a red pill after the
                 * league name, which sat beside Home and read as a second button. Plain small
                 * capitals beside Pigskin Poker read as a label:
-                *   PIGSKIN POKER . GRAB BAG . WEEKLY */}
+                *   PIGSKIN POKER . GRAB BAG
+                * The length - FULL SEASON or WEEKLY - came off the eyebrow on 2026-11-14 (Scott):
+                * the SEASON / WEEKLY badge after the league name says it now, and saying it twice
+                * cost a phone a whole extra line of header. Only the family name stays here. */}
               <div className="pp-eyebrow pp-eyebrow-row">
                 <span>Pigskin Poker</span>
-                {gameNameParts(lastDigit ? "lastdigit" : table ? "table" : "season").map((part) => (
+                {gameNameParts(lastDigit ? "lastdigit" : table ? "table" : "season").slice(0, 1).map((part) => (
                   <Fragment key={part}>
                     <span className="pp-eyebrow-dot" aria-hidden="true" />
                     <span className="pp-eyebrow-game">{part}</span>
@@ -828,7 +834,10 @@ export default function App() {
                 ))}
               </div>
               <h1 className="pp-h1 pp-league-title pp-title-with-ball">
-                {lastDigit ? <GoalpostIcon size="1.05em" tone="ivory" /> : <TitleBall size="1.05em" />} {state.leagueName}
+                {lastDigit ? <GoalpostIcon size="1.05em" tone="ivory" /> : <TitleBall size="1.05em" />}{" "}
+                {/* The badge rides INSIDE the name's span so it flows after the last word of a
+                  * long name rather than standing beside the whole block (Scott, 2026-11-14). */}
+                <span>{state.leagueName}{lastDigit ? null : <> <ModeBadge state={state} /></>}</span>
               </h1>
               {/* Its own line under the title. A span here sat BESIDE a short league name,
                 * because the title is inline-flex - the Last Digit pill used to hide that by
@@ -842,6 +851,7 @@ export default function App() {
               * and Log Out lives on the front page, the way Sleeper keeps it on Account. */}
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => go({ name: "landing" })}>Home</button>
           </div>
+          {lastDigit ? null : <LeagueTracker state={state} />}
           <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} />
           <AccountBar
             account={account}

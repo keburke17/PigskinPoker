@@ -1218,11 +1218,13 @@
 .pp-game-great{ margin-top:3px; font-size:12px; color:var(--text); line-height:1.4; }
 .pp-game-great b{ color:var(--gold-bright); font-size:10.5px; letter-spacing:1px; text-transform:uppercase; margin-right:5px; }
 
-/* EACH GAME'S COLOUR ON THE HOMEPAGE (Scott, 2026-11-12): Grab Bag Full Season gold,
-   Grab Bag Weekly teal, Last Digit red - on the Start a Game cards and on the badge of
-   each of your leagues. The homepage ONLY: inside a league the colours are unchanged until
-   Scott reworks the Full Season look. Gold's eyebrow stays the felt's green, as before. */
+/* EACH GAME'S COLOUR ON THE HOMEPAGE (Scott, 2026-11-12): Grab Bag Full Season orange,
+   Grab Bag Weekly teal, Last Digit red - on the Start a Game cards, the New League card and
+   the badge of each of your leagues. Full Season was gold until 2026-11-14, when Scott gave
+   it Pylon orange inside the league (.sn-theme) and the homepage followed. .pp-accent-gold
+   stays for any game that wants the felt's own gold; its eyebrow is the felt's green. */
 .pp-accent-gold{ --acc:var(--gold); --acc-hi:var(--gold-bright); --acc-hover:linear-gradient(180deg, #ffe79a, #efcb63); --acc-edge:var(--gold-dim); --acc-text:var(--gold-bright); --acc-eyebrow:var(--ok); --acc-ink:#1c1a08; }
+.pp-accent-orange{ --acc:#ff7a30; --acc-hi:#ff9a5c; --acc-hover:linear-gradient(180deg, #ffb07f, #ff8a45); --acc-edge:#c25a1f; --acc-text:#ff9a5c; --acc-eyebrow:#ff9a5c; --acc-ink:#1a0d05; }
 .pp-accent-teal{ --acc:#3fb4a8; --acc-hi:#7ad8cd; --acc-hover:linear-gradient(180deg, #95e4da, #52c4b8); --acc-edge:#2d8a80; --acc-text:#7ad8cd; --acc-eyebrow:#7ad8cd; --acc-ink:#06221f; }
 .pp-accent-red{ --acc:#c8362f; --acc-hi:#e0605a; --acc-hover:linear-gradient(180deg, #ea7770, #d4483f); --acc-edge:#9b2a24; --acc-text:#f08a82; --acc-eyebrow:#f08a82; --acc-ink:#fbf7ee; }
 .pp-accent .pp-game-badge, .pp-league-badge.pp-accent{ background: linear-gradient(180deg, var(--acc-hi), var(--acc)); }
@@ -1268,3 +1270,73 @@
 .pp-lobby-place{ font-family: var(--font-display); font-size:28px; font-weight:700; color:#7ad8cd; line-height:1.1; margin:2px 0 6px; }
 .pp-lobby-card .pp-lobby-btns{ margin-top:8px; }
 .pp-table-gone td{ color: var(--text-faint); }
+
+/* ==========================================================================
+ * PYLON ORANGE - the Full Season look (Scott, 2026-11-14, option C1 of four mockup rounds).
+ * The Weekly table keeps the Midnight felt; a Full Season league gets a charcoal sideline
+ * with end-zone pylon orange, so a manager in both can tell them apart at a glance. Scoped
+ * under .sn-theme ("season"), which App.jsx puts on the root only inside a Full Season
+ * league - the same pattern as .ld-theme for Last Digit. ONLY COLOUR: no screen, card or
+ * rule moves.
+ *
+ * --gold is re-pointed to the orange, because every component reads "the accent" from it.
+ * The rest is the handful of rules above that hard-code a felt green or a gold wash.
+ * ========================================================================== */
+.pp-root.sn-theme{
+  --bg:#14171a; --bg-2:#0b0d0f;
+  --surface:#1b1f23; --surface-2:#22272c; --surface-3:#2d3339;
+  --border:#363d44; --border-soft:rgba(255,122,48,0.30);
+  --text:#f2f2ef; --text-dim:#aeb4ba; --text-faint:#727a82;
+  --gold:#ff7a30; --gold-bright:#ff9a5c; --gold-dim:#c25a1f;
+  --sn-ink:#1a0d05;
+  --sn-wash:rgba(255,122,48,0.09); --sn-wash-strong:rgba(255,122,48,0.15);
+  background: radial-gradient(ellipse at 50% -20%, #262b30 0%, transparent 62%), linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+}
+.sn-theme .pp-header{ background: linear-gradient(180deg, #0b0d0f 0%, #14171a 90%, rgba(20,23,26,0) 100%); }
+.sn-theme .pp-nav-wrap::after{ background: linear-gradient(90deg, rgba(20,23,26,0) 0%, var(--bg) 85%); }
+.sn-theme .pp-btn:hover{ background:#373e45; }
+.sn-theme .pp-btn-gold, .sn-theme .pp-nav-btn.active, .sn-theme .pp-play-btn,
+.sn-theme .pp-chip-result, .sn-theme .pp-you, .sn-theme .pp-wk-pick.active,
+.sn-theme .pp-recap-top .pp-recap-place, .sn-theme .pp-inj-ques{ color:var(--sn-ink); }
+.sn-theme .pp-btn-gold:hover, .sn-theme .pp-play-btn:hover{ background: linear-gradient(180deg, #ffb07f, #ff8a45); }
+.sn-theme .pp-move-card-picked{ color:var(--sn-ink); box-shadow: 0 0 0 2px var(--gold-bright), 0 0 14px rgba(255,154,92,.55); }
+.sn-theme .pp-input, .sn-theme .pp-select, .sn-theme .pp-textarea{ background:#101215; }
+.sn-theme .pp-select option{ background-color:#1b1f23 !important; color:#f2f2ef !important; }
+.sn-theme .pp-select optgroup{ background-color:#1b1f23 !important; color:#ff7a30 !important; }
+.sn-theme .pp-warn{ color:#ff9a5c; background:rgba(255,122,48,0.10); }
+.sn-theme .pp-game-soon{ background: rgba(27,31,35,0.55); }
+.sn-theme .pp-grid-team-mine{ background: linear-gradient(180deg, #4a2f20, #2c2019) !important; }
+.sn-theme .pp-grid-total{ background:#101215; }
+.sn-theme .pp-wk-table tr.pp-wk-me td{ background:#3a2a20; }
+.sn-theme .pp-grid td + td, .sn-theme .pp-grid th + th{ border-left-color: rgba(255,122,48,0.40); }
+.sn-theme .pp-standings-first td, .sn-theme .pp-my-row td, .sn-theme .pp-ev-mine,
+.sn-theme .pp-roster-total, .sn-theme .pp-scheme-summary, .sn-theme .pp-overlay-step,
+.sn-theme .pp-recap-note.tone-gold, .sn-theme .pp-recap-reminder,
+.sn-theme .pp-roster-slot.pp-move-picked{ background: var(--sn-wash); }
+.sn-theme .pp-grid-mine{ background: rgba(255,122,48,0.05); }
+.sn-theme .pp-grid-hit{ background: rgba(255,122,48,0.12); }
+.sn-theme .pp-grid-mine.pp-grid-hit{ background: var(--sn-wash-strong); }
+.sn-theme .pp-mtile-mine{ background: linear-gradient(180deg, var(--sn-wash-strong), var(--surface)); }
+.sn-theme .pp-recap.pp-recap-first{ box-shadow: 0 0 0 1px var(--gold-dim), 0 0 36px rgba(255,122,48,0.25); }
+
+/* THE SEASON / WEEKLY BADGE AND THE WEEK TRACKER (Scott, 2026-11-14) - see
+ * src/components/leagueTracker.jsx. Both read --gold, so each game draws them in its own
+ * accent: felt gold at a Weekly table, Pylon orange in a Full Season league. The badge is a
+ * flat tag with square-ish corners on purpose - the round Last Digit pill that used to sit
+ * after a league name read as a button beside Home (2026-11-08). */
+.pp-mode-badge{
+  display:inline-block; vertical-align:0.3em; margin-left:2px;
+  font-family: var(--font-body); font-size:10px; font-weight:900; letter-spacing:1.4px;
+  text-transform:uppercase; line-height:1; white-space:nowrap;
+  padding:4px 7px; border-radius:4px;
+  background: var(--gold); color: var(--pp-on-accent, #1c1a08);
+}
+.sn-theme .pp-mode-badge{ --pp-on-accent: var(--sn-ink); }
+.pp-track{ margin:8px 0 2px; }
+.pp-track-line{ display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:11px; font-weight:700; color:var(--text-dim); margin-bottom:5px; font-variant-numeric:tabular-nums; }
+.pp-track-line b{ color:var(--gold-bright); }
+.pp-track-ticks{ display:grid; gap:2px; }
+.pp-track-tick{ display:block; height:6px; border-radius:2px; background:var(--surface-3); }
+.pp-track-tick.done{ background:var(--gold-dim); }
+.pp-track-tick.now{ background:var(--gold-bright); }
+.pp-track-tick.po{ background:transparent; box-shadow: inset 0 0 0 1px var(--gold-dim); }
