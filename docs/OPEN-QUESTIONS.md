@@ -1211,6 +1211,11 @@ untouched - so it was built rather than deferred. Four of the calls inside it ar
    `help` from `NAV` in `src/App.jsx` and render `HelpTab` as a sub-tab of Rules; the route
    can stay, so links keep working.
 
+   **Answered by Scott, 2026-11-14: the Help tab is gone.** Most of it restated the Rules
+   or described machinery a player never needs. What survives is one last section on the
+   Rules tab, "Using the app" - where to do things, about six lines. `/help` links land on
+   Rules. The welcome card and the Next line now point at Rules too.
+
 2. **A welcome card interrupts on first entry.** Once per person per league, dismissible,
    with a 44px close button and a tap-anywhere backdrop. "Seen it" is in `localStorage`
    (`src/storage/firstRun.js`), which means it re-shows on a new device. The alternative is

@@ -8,8 +8,12 @@
  * a few numbered lines, then five sections that open on a tap - Scoring, Schemes, Roster,
  * Standings & tiebreakers, Playoffs. It is written for someone PLAYING the league, so it
  * says what this league does and leaves out what only the commissioner or the admins need
- * (the pool refresh, the coach list, how ties inside a week are scored). Help carries the
- * how-to; docs/RULES.md is still the long form.
+ * (the pool refresh, the coach list, how ties inside a week are scored). docs/RULES.md is
+ * still the long form.
+ *
+ * THE HELP TAB IS GONE (Scott, 2026-11-14). It had grown to seven cards, most of them
+ * restating these rules or describing machinery a player never needs. What a player does
+ * need - where to do things on the site - is the last section here, "Using the app".
  *
  * Every number and time is read from this league's settings - scoring rates, the clock,
  * the lock rule, the team count, the playoff config - so two leagues read differently.
@@ -33,7 +37,6 @@ import {
   schemeDeadlineWords,
 } from "../engine/index.js";
 
-/* Still used by the Help tab. */
 export function RuleCard({ title, children }) {
   return (
     <div className="pp-card pp-card-tight" style={{ marginBottom: 10 }}>
@@ -50,7 +53,7 @@ function oddsWords(weight) {
   return (words[weight] || weight + " times") + " as likely";
 }
 
-export function RulesTab({ state }) {
+export function RulesTab({ state, role }) {
   /* Merged over the defaults so a league whose config predates the 2026-08-28 split
    * still reads out real numbers rather than blanks - the same fallback the engine
    * uses when it scores. */
@@ -188,6 +191,25 @@ export function RulesTab({ state }) {
             "Miss the cut and your season is over.",
           ],
         },
+    {
+      id: "app",
+      title: "Using the app",
+      summary: "Where to do things",
+      body: [
+        <><strong>My Team</strong> is where you play: tap a player&apos;s card to move him, and pick your scheme at the bottom.</>,
+        schemeClock
+          ? "Change your scheme as often as you like until " + schemeDeadlineWords(state) + "."
+          : "Change your scheme as often as you like until your " + boss + " processes schemes.",
+        table
+          ? <><strong>Hand</strong> is the live scoreboard. <strong>Table</strong> has the tally and the activity log - every block, steal and redraw.</>
+          : <><strong>Week</strong> is the live scoreboard - the standings column is a projection until the week is final. <strong>League</strong> has the standings, the bracket and the activity log - every block, steal and redraw.</>,
+        <><strong>Rosters</strong> shows every team&apos;s players and the free agents.</>,
+        "A LOCKED pill means that player's game has started, or your " + boss + " froze him.",
+        role === "commissioner"
+          ? "Check the stats before you finalize - a finalized " + word + " can't be corrected."
+          : null,
+      ],
+    },
   ].filter(Boolean);
 
   return (

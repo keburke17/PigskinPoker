@@ -27,7 +27,7 @@
  * missing from this list is written into the URL happily and then silently parsed back
  * as DEFAULT_TAB, so the address bar and the screen disagree and a shared deep link takes
  * someone to the wrong tab. */
-export const TABS = ["home", "myteam", "hub", "results", "rules", "help", "comm", "schedule"];
+export const TABS = ["home", "myteam", "hub", "results", "rules", "comm", "schedule"];
 
 /**
  * Where a bare /l/<leagueId> lands, and the tab whose segment buildPath omits.
@@ -59,7 +59,10 @@ export function parsePath(pathname) {
   }
 
   if (parts[0] === "l" && parts[1]) {
-    const tab = parts[2] && TABS.includes(parts[2]) ? parts[2] : DEFAULT_TAB;
+    /* `help` was a tab until 2026-11-14, when it folded into Rules. An old link to it
+     * still lands somewhere sensible rather than on the default tab. */
+    const seg = parts[2] === "help" ? "rules" : parts[2];
+    const tab = seg && TABS.includes(seg) ? seg : DEFAULT_TAB;
     return { name: "league", leagueId: parts[1], tab };
   }
 
