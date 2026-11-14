@@ -790,8 +790,8 @@ export default function App() {
     /* `ld-theme` is Last Digit's own look - the Game Program colours Scott picked
      * (2026-11-05), cream paper with navy and red - so nobody mistakes it for the poker
      * games, which keep the Midnight felt. It is only colour: see global.css.
-     * `sn-theme` is Night game, the Full Season look (Scott, 2026-11-14): black, slate
-     * and electric blue, so a season league cannot be mistaken for a Weekly table. */
+     * `sn-theme` is Pylon orange, the Full Season look (Scott, 2026-11-14): charcoal
+     * and end-zone orange, so a season league cannot be mistaken for a Weekly table. */
     <div className={"pp-root" + (lastDigit ? " ld-theme" : table ? "" : " sn-theme")}>
       {showWelcome ? (
         <WelcomeOverlay
