@@ -104,14 +104,13 @@ describe("buildPath", () => {
      *
      * Pinned literally rather than imported from App, which would make the two agree by
      * construction and prove nothing. If a tab is added, this fails and asks for both. */
-    expect(TABS).toEqual(["home", "myteam", "hub", "results", "rules", "help", "comm", "schedule"]);
+    expect(TABS).toEqual(["home", "myteam", "hub", "results", "rules", "comm", "schedule"]);
     expect(parsePath("/l/x/hub").tab).toBe("hub");
     /* `schedule` is Last Digit's NFL schedule (OQ-37). Its board is `results`, the same
      * default tab as everyone else's, so a bare /l/<id> lands on the board. */
     expect(parsePath("/l/x/schedule").tab).toBe("schedule");
-    /* `help` joined the list with issue #25. It is a real route, not just a nav pill,
-     * because the welcome overlay deep-links to it and a link people are told to follow
-     * should survive being shared. */
-    expect(parsePath("/l/x/help").tab).toBe("help");
+    /* `help` was a tab from issue #25 until 2026-11-14, when Scott folded it into Rules.
+     * The welcome overlay used to deep-link to it, so old links still land on Rules. */
+    expect(parsePath("/l/x/help").tab).toBe("rules");
   });
 });

@@ -38,7 +38,6 @@ import { MyTeamTab } from "./components/MyTeamTab.jsx";
 import { RosterHubTab } from "./components/RosterHubTab.jsx";
 import { ScoreboardTab } from "./components/ScoreboardTab.jsx";
 import { RulesTab } from "./components/RulesTab.jsx";
-import { HelpTab } from "./components/HelpTab.jsx";
 import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
 import { hasBeenWelcomed, hasSeenRecap, markRecapSeen, markWelcomed } from "./storage/firstRun.js";
 import { RecapReminder, WeeklyRecap } from "./components/weeklyRecap.jsx";
@@ -774,11 +773,6 @@ export default function App() {
     { key: "home", label: table ? "Table" : "League" },
     { key: "hub", label: "Rosters" },
     { key: "rules", label: "Rules" },
-    /* Beside Rules, not merged into it (issue #25): Rules reads out the league's live
-     * scoring config and is reference; Help is a walkthrough. The cost is honest - this
-     * is a seventh pill for a commissioner on a phone, and the nav wraps rather than
-     * clips, so it can reach a third row at 375px. Recorded as OQ-H for Scott. */
-    { key: "help", label: "Help" },
     ...(isCommissioner ? [{ key: "comm", label: table ? "Dealer" : "Commish" }] : []),
     /* Not a tab at all - it navigates OUT of the league to /admin, because the head
      * coaches are one list shared by every league (issue #40). It rides in the nav
@@ -939,8 +933,7 @@ export default function App() {
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}
           {tab === "results" && <ScoreboardTab state={state} myTeam={myTeam} onSeeAllActivity={goToActivity} onGoTo={goToTab} />}
-          {tab === "rules" && <RulesTab state={state} />}
-          {tab === "help" && <HelpTab state={state} role={identity.role} team={myTeam} onGoTo={setTab} />}
+          {tab === "rules" && <RulesTab state={state} role={identity.role} />}
           {tab === "comm" && isCommissioner && (
             <CommissionerTab
               state={state}

@@ -97,7 +97,7 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
               {step.tab === "myteam" ? "Go to My Team" : "Go to " + hostTitle(state)}
             </button>
           ) : null}
-          <button className="pp-btn" onClick={() => { onGoTo("help"); close(); }}>How this works</button>
+          <button className="pp-btn" onClick={() => { onGoTo("rules"); close(); }}>How this works</button>
           <button className="pp-btn pp-btn-ghost" onClick={close}>Dismiss</button>
         </div>
       </div>
@@ -186,7 +186,7 @@ export function NextStepNote({ state, role, team, onGoTo }) {
     <div className="pp-nextstep">
       <span className="pp-nextstep-label">Next</span>
       <span className="pp-nextstep-text">{step.headline}</span>
-      <button className="pp-nextstep-link" onClick={() => onGoTo("help")}>Help</button>
+      <button className="pp-nextstep-link" onClick={() => onGoTo("rules")}>Rules</button>
     </div>
   );
 }
