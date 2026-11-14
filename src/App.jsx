@@ -48,6 +48,7 @@ import { MySeatCard } from "./components/table.jsx";
 import { AdminScreen } from "./components/AdminScreen.jsx";
 import { GoalpostIcon, TitleBall } from "./components/games.jsx";
 import { gameNameParts } from "./components/homeStatus.js";
+import { LeagueTracker, ModeBadge } from "./components/leagueTracker.jsx";
 import {
   LastDigitBoardTab,
   LastDigitCommishTab,
@@ -830,7 +831,10 @@ export default function App() {
                 ))}
               </div>
               <h1 className="pp-h1 pp-league-title pp-title-with-ball">
-                {lastDigit ? <GoalpostIcon size="1.05em" tone="ivory" /> : <TitleBall size="1.05em" />} {state.leagueName}
+                {lastDigit ? <GoalpostIcon size="1.05em" tone="ivory" /> : <TitleBall size="1.05em" />}{" "}
+                {/* The badge rides INSIDE the name's span so it flows after the last word of a
+                  * long name rather than standing beside the whole block (Scott, 2026-11-14). */}
+                <span>{state.leagueName}{lastDigit ? null : <> <ModeBadge state={state} /></>}</span>
               </h1>
               {/* Its own line under the title. A span here sat BESIDE a short league name,
                 * because the title is inline-flex - the Last Digit pill used to hide that by
@@ -844,6 +848,7 @@ export default function App() {
               * and Log Out lives on the front page, the way Sleeper keeps it on Account. */}
             <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => go({ name: "landing" })}>Home</button>
           </div>
+          {lastDigit ? null : <LeagueTracker state={state} />}
           <SaveStatusBar status={saveStatus} lastSavedAt={lastSavedAt} />
           <AccountBar
             account={account}

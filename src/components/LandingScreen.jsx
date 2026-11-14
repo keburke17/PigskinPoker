@@ -221,7 +221,7 @@ export function LandingScreen({
         )}
 
         {mode === "create" && (
-          <div className="pp-card">
+          <div className={"pp-card pp-accent pp-accent-" + accentForGame(leagueMode)}>
             <div className="pp-create-head">
               <span className="pp-game-badge"><GameIcon icon={iconForGame(leagueMode)} size={28} tone="gold" /></span>
               <h3 className="pp-h3" style={{ margin: 0 }}>New {gameName(leagueMode)}</h3>
