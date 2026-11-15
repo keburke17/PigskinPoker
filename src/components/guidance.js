@@ -67,6 +67,19 @@ function clockWillDeal(state) {
 }
 
 /**
+ * Has this league never been played? Week 1, not dealt yet, nothing finished.
+ *
+ * The commissioner's welcome card (Scott, 2026-11-14) is a "set up your league first"
+ * card, so it is shown ONLY here. The seen-flag is per device (src/storage/firstRun.js),
+ * and without this a commissioner opening a league mid-season on a new phone would be
+ * told to set up a league that is already being played.
+ */
+export function isBrandNewLeague(state) {
+  const p = state.currentPeriod || {};
+  return p.type === "week" && p.number === 1 && p.phase === "pre-deal" && (state.weeklyResults || []).length === 0;
+}
+
+/**
  * The one thing this person should do next, or the one thing they are waiting on.
  *
  * Returns { headline, detail, tab } - `tab` is the nav key to deep-link to, or null when

@@ -39,6 +39,7 @@ import { RosterHubTab } from "./components/RosterHubTab.jsx";
 import { ScoreboardTab } from "./components/ScoreboardTab.jsx";
 import { RulesTab } from "./components/RulesTab.jsx";
 import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
+import { isBrandNewLeague } from "./components/guidance.js";
 import { hasBeenWelcomed, hasSeenRecap, markRecapSeen, markWelcomed } from "./storage/firstRun.js";
 import { RecapReminder, WeeklyRecap } from "./components/weeklyRecap.jsx";
 import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
@@ -723,7 +724,10 @@ export default function App() {
   const accountId = account ? account.userId : null;
   /* The welcome card explains the poker week - the deal, schemes, lineups - so a Last Digit
    * game, which has none of them, does not show it. Its Rules tab is the whole explanation. */
-  const showWelcome = !lastDigit && !welcomeDismissed && !!leagueId && !hasBeenWelcomed(accountId, leagueId);
+  /* A season commissioner's card says "set up your league first", so it shows only in a
+   * league that has never been played (Scott, 2026-11-14) - see isBrandNewLeague. */
+  const commishNeedsSetup = !isCommissioner || table || isBrandNewLeague(state);
+  const showWelcome = !lastDigit && commishNeedsSetup && !welcomeDismissed && !!leagueId && !hasBeenWelcomed(accountId, leagueId);
   const dismissWelcome = () => {
     markWelcomed(accountId, leagueId);
     setWelcomeDismissed(true);

@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { nextStep } from "../src/components/guidance.js";
+import { isBrandNewLeague, nextStep } from "../src/components/guidance.js";
 
 const stateWith = (over = {}) => ({
   leagueName: "Test League",
@@ -257,5 +257,25 @@ describe("nextStep, when the week runs on a clock", () => {
     );
     const step = nextStep(state, "manager", withRoster(state.teams[0]));
     expect(step.detail).toMatch(/Thursday 3am P[DS]T/);
+  });
+});
+
+/* The season commissioner's welcome says "set up your league first", so it is shown only
+ * in a league that has never been played (Scott, 2026-11-14). */
+describe("isBrandNewLeague", () => {
+  it("is true for Week 1 before the deal, with nothing finished", () => {
+    expect(isBrandNewLeague(stateWith())).toBe(true);
+  });
+  it("is false once Week 1 is dealt", () => {
+    expect(isBrandNewLeague(stateWith({ currentPeriod: { type: "week", number: 1, phase: "dealt" } }))).toBe(false);
+  });
+  it("is false mid-season, even at a pre-deal", () => {
+    expect(isBrandNewLeague(stateWith({ currentPeriod: { type: "week", number: 6, phase: "pre-deal" } }))).toBe(false);
+  });
+  it("is false in the playoffs", () => {
+    expect(isBrandNewLeague(stateWith({ currentPeriod: { type: "playoff", number: 1, phase: "pre-deal" } }))).toBe(false);
+  });
+  it("is false if a week has ever been finalized", () => {
+    expect(isBrandNewLeague({ ...stateWith(), weeklyResults: [{ week: 1 }] })).toBe(false);
   });
 });
