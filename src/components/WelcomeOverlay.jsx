@@ -51,7 +51,13 @@ import {
   schemeDeadlineWords,
 } from "../engine/index.js";
 import { ICON, SUIT_CH } from "../engine/constants.js";
-import { nextStep } from "./guidance.js";
+import { nextStep, welcomeMove } from "./guidance.js";
+
+/* The scheme line both season welcome cards share. "From being stolen" is Scott's
+ * (2026-11-14): someone who has not read the rules does not know what a Block is for. */
+const SCHEME_LINE = (
+  <><strong>Play one scheme.</strong> Block one of your players from being stolen, Steal one from another team, or Redraw for a free agent.</>
+);
 
 export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, onDismiss, onGoTo }) {
   const [closing, setClosing] = useState(false);
@@ -81,7 +87,7 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
           <div className="pp-welcome-label">How it plays</div>
           <ul className="pp-welcome-plays">
             <li><span className="pp-welcome-pip">12</span><span><strong>A new hand every week.</strong> Every team is dealt 12 random NFL players - 6 starters, 6 on the bench.</span></li>
-            <li><span className="pp-welcome-pip">1</span><span><strong>Play one scheme.</strong> Block one of your players, Steal one from another team, or Redraw for a free agent.</span></li>
+            <li><span className="pp-welcome-pip">1</span><span>{SCHEME_LINE}</span></li>
             <li><span className="pp-welcome-pip">{SUIT_CH.star}</span><span><strong>Your starters score.</strong> Real NFL games, real points. Win the week, climb the standings.</span></li>
             <li><span className="pp-welcome-pip">{ICON.trophy}</span><span><strong>Playoffs crown a champion.</strong></span></li>
           </ul>
@@ -93,6 +99,42 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
 
           <div className="pp-overlay-actions">
             <button className="pp-btn pp-btn-gold" onClick={() => { onGoTo("comm"); close(); }}>Set up my league</button>
+            <button className="pp-btn" onClick={() => { onGoTo("rules"); close(); }}>Read the rules</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* A season manager's card (Scott, 2026-11-14, Option B): the same "how it plays" as the
+   * commissioner's, with the two deadlines in place of the playoffs line because those
+   * are what new managers get wrong, then a "Your move" box from welcomeMove - which,
+   * unlike nextStep, never says who deals or processes the week. */
+  if (!isCommissioner && !table) {
+    const move = welcomeMove(state, team);
+    const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
+    return (
+      <div className="pp-overlay" onClick={close}>
+        <div className="pp-overlay-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Welcome">
+          <button className="pp-overlay-x" onClick={close} aria-label="Close">x</button>
+          <h2 className="pp-h2" style={{ marginBottom: 4 }}>{alreadyMember ? "You're already in" : "Welcome to Pigskin Poker"}</h2>
+          <p className="pp-sub" style={{ marginBottom: 12 }}>{leagueName}{team ? " - you're " + team.name : ""}.</p>
+
+          <div className="pp-welcome-label">How it plays</div>
+          <ul className="pp-welcome-plays">
+            <li><span className="pp-welcome-pip">12</span><span><strong>A new hand every week.</strong> You&apos;re dealt 12 random NFL players - 6 starters, 6 on the bench.</span></li>
+            <li><span className="pp-welcome-pip">1</span><span>{SCHEME_LINE}</span></li>
+            <li><span className="pp-welcome-pip">{SUIT_CH.star}</span><span><strong>Only starters score.</strong> Real NFL games, real points. Win the week, climb the standings.</span></li>
+            <li><span className="pp-welcome-pip">{ICON.clock}</span><span><strong>Two deadlines.</strong> Schemes close first. {weekly ? "Your lineup locks at the week's first kickoff." : "Your lineup stays open until each player's own game kicks off."}</span></li>
+          </ul>
+
+          <div className="pp-welcome-setup">
+            <div className="pp-welcome-setup-head">{move.headline}</div>
+            <p className="pp-sub" style={{ marginBottom: 0 }}>{move.detail}</p>
+          </div>
+
+          <div className="pp-overlay-actions">
+            {move.tab ? <button className="pp-btn pp-btn-gold" onClick={() => { onGoTo(move.tab); close(); }}>Go to My Team</button> : null}
             <button className="pp-btn" onClick={() => { onGoTo("rules"); close(); }}>Read the rules</button>
           </div>
         </div>

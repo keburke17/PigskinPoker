@@ -349,6 +349,57 @@ function managerStep(state, team) {
   };
 }
 
+/**
+ * The "Your move" box on a season manager's welcome card (Scott, 2026-11-14, Option B).
+ *
+ * Deliberately NOT nextStep's manager sentences: those name the commissioner as the one
+ * who deals and processes, and those jobs are moving to the admins. These say what is
+ * true of the week without saying who presses what, so they survive that move.
+ *
+ * Returns { headline, detail, tab } like nextStep.
+ */
+export function welcomeMove(state, team) {
+  const phase = state.currentPeriod.phase;
+  const period = periodName(state);
+
+  if (!team || !team.roster || phase === "pre-deal") {
+    return {
+      headline: "Nothing to do yet.",
+      detail: "Your 12-player roster lands when " + period + " is dealt - then you set your lineup and pick a scheme.",
+      tab: null,
+    };
+  }
+
+  if (state.rosterLocked || phase === "schemes-processed") {
+    return {
+      headline: "Schemes are closed for " + period + ".",
+      detail: isWeekly(state)
+        ? "Your lineup is still open until " + weeklyDeadline(state) + "."
+        : "You can still swap in anyone whose game hasn't started.",
+      tab: "myteam",
+    };
+  }
+
+  const scheme = state.schemes[team.id];
+  if (!scheme) {
+    return {
+      headline: "Your move: set your lineup and pick a scheme.",
+      detail:
+        "Your " + period + " roster is in. " +
+        (autoProcessSchemes(state)
+          ? "Schemes close " + schemeDeadlineWords(state) + "."
+          : "Get your scheme in now - schemes can close any time."),
+      tab: "myteam",
+    };
+  }
+
+  return {
+    headline: "You're set. Your " + schemeWord(scheme) + " is in.",
+    detail: "You can change it until schemes close" + (autoProcessSchemes(state) ? ", " + schemeDeadlineWords(state) : "") + ".",
+    tab: "myteam",
+  };
+}
+
 /* "Week 3" / "Round 2", without dragging periodLabel's import graph in here. */
 function periodName(state) {
   const p = state.currentPeriod;
