@@ -708,6 +708,16 @@
 }
 .pp-overlay-step-head{ font-weight:700; color: var(--gold-bright); margin-bottom:4px; font-size:14px; }
 .pp-overlay-list{ margin-bottom:14px; }
+/* The season commissioner's welcome (Scott, 2026-11-14): how it plays, then set up. Reads
+   --gold, so it is orange in a Full Season league like everything else there. */
+.pp-welcome-label{ font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.9px; color: var(--gold-bright); margin:2px 0 8px; }
+.pp-welcome-plays{ list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.pp-welcome-plays li{ display:grid; grid-template-columns:26px 1fr; gap:8px; align-items:start; color: var(--text-dim); }
+.pp-welcome-plays strong{ color: var(--text); }
+.pp-welcome-pip{ width:22px; height:22px; border-radius:5px; background: var(--surface-3); color: var(--gold-bright); display:grid; place-items:center; font-size:12px; font-weight:800; margin-top:1px; }
+.pp-welcome-setup{ border:1px solid var(--gold); background: rgba(232,194,90,0.10); border-radius: var(--radius-sm); padding:12px; margin-bottom:14px; }
+.pp-welcome-setup-head{ font-weight:700; font-size:15px; color: var(--gold-bright); margin-bottom:4px; }
+.sn-theme .pp-welcome-setup{ background: var(--sn-wash); }
 .pp-overlay-actions{ display:flex; flex-wrap:wrap; gap:8px; }
 .pp-overlay-actions .pp-btn{ min-height:44px; }
 

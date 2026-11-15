@@ -50,6 +50,7 @@ import {
   lineupLockMode,
   schemeDeadlineWords,
 } from "../engine/index.js";
+import { ICON, SUIT_CH } from "../engine/constants.js";
 import { nextStep } from "./guidance.js";
 
 export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, onDismiss, onGoTo }) {
@@ -63,6 +64,41 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
     onDismiss();
   };
   if (closing) return null;
+
+  /* A season commissioner gets a welcome rather than a chore list (Scott, 2026-11-14):
+   * what the game is, in four lines, then "set up your league". App.jsx shows it only in
+   * a league that has never been played. Deliberately says nothing about who deals,
+   * processes or enters stats - those jobs are moving to the admins, and a card that
+   * names them goes stale the day they do. */
+  if (isCommissioner && !table) {
+    return (
+      <div className="pp-overlay" onClick={close}>
+        <div className="pp-overlay-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Welcome">
+          <button className="pp-overlay-x" onClick={close} aria-label="Close">x</button>
+          <h2 className="pp-h2" style={{ marginBottom: 4 }}>Welcome to Pigskin Poker</h2>
+          <p className="pp-sub" style={{ marginBottom: 12 }}>{leagueName} - you&apos;re the commissioner.</p>
+
+          <div className="pp-welcome-label">How it plays</div>
+          <ul className="pp-welcome-plays">
+            <li><span className="pp-welcome-pip">12</span><span><strong>A new hand every week.</strong> Every team is dealt 12 random NFL players - 6 starters, 6 on the bench.</span></li>
+            <li><span className="pp-welcome-pip">1</span><span><strong>Play one scheme.</strong> Block one of your players, Steal one from another team, or Redraw for a free agent.</span></li>
+            <li><span className="pp-welcome-pip">{SUIT_CH.star}</span><span><strong>Your starters score.</strong> Real NFL games, real points. Win the week, climb the standings.</span></li>
+            <li><span className="pp-welcome-pip">{ICON.trophy}</span><span><strong>Playoffs crown a champion.</strong></span></li>
+          </ul>
+
+          <div className="pp-welcome-setup">
+            <div className="pp-welcome-setup-head">First, set up your league.</div>
+            <p className="pp-sub" style={{ marginBottom: 0 }}>Pick your league settings, then send your invite link. That&apos;s it.</p>
+          </div>
+
+          <div className="pp-overlay-actions">
+            <button className="pp-btn pp-btn-gold" onClick={() => { onGoTo("comm"); close(); }}>Set up my league</button>
+            <button className="pp-btn" onClick={() => { onGoTo("rules"); close(); }}>Read the rules</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -89,7 +125,7 @@ export function WelcomeOverlay({ state, role, team, leagueName, alreadyMember, o
           <p className="pp-sub" style={{ marginBottom: 0 }}>{step.detail}</p>
         </div>
 
-        {isCommissioner ? (table ? <DealerBasics state={state} /> : <CommissionerBasics state={state} />) : <ManagerBasics state={state} />}
+        {isCommissioner ? <DealerBasics state={state} /> : <ManagerBasics state={state} />}
 
         <div className="pp-overlay-actions">
           {step.tab ? (
@@ -140,22 +176,6 @@ function DealerBasics({ state }) {
       <li><strong>A lobby, not a team list.</strong> Send one invite; everyone who redeems it joins the lobby with a team of their own. Up to your hand size is dealt in each hand, and the rest wait in line. Dealer -&gt; Lobby shows who is in, the line, who is sitting out, and who has left.</li>
       <li><strong>The door closes at the deal.</strong> Whoever is seated when you deal plays the hand. Anyone who sits down or gets up after that changes the next hand, not this one.</li>
       <li><strong>Finalize ends the hand.</strong> It scores everyone, records who won, and opens the next hand. The table keeps a tally of hands won and lost - no standings, no playoffs.</li>
-    </ul>
-  );
-}
-
-function CommissionerBasics({ state }) {
-  const weekly = lineupLockMode(state) === LINEUP_LOCK.WEEKLY;
-  return (
-    <ul className="pp-rule-list pp-overlay-list">
-      {anyClock(state) ? (
-        <li><strong>The week is a cycle, and part of it runs on a clock.</strong> Deal rosters, let managers submit schemes, process the schemes, lock the rosters, enter stats, finalize. {clockSentence(state)} Every button is still yours, and pressing one early always wins.</li>
-      ) : (
-        <li><strong>The week is a cycle you drive.</strong> Deal rosters, let managers submit schemes, process the schemes, lock the rosters, enter stats, finalize. Nothing advances on its own.</li>
-      )}
-      <li><strong>Set up once.</strong> Teams, then invites, then - if you want them - the player pool, the scoring rates and the NFL week. All of it lives under Commissioner.</li>
-      <li><strong>The scheme deadline.</strong> {autoProcessSchemes(state) ? "Schemes are processed at " + schemeDeadlineWords(state) + ", which also locks rosters for the weekend." : "\"Lock Rosters for the Weekend\" closes scheme submission, and nothing does that on a clock."} {weekly ? "Lineups close on their own at the week's first kickoff, because that is the rule your league is set to." : "Lineups close on their own too - each player when his own game starts."} You can freeze any player by hand as well, and that always wins.</li>
-      <li><strong>Finalize ends the week.</strong> It scores everyone, awards standings points and opens the next week. {autoAdvanceWeek(state) ? "On the clock it runs at " + advanceDeadlineWords(state) + ", and only once every game of the week is final - so check the stats before then, because a finalize cannot be undone." : "Do it once the stats are right."}</li>
     </ul>
   );
 }
