@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { isBrandNewLeague, nextStep } from "../src/components/guidance.js";
+import { isBrandNewLeague, nextStep, welcomeMove } from "../src/components/guidance.js";
 
 const stateWith = (over = {}) => ({
   leagueName: "Test League",
@@ -277,5 +277,45 @@ describe("isBrandNewLeague", () => {
   });
   it("is false if a week has ever been finalized", () => {
     expect(isBrandNewLeague({ ...stateWith(), weeklyResults: [{ week: 1 }] })).toBe(false);
+  });
+});
+
+/* The season manager's welcome card, "Your move" box (Scott, 2026-11-14). It must say
+ * what is true of the week WITHOUT naming who deals or processes it - those jobs are
+ * moving to the admins, and a card that names the commissioner goes stale when they do. */
+describe("welcomeMove", () => {
+  const team = withRoster({ id: "t1", name: "Burke" });
+  const dealt = (over = {}, meta = {}) =>
+    stateWith({ currentPeriod: { type: "week", number: 3, phase: "dealt" }, ...over, _meta: { tz: "America/New_York", ...meta } });
+  const all = [
+    welcomeMove(stateWith(), team),
+    welcomeMove(dealt(), team),
+    welcomeMove(dealt({}, { autoProcessSchemes: true }), team),
+    welcomeMove(dealt({ schemes: { t1: { type: "steal" } } }), team),
+    welcomeMove(dealt({ rosterLocked: true }), team),
+    welcomeMove(stateWith({ currentPeriod: { type: "week", number: 3, phase: "schemes-processed" } }), team),
+  ];
+
+  it("has nothing to do before the deal, and no button", () => {
+    expect(all[0].headline).toBe("Nothing to do yet.");
+    expect(all[0].tab).toBe(null);
+  });
+  it("asks for a lineup and a scheme once the roster is in", () => {
+    expect(all[1].headline).toMatch(/set your lineup and pick a scheme/);
+    expect(all[1].detail).toMatch(/Week 3 roster is in/);
+    expect(all[1].tab).toBe("myteam");
+  });
+  it("names the deadline when the scheme clock is on", () => {
+    expect(all[2].detail).toMatch(/Schemes close Thursday 3am/);
+  });
+  it("says which scheme is already in", () => {
+    expect(all[3].headline).toBe("You're set. Your Steal is in.");
+  });
+  it("says schemes are closed once they are, locked or processed", () => {
+    expect(all[4].headline).toMatch(/Schemes are closed/);
+    expect(all[5].headline).toMatch(/Schemes are closed/);
+  });
+  it("never names the commissioner", () => {
+    for (const m of all) expect(m.headline + " " + m.detail).not.toMatch(/commissioner/i);
   });
 });
