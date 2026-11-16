@@ -35,7 +35,7 @@ import { AccountBar, EmptyState, ErrorBanner, SaveStatusBar } from "./components
 import { LoginScreen } from "./components/LoginScreen.jsx";
 import { LeagueHomeTab } from "./components/LeagueHomeTab.jsx";
 import { MyTeamTab } from "./components/MyTeamTab.jsx";
-import { colorSchemeClasses } from "./components/colorSchemes.jsx";
+import { TeamSettingsButton, TeamSettingsSheet, colorSchemeClasses } from "./components/colorSchemes.jsx";
 import { RosterHubTab } from "./components/RosterHubTab.jsx";
 import { ScoreboardTab } from "./components/ScoreboardTab.jsx";
 import { RulesTab } from "./components/RulesTab.jsx";
@@ -267,13 +267,15 @@ export default function App() {
    * presses the x, without waiting on a re-read. Declared up here with the other state
    * because the render below has early returns and hooks cannot sit after them. */
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
-  /* Your Colors (Scott, 2026-11-16): this person's own colour scheme for the Full Season
-   * game, remembered on this device. Only the root's class reads it. */
-  const [colorScheme, setColorScheme] = useState(() => readColorScheme());
-  const pickColorScheme = (id) => {
-    saveColorScheme(id);
-    setColorScheme(id);
+  /* Your Colors (Scott, 2026-11-16): this person's own colour scheme for each poker game,
+   * remembered on this device. Only the root's class reads it. The gear beside the team
+   * name opens the sheet that sets it (and renames the team). */
+  const [colorSchemes, setColorSchemes] = useState(() => ({ season: readColorScheme("season"), weekly: readColorScheme("weekly") }));
+  const pickColorScheme = (game, id) => {
+    saveColorScheme(game, id);
+    setColorSchemes((cur) => ({ ...cur, [game]: id }));
   };
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   /* The weekly recap (OQ-31), the same way: which recap was closed in this session, and
    * which one was opened again from the strip on My Team. Both name a recap by season and
@@ -717,6 +719,8 @@ export default function App() {
   const isCommissioner = identity.role === "commissioner";
   const table = isTable(state);
   const lastDigit = isLastDigit(state);
+  const colorGame = table ? "weekly" : "season";
+  const closeSettings = () => setSettingsOpen(false);
   /* A manager's team - and a commissioner's too, when they play: the dealer at a table
    * (issue #75), or a season commissioner, who gets a team when they create the league
    * (OQ-35). A commissioner with no team - a league made before that - has no My Team. */
@@ -800,9 +804,20 @@ export default function App() {
      * games, which keep the Midnight felt. It is only colour: see global.css.
      * `sn-theme` is Pylon orange, the Full Season look (Scott, 2026-11-14): charcoal
      * and end-zone orange, so a season league cannot be mistaken for a Weekly table.
-     * It is the DEFAULT now: each person may pick their own scheme on My Team (Scott,
-     * 2026-11-16), which adds its .sn-c-* class here - Full Season only. */
-    <div className={"pp-root" + (lastDigit ? " ld-theme" : table ? "" : " sn-theme" + colorSchemeClasses(colorScheme))}>
+     * Both are only DEFAULTS now: each person may pick their own scheme for each poker
+     * game from the gear beside their team name (Scott, 2026-11-16) - see colorSchemes.jsx
+     * for how a pick becomes these classes. Last Digit keeps its own look. */
+    <div className={"pp-root" + (lastDigit ? " ld-theme" : colorSchemeClasses(colorSchemes[colorGame], colorGame))}>
+      {settingsOpen && !lastDigit ? (
+        <TeamSettingsSheet
+          team={myTeam}
+          onRename={(name) => onRenameMyTeam(myTeam.id, name)}
+          game={colorGame}
+          colorScheme={colorSchemes[colorGame]}
+          onPickColors={(id) => pickColorScheme(colorGame, id)}
+          onClose={closeSettings}
+        />
+      ) : null}
       {showWelcome ? (
         <WelcomeOverlay
           state={state}
@@ -851,7 +866,10 @@ export default function App() {
               {/* Its own line under the title. A span here sat BESIDE a short league name,
                 * because the title is inline-flex - the Last Digit pill used to hide that by
                 * making the title line long enough to push it down. */}
-              <div className="pp-badge-role">{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</div>
+              <div className="pp-badge-role pp-role-row">
+                <span>{isCommissioner ? hostTitle(state) + (myTeam ? " - " + myTeam.name : "") : myTeam ? myTeam.name : "Manager"}</span>
+                {lastDigit ? null : <TeamSettingsButton onClick={() => setSettingsOpen(true)} />}
+              </div>
             </div>
             {/* HOME, NOT LOG OUT (Scott, 2026-11-04). The league switcher below already
               * reached the front page, but only for someone in two or more leagues - with
@@ -943,7 +961,7 @@ export default function App() {
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} lobbyOps={lobbyOps} /> : null}
           {tab === "myteam" && myTeam && (
-            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} colorScheme={table ? null : colorScheme} onPickColors={table ? null : pickColorScheme} />
+            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}

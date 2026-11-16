@@ -13,9 +13,8 @@ import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
 import { SchemeForm } from "./scheme.jsx";
 import { NextStepNote } from "./WelcomeOverlay.jsx";
-import { ColorPicker } from "./colorSchemes.jsx";
 
-export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, onRename, onGoTo, colorScheme, onPickColors }) {
+export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, onRename, onGoTo }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(team.name);
   const dealt = state.currentPeriod.phase !== "pre-deal";
@@ -79,9 +78,6 @@ export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, 
         <h3 className="pp-h3">Play Scheme</h3>
         <SchemeForm state={state} team={team} onSubmit={(sc) => onSubmitScheme(team.id, sc)} disabled={schemeDisabled} disabledReason={disabledReason} />
       </div>
-
-      {/* Your Colors - Full Season only, so App.jsx passes no handler at a Weekly table. */}
-      {onPickColors ? <ColorPicker value={colorScheme} onPick={onPickColors} /> : null}
     </div>
   );
 }

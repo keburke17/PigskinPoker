@@ -1,10 +1,10 @@
 /**
- * Your Colors (Scott, 2026-11-16) - the Full Season colour picker.
+ * Your Colors (Scott, 2026-11-16) - the colour picker for both poker games.
  *
  * The list lives in src/components/colorSchemes.jsx and the colours in global.css, so the
  * one thing that can quietly go wrong is the two drifting apart: a scheme in the picker
- * with no CSS block shows Pylon Orange and says it is something else. These pin them
- * together, pin the default, and pin the injury tags to fixed colours in every scheme.
+ * with no CSS block shows the default and says it is something else. These pin them
+ * together, pin each game's default, and pin the injury tags to fixed colours.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -20,29 +20,37 @@ const CSS = fs.readFileSync(
 );
 
 describe("colour schemes", () => {
-  it("offers ten, with Pylon Orange as the default", () => {
-    expect(COLOR_SCHEMES).toHaveLength(10);
-    expect(DEFAULT_COLOR_SCHEME).toBe("pylon");
-    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(10);
+  it("offers eleven, with each game keeping its own look as the default", () => {
+    expect(COLOR_SCHEMES).toHaveLength(11);
+    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(11);
+    expect(DEFAULT_COLOR_SCHEME).toEqual({ season: "pylon", weekly: "felt" });
   });
 
-  it("has a CSS block for every scheme except the default", () => {
+  it("has a CSS block for every scheme except the two built-in looks", () => {
     for (const s of COLOR_SCHEMES) {
-      if (s.id === DEFAULT_COLOR_SCHEME) continue;
+      if (s.id === "felt" || s.id === "pylon") continue;
       expect(CSS, s.id).toContain(".pp-root.sn-theme.sn-c-" + s.id + "{");
     }
   });
 
-  it("adds no class for the default, and the light class only to light schemes", () => {
-    expect(colorSchemeClasses("pylon")).toBe("");
-    expect(colorSchemeClasses(null)).toBe("");
-    expect(colorSchemeClasses("midnight")).toBe(" sn-c-midnight");
-    expect(colorSchemeClasses("game-day")).toBe(" sn-c-game-day sn-light");
+  it("draws an unpicked league exactly as before", () => {
+    expect(colorSchemeClasses(null, "season")).toBe(" sn-theme");
+    expect(colorSchemeClasses(null, "weekly")).toBe("");
   });
 
-  it("falls back to the default for an id that no longer exists", () => {
-    expect(findColorScheme("a-removed-scheme").id).toBe("pylon");
-    expect(colorSchemeClasses("a-removed-scheme")).toBe("");
+  it("lets either game wear the other's look", () => {
+    expect(colorSchemeClasses("felt", "season")).toBe("");
+    expect(colorSchemeClasses("pylon", "weekly")).toBe(" sn-theme");
+  });
+
+  it("builds every other scheme on sn-theme, and marks the light ones", () => {
+    expect(colorSchemeClasses("midnight", "weekly")).toBe(" sn-theme sn-c-midnight");
+    expect(colorSchemeClasses("game-day", "season")).toBe(" sn-theme sn-c-game-day sn-light");
+  });
+
+  it("falls back to the game's default for an id that no longer exists", () => {
+    expect(findColorScheme("a-removed-scheme", "season").id).toBe("pylon");
+    expect(findColorScheme("a-removed-scheme", "weekly").id).toBe("felt");
   });
 
   it("keeps the injury tags off the accent, so no scheme can recolour QUES", () => {
@@ -63,17 +71,20 @@ describe("the saved choice", () => {
     };
   });
 
-  it("round-trips, and clears", () => {
-    expect(readColorScheme()).toBe(null);
-    saveColorScheme("snow-day");
-    expect(readColorScheme()).toBe("snow-day");
-    saveColorScheme(null);
-    expect(readColorScheme()).toBe(null);
+  it("is kept separately for each game, and clears", () => {
+    expect(readColorScheme("season")).toBe(null);
+    saveColorScheme("season", "snow-day");
+    saveColorScheme("weekly", "blackout");
+    expect(readColorScheme("season")).toBe("snow-day");
+    expect(readColorScheme("weekly")).toBe("blackout");
+    saveColorScheme("season", null);
+    expect(readColorScheme("season")).toBe(null);
+    expect(readColorScheme("weekly")).toBe("blackout");
   });
 
   it("survives storage that throws", () => {
     globalThis.localStorage = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
-    expect(readColorScheme()).toBe(null);
-    expect(() => saveColorScheme("midnight")).not.toThrow();
+    expect(readColorScheme("weekly")).toBe(null);
+    expect(() => saveColorScheme("weekly", "midnight")).not.toThrow();
   });
 });

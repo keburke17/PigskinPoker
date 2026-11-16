@@ -204,7 +204,7 @@ export function RulesTab({ state, role }) {
           ? <><strong>Hand</strong> is the live scoreboard. <strong>Table</strong> has the tally and the activity log - every block, steal and redraw.</>
           : <><strong>Week</strong> is the live scoreboard - the standings column is a projection until the week is final. <strong>League</strong> has the standings, the bracket and the activity log - every block, steal and redraw.</>,
         <><strong>Rosters</strong> shows every team&apos;s players and the free agents.</>,
-        table ? null : <>Want different colors? Pick your own at the bottom of <strong>My Team</strong> - only you see them.</>,
+        <>Tap the <strong>gear</strong> beside your team name at the top to rename your team or pick your own colors - only you see the colors.</>,
         "A LOCKED pill means that player's game has started, or your " + boss + " froze him.",
         role === "commissioner"
           ? "Check the stats before you finalize - a finalized " + word + " can't be corrected."

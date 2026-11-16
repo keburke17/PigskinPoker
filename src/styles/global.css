@@ -553,6 +553,24 @@
 .pp-create-head .pp-game-badge{ width:42px; height:42px; border-radius:10px; }
 
 .pp-badge-role{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--gold-dim); }
+/* The team name and the settings gear beside it (Scott, 2026-11-16, "kind of like how
+ * Yahoo fantasy has it"). The gear is 30px to look at and 44px to hit: the ::before
+ * reaches past it, so a thumb finds it without the header growing a pixel. */
+.pp-role-row{ display:flex; align-items:center; gap:4px; flex-wrap:wrap; min-height:30px; }
+.pp-team-gear{
+  position:relative; flex:none; display:inline-grid; place-items:center;
+  width:30px; height:30px; padding:0; margin:-4px 0;
+  border:1px solid transparent; border-radius:50%; background:none;
+  color:var(--text-faint); cursor:pointer;
+}
+.pp-team-gear::before{ content:""; position:absolute; inset:-7px; }
+.pp-team-gear:hover{ color:var(--gold-bright); background:var(--surface-2); }
+.pp-team-gear:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:1px; }
+.pp-settings{ max-width:480px; }
+.pp-settings-section + .pp-settings-section{ margin-top:18px; padding-top:16px; border-top:1px solid var(--border); }
+.pp-settings-row{ display:flex; gap:8px; }
+.pp-settings-row .pp-input{ flex:1; min-width:0; }
+.pp-settings-note{ font-size:12px; color:var(--ok); margin-top:6px; }
 
 /* ---------------------------------------------------------------- scoreboard --
    The week in progress (issues #29 and #30). Everything here is one of three jobs:
@@ -1288,9 +1306,10 @@
  * PYLON ORANGE - the Full Season look (Scott, 2026-11-14, option C1 of four mockup rounds).
  * The Weekly table keeps the Midnight felt; a Full Season league gets a charcoal sideline
  * with end-zone pylon orange, so a manager in both can tell them apart at a glance. Scoped
- * under .sn-theme ("season"), which App.jsx puts on the root only inside a Full Season
- * league - the same pattern as .ld-theme for Last Digit. ONLY COLOUR: no screen, card or
- * rule moves.
+ * under .sn-theme ("season"), which App.jsx puts on the root inside a Full Season league -
+ * the same pattern as .ld-theme for Last Digit. ONLY COLOUR: no screen, card or rule moves.
+ * Since 2026-11-16 it is also the base every picked colour scheme builds on, in either
+ * poker game - see YOUR COLORS below.
  *
  * --gold is re-pointed to the orange, because every component reads "the accent" from it.
  * The rest is the handful of rules above that hard-code a felt green or a gold wash.
@@ -1340,15 +1359,17 @@
 .sn-theme .pp-recap.pp-recap-first{ box-shadow: 0 0 0 1px var(--gold-dim), 0 0 36px rgba(var(--sn-acc-rgb),0.25); }
 
 /* ==========================================================================
- * YOUR COLORS (Scott, 2026-11-16). Inside a Full Season league each person may pick one
- * of ten colour schemes for their own screen, on the My Team tab. The choice is saved in
- * this browser only (src/storage/colorScheme.js) and nobody else sees it. Pylon Orange,
- * the block above, is the default and stays what everybody sees until they pick.
+ * YOUR COLORS (Scott, 2026-11-16). In either poker game each person may pick one of
+ * eleven colour schemes for their own screen, from the gear beside their team name. The
+ * choice is saved in this browser only (src/storage/colorScheme.js) and nobody else sees
+ * it. Pylon Orange, the block above, is the Full Season default; the Classic Felt - the
+ * stylesheet's own :root - is the Weekly default. Every other scheme is .sn-theme plus
+ * its own block below (src/components/colorSchemes.jsx).
  *
  * Every scheme is variables only. Generic colours on purpose: none is named after, or
  * matched exactly to, an NFL team's colours - Scott asked for that so the list can never
  * read as team merchandise. ONLY COLOUR: no screen, card or rule moves, and the position
- * cards, the Block / Steal / Redraw colours and the injury tags are the same in all ten.
+ * cards, the Block / Steal / Redraw colours and the injury tags are the same in all of them.
  *
  * The four light schemes also carry .sn-light (App.jsx adds it), which re-points the
  * handful of rules above that were written for a dark background - pale pinks and greens
@@ -1477,7 +1498,7 @@
 
 /* The picker itself, on My Team. Ten buttons in a grid, each with the scheme's three
  * colours; the one in use wears the accent ring. */
-.pp-colors{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+.pp-colors{ display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px; }
 .pp-color-opt{
   display:flex; align-items:center; gap:9px; min-height:44px; padding:8px 10px; text-align:left;
   font-family:var(--font-body); font-size:13px; font-weight:700; color:var(--text);
@@ -1489,7 +1510,9 @@
 .pp-color-swatch{ display:flex; flex:none; border-radius:5px; overflow:hidden; box-shadow:0 0 0 1px rgba(127,127,127,0.45); }
 .pp-color-swatch i{ display:block; width:11px; height:24px; }
 .pp-color-name{ flex:1; min-width:0; }
-.pp-color-kind{ font-size:9.5px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-faint); }
+.pp-color-name{ line-height:1.2; }
+.pp-color-kind{ display:block; margin-top:2px; font-size:9.5px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-faint); }
+.pp-color-opt.picked .pp-color-kind{ color:var(--gold-bright); }
 
 /* THE SEASON / WEEKLY BADGE AND THE WEEK TRACKER (Scott, 2026-11-14) - see
  * src/components/leagueTracker.jsx. Both read --gold, so each game draws them in its own
