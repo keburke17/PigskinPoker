@@ -1252,8 +1252,9 @@
 /* EACH GAME'S COLOUR ON THE HOMEPAGE (Scott, 2026-11-12): Grab Bag Full Season orange,
    Grab Bag Weekly teal, Last Digit red - on the Start a Game cards, the New League card and
    the badge of each of your leagues. Full Season was gold until 2026-11-14, when Scott gave
-   it Pylon orange inside the league (.sn-theme) and the homepage followed. .pp-accent-gold
-   stays for any game that wants the felt's own gold; its eyebrow is the felt's green. */
+   it Pylon orange inside the league (.sn-theme) and the homepage followed - and gold again
+   from 2026-11-16, when both poker games began opening in the felt. .pp-accent-orange
+   stays for whenever the homepage is redone; the felt's gold eyebrow is its green. */
 .pp-accent-gold{ --acc:var(--gold); --acc-hi:var(--gold-bright); --acc-hover:linear-gradient(180deg, #ffe79a, #efcb63); --acc-edge:var(--gold-dim); --acc-text:var(--gold-bright); --acc-eyebrow:var(--ok); --acc-ink:#1c1a08; }
 .pp-accent-orange{ --acc:#ff7a30; --acc-hi:#ff9a5c; --acc-hover:linear-gradient(180deg, #ffb07f, #ff8a45); --acc-edge:#c25a1f; --acc-text:#ff9a5c; --acc-eyebrow:#ff9a5c; --acc-ink:#1a0d05; }
 .pp-accent-teal{ --acc:#3fb4a8; --acc-hi:#7ad8cd; --acc-hover:linear-gradient(180deg, #95e4da, #52c4b8); --acc-edge:#2d8a80; --acc-text:#7ad8cd; --acc-eyebrow:#7ad8cd; --acc-ink:#06221f; }
@@ -1361,7 +1362,7 @@
 
 /* ==========================================================================
  * YOUR COLORS (Scott, 2026-11-16). In either poker game each person may pick one of
- * eleven colour schemes for their own screen, from the gear beside their team name. The
+ * twelve colour schemes for their own screen, from the gear beside their team name. The
  * choice is saved in this browser only (src/storage/colorScheme.js) and nobody else sees
  * it. Both games open in the Classic Felt - the stylesheet's own :root - until a person
  * picks; Pylon Orange, the block above, is one of the choices. Every other scheme is
@@ -1439,6 +1440,14 @@
   --sn-ink:#ffffff; --sn-acc-rgb:29,63,114; --sn-glow:#ffffff; --sn-hdr-top:#e1e9f2;
   --sn-btn-hover:#dce5ef; --sn-gold-hover:linear-gradient(180deg, #385683, #1b3a69); --sn-input:#ffffff; --sn-mine-a:#cdd5e0;
   --sn-mine-b:#e8ecf1; --sn-me-row:#dfe4eb; --sn-grid-total:#f2f5f9; --sn-game-soon:rgba(255,255,255,0.6);
+}
+.pp-root.sn-theme.sn-c-blue-silver-light{
+  --bg:#ebeced; --bg-2:#e4e5e7; --surface:#fbfcfc; --surface-2:#f4f5f6;
+  --surface-3:#edeff0; --border:#c5c9cf; --text:#282d32; --text-dim:#5c626b;
+  --text-faint:#868d95; --gold:#1f7fc0; --gold-bright:#19689d; --gold-dim:#6dacd6;
+  --sn-ink:#ffffff; --sn-acc-rgb:31,127,192; --sn-glow:#ffffff; --sn-hdr-top:#e5e6e8;
+  --sn-btn-hover:#e3e5e7; --sn-gold-hover:linear-gradient(180deg, #3a8ec8, #1d75b1); --sn-input:#ffffff; --sn-mine-a:#cee3f1;
+  --sn-mine-b:#e9f2f9; --sn-me-row:#e0edf6; --sn-grid-total:#f4f5f6; --sn-game-soon:rgba(255,255,255,0.6);
 }
 .pp-root.sn-theme.sn-c-game-day{
   --bg:#f1f2f4; --bg-2:#e5e7eb; --surface:#ffffff; --surface-2:#f3f4f6;

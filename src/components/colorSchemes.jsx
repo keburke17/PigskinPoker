@@ -1,6 +1,6 @@
 /* Pigskin Poker UI - Your Colors, and the team settings sheet it lives in.
  *
- * Scott, 2026-11-16. Eleven schemes, chosen from four rounds of mockups, offered in both
+ * Scott, 2026-11-16. Twelve schemes, chosen from four rounds of mockups, offered in both
  * poker games, which both open in the Classic Felt until a person picks. Each scheme is a block of CSS variables in global.css (.sn-c-<id>); this
  * file is the list, the names, and the three swatches the picker draws.
  *
@@ -39,6 +39,7 @@ export const COLOR_SCHEMES = [
   { id: "classic-light", name: "Classic Light", light: true, swatch: ["#f8f9f9", "#ffffff", "#24303e"] },
   { id: "turf-chalk", name: "Turf & Chalk", light: true, swatch: ["#eff5f1", "#ffffff", "#1d8a4e"] },
   { id: "snow-day", name: "Snow Day", light: true, swatch: ["#e9eff6", "#fbfcfd", "#1d3f72"] },
+  { id: "blue-silver-light", name: "Blue & Silver Light", light: true, swatch: ["#ebeced", "#fbfcfc", "#1f7fc0"] },
   { id: "game-day", name: "Game Day", light: true, swatch: ["#13254a", "#ffffff", "#c8202f"] },
 ];
 

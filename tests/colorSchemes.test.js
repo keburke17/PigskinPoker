@@ -20,9 +20,9 @@ const CSS = fs.readFileSync(
 );
 
 describe("colour schemes", () => {
-  it("offers eleven, and both games open in the Classic Felt", () => {
-    expect(COLOR_SCHEMES).toHaveLength(11);
-    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(11);
+  it("offers twelve, and both games open in the Classic Felt", () => {
+    expect(COLOR_SCHEMES).toHaveLength(12);
+    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(12);
     expect(DEFAULT_COLOR_SCHEME).toEqual({ season: "felt", weekly: "felt" });
   });
 

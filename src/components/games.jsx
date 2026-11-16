@@ -132,14 +132,15 @@ export const GAMES = [
    * (`great`, drawn after a "Great for" label) - Scott, 2026-11-12. The eyebrow says how
    * long a game runs; "Full season" means this one, since there is no other to play.
    * `accent` is each game's colour ON THE HOMEPAGE ONLY - its card and the badge on each
-   * of your leagues: Full Season orange, Weekly teal, Last Digit red (Scott, 2026-11-12;
-   * Full Season moved from gold to Pylon orange on 2026-11-14, to match its new in-league
-   * look, .sn-theme). */
+   * of your leagues: Full Season gold, Weekly teal, Last Digit red (Scott, 2026-11-12).
+   * Full Season went to Pylon orange on 2026-11-14 to match its in-league look, and back
+   * to gold on 2026-11-16 when both poker games started opening in the Classic Felt -
+   * Scott: "leave it at gold until I change the whole home page again". */
   {
     key: "season",
     mode: "season",
     icon: "trophy",
-    accent: "orange",
+    accent: "gold",
     name: gameName("season"),
     eyebrow: "Full season",
     blurb: "A fresh 12-man roster every week. Block, steal or redraw, climb the standings, win the playoffs.",
@@ -177,7 +178,7 @@ export const GAMES = [
 ];
 
 /** The picture a league's row shows: its game's. */
-/** A game's homepage colour - "orange", "teal" or "red" - from its GAMES entry. */
+/** A game's homepage colour - "gold", "teal" or "red" - from its GAMES entry. */
 export function accentForGame(game) {
   const entry = GAMES.find((g) => g.mode === (game === "table" || game === "lastdigit" ? game : "season"));
   return (entry && entry.accent) || "gold";
