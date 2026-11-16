@@ -20,10 +20,10 @@ const CSS = fs.readFileSync(
 );
 
 describe("colour schemes", () => {
-  it("offers eleven, with each game keeping its own look as the default", () => {
+  it("offers eleven, and both games open in the Classic Felt", () => {
     expect(COLOR_SCHEMES).toHaveLength(11);
     expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(11);
-    expect(DEFAULT_COLOR_SCHEME).toEqual({ season: "pylon", weekly: "felt" });
+    expect(DEFAULT_COLOR_SCHEME).toEqual({ season: "felt", weekly: "felt" });
   });
 
   it("has a CSS block for every scheme except the two built-in looks", () => {
@@ -33,12 +33,12 @@ describe("colour schemes", () => {
     }
   });
 
-  it("draws an unpicked league exactly as before", () => {
-    expect(colorSchemeClasses(null, "season")).toBe(" sn-theme");
+  it("draws an unpicked league of either game in the felt", () => {
+    expect(colorSchemeClasses(null, "season")).toBe("");
     expect(colorSchemeClasses(null, "weekly")).toBe("");
   });
 
-  it("lets either game wear the other's look", () => {
+  it("lets either game wear Pylon Orange or the felt", () => {
     expect(colorSchemeClasses("felt", "season")).toBe("");
     expect(colorSchemeClasses("pylon", "weekly")).toBe(" sn-theme");
   });
@@ -49,7 +49,7 @@ describe("colour schemes", () => {
   });
 
   it("falls back to the game's default for an id that no longer exists", () => {
-    expect(findColorScheme("a-removed-scheme", "season").id).toBe("pylon");
+    expect(findColorScheme("a-removed-scheme", "season").id).toBe("felt");
     expect(findColorScheme("a-removed-scheme", "weekly").id).toBe("felt");
   });
 

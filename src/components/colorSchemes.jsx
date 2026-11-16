@@ -1,8 +1,7 @@
 /* Pigskin Poker UI - Your Colors, and the team settings sheet it lives in.
  *
  * Scott, 2026-11-16. Eleven schemes, chosen from four rounds of mockups, offered in both
- * poker games: Full Season, where Pylon Orange is the default, and Weekly, where the
- * Classic Felt is. Each scheme is a block of CSS variables in global.css (.sn-c-<id>); this
+ * poker games, which both open in the Classic Felt until a person picks. Each scheme is a block of CSS variables in global.css (.sn-c-<id>); this
  * file is the list, the names, and the three swatches the picker draws.
  *
  * HOW A SCHEME REACHES THE SCREEN. The Classic Felt is the stylesheet's own :root, so it
@@ -21,8 +20,12 @@
 
 import { useEffect, useState } from "react";
 
-/* Each game's look until the person picks another. */
-export const DEFAULT_COLOR_SCHEME = { season: "pylon", weekly: "felt" };
+/* Each game's look until the person picks another. BOTH ARE THE CLASSIC FELT (Scott,
+ * 2026-11-16): Full Season used to open in Pylon Orange so it could not be mistaken for
+ * a Weekly table, and he chose one shared starting look instead - the SEASON / WEEKLY
+ * badge beside the league name still tells them apart. Kept per game so either can move
+ * on its own again with one word. */
+export const DEFAULT_COLOR_SCHEME = { season: "felt", weekly: "felt" };
 
 /* [background, card, highlight] - drawn as the three squares beside each name. */
 export const COLOR_SCHEMES = [

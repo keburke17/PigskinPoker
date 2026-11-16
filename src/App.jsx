@@ -804,8 +804,9 @@ export default function App() {
      * games, which keep the Midnight felt. It is only colour: see global.css.
      * `sn-theme` is Pylon orange, the Full Season look (Scott, 2026-11-14): charcoal
      * and end-zone orange, so a season league cannot be mistaken for a Weekly table.
-     * Both are only DEFAULTS now: each person may pick their own scheme for each poker
-     * game from the gear beside their team name (Scott, 2026-11-16) - see colorSchemes.jsx
+     * NEITHER IS A DEFAULT ANY MORE (Scott, 2026-11-16): both poker games open in the
+     * Classic Felt, and each person may pick their own scheme for each game from the gear
+     * beside their team name - Pylon Orange is one of the choices. See colorSchemes.jsx
      * for how a pick becomes these classes. Last Digit keeps its own look. */
     <div className={"pp-root" + (lastDigit ? " ld-theme" : colorSchemeClasses(colorSchemes[colorGame], colorGame))}>
       {settingsOpen && !lastDigit ? (
@@ -961,7 +962,7 @@ export default function App() {
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} lobbyOps={lobbyOps} /> : null}
           {tab === "myteam" && myTeam && (
-            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
+            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onGoTo={setTab} />
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}

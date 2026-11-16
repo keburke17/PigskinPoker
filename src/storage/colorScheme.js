@@ -8,8 +8,8 @@
  * until it is picked again there.
  *
  * ONE choice PER GAME - Full Season and Weekly - shared by every league of that game on
- * this device. Separate because each game has its own default look (Pylon Orange, the
- * Classic Felt), so someone in both can still tell them apart unless they choose not to.
+ * this device. Separate so someone in both can give each game its own look if they want
+ * to tell them apart at a glance.
  * Last Digit keeps its own look and never reads this.
  *
  * It lives in src/storage/ because nothing outside this directory knows how anything is
