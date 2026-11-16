@@ -35,12 +35,14 @@ import { AccountBar, EmptyState, ErrorBanner, SaveStatusBar } from "./components
 import { LoginScreen } from "./components/LoginScreen.jsx";
 import { LeagueHomeTab } from "./components/LeagueHomeTab.jsx";
 import { MyTeamTab } from "./components/MyTeamTab.jsx";
+import { colorSchemeClasses } from "./components/colorSchemes.jsx";
 import { RosterHubTab } from "./components/RosterHubTab.jsx";
 import { ScoreboardTab } from "./components/ScoreboardTab.jsx";
 import { RulesTab } from "./components/RulesTab.jsx";
 import { WelcomeOverlay } from "./components/WelcomeOverlay.jsx";
 import { isBrandNewLeague } from "./components/guidance.js";
 import { hasBeenWelcomed, hasSeenRecap, markRecapSeen, markWelcomed } from "./storage/firstRun.js";
+import { readColorScheme, saveColorScheme } from "./storage/colorScheme.js";
 import { RecapReminder, WeeklyRecap } from "./components/weeklyRecap.jsx";
 import { ResultStrip, SchemeTicket } from "./components/schemeTicket.jsx";
 import { CommissionerTab } from "./components/commissioner.jsx";
@@ -265,6 +267,13 @@ export default function App() {
    * presses the x, without waiting on a re-read. Declared up here with the other state
    * because the render below has early returns and hooks cannot sit after them. */
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  /* Your Colors (Scott, 2026-11-16): this person's own colour scheme for the Full Season
+   * game, remembered on this device. Only the root's class reads it. */
+  const [colorScheme, setColorScheme] = useState(() => readColorScheme());
+  const pickColorScheme = (id) => {
+    saveColorScheme(id);
+    setColorScheme(id);
+  };
 
   /* The weekly recap (OQ-31), the same way: which recap was closed in this session, and
    * which one was opened again from the strip on My Team. Both name a recap by season and
@@ -790,8 +799,10 @@ export default function App() {
      * (2026-11-05), cream paper with navy and red - so nobody mistakes it for the poker
      * games, which keep the Midnight felt. It is only colour: see global.css.
      * `sn-theme` is Pylon orange, the Full Season look (Scott, 2026-11-14): charcoal
-     * and end-zone orange, so a season league cannot be mistaken for a Weekly table. */
-    <div className={"pp-root" + (lastDigit ? " ld-theme" : table ? "" : " sn-theme")}>
+     * and end-zone orange, so a season league cannot be mistaken for a Weekly table.
+     * It is the DEFAULT now: each person may pick their own scheme on My Team (Scott,
+     * 2026-11-16), which adds its .sn-c-* class here - Full Season only. */
+    <div className={"pp-root" + (lastDigit ? " ld-theme" : table ? "" : " sn-theme" + colorSchemeClasses(colorScheme))}>
       {showWelcome ? (
         <WelcomeOverlay
           state={state}
@@ -932,7 +943,7 @@ export default function App() {
           {tab === "home" && <LeagueHomeTab key={leagueSub || "regular"} state={state} myTeam={myTeam} initialSub={leagueSub} />}
           {tab === "myteam" && myTeam && table ? <MySeatCard state={state} team={myTeam} onSetSeat={onSetSeat} lobbyOps={lobbyOps} /> : null}
           {tab === "myteam" && myTeam && (
-            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} />
+            <MyTeamTab state={state} team={myTeam} onSwap={(slot, benchIdx) => onSwap(myTeam.id, slot, benchIdx)} onMoveStarter={(from, to, fill) => onMoveStarter(myTeam.id, from, to, fill)} onSubmitScheme={onSubmitScheme} onRename={(name) => onRenameMyTeam(myTeam.id, name)} onGoTo={setTab} colorScheme={table ? null : colorScheme} onPickColors={table ? null : pickColorScheme} />
           )}
           {tab === "myteam" && !myTeam && <EmptyState>Your team couldn't be found - ask your commissioner to check the team list.</EmptyState>}
           {tab === "hub" && <RosterHubTab state={state} myTeam={myTeam} />}

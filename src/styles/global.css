@@ -298,7 +298,10 @@
   flex:none; font-size:9px; font-weight:800; letter-spacing:0.6px; line-height:1.3;
   border-radius:999px; padding:1px 6px; align-self:center;
 }
-.pp-inj-ques{ background:var(--gold); color:#2a2105; }
+/* FIXED COLOURS, every game and every colour scheme (Scott, 2026-11-16). QUES used to
+   take the accent, which made it orange beside DOUBT in Pylon Orange and red beside OUT
+   in a red scheme. #e8c25a is the Weekly felt's own gold, so the Weekly table is unchanged. */
+.pp-inj-ques{ background:#e8c25a; color:#2a2105; }
 .pp-inj-doubt{ background:#e98a3c; color:#2b1404; }
 .pp-inj-out{ background:var(--danger); color:#fff4f2; }
 .pp-inj-pad{
@@ -334,7 +337,7 @@
 }
 .pp-inj-day b{ font-family: var(--font-mono); font-size:12px; }
 .pp-inj-dnp{ color:var(--danger); }
-.pp-inj-lp{ color:var(--gold); }
+.pp-inj-lp{ color:var(--inj-lp, #e8c25a); }
 .pp-inj-fp{ color:var(--ok); }
 .pp-inj-none{ color:var(--text-faint); font-weight:400; }
 .pp-inj-key{
@@ -1295,39 +1298,198 @@
 .pp-root.sn-theme{
   --bg:#14171a; --bg-2:#0b0d0f;
   --surface:#1b1f23; --surface-2:#22272c; --surface-3:#2d3339;
-  --border:#363d44; --border-soft:rgba(255,122,48,0.30);
+  --border:#363d44; --border-soft:rgba(var(--sn-acc-rgb),0.30);
   --text:#f2f2ef; --text-dim:#aeb4ba; --text-faint:#727a82;
   --gold:#ff7a30; --gold-bright:#ff9a5c; --gold-dim:#c25a1f;
   --sn-ink:#1a0d05;
-  --sn-wash:rgba(255,122,48,0.09); --sn-wash-strong:rgba(255,122,48,0.15);
-  background: radial-gradient(ellipse at 50% -20%, #262b30 0%, transparent 62%), linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  /* Everything below this line is what the rules further down read, so a colour scheme
+   * (the .sn-c-* blocks after them) only has to re-point variables, never a selector. */
+  --sn-acc-rgb:255,122,48;
+  --sn-glow:#262b30; --sn-hdr-top:#0b0d0f;
+  --sn-btn-hover:#373e45; --sn-gold-hover:linear-gradient(180deg, #ffb07f, #ff8a45);
+  --sn-input:#101215; --sn-mine-a:#4a2f20; --sn-mine-b:#2c2019; --sn-me-row:#3a2a20;
+  --sn-grid-total:#101215; --sn-game-soon:rgba(27,31,35,0.55);
+  --sn-wash:rgba(var(--sn-acc-rgb),0.09); --sn-wash-strong:rgba(var(--sn-acc-rgb),0.15);
+  background: radial-gradient(ellipse at 50% -20%, var(--sn-glow) 0%, transparent 62%), linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
 }
-.sn-theme .pp-header{ background: linear-gradient(180deg, #0b0d0f 0%, #14171a 90%, rgba(20,23,26,0) 100%); }
-.sn-theme .pp-nav-wrap::after{ background: linear-gradient(90deg, rgba(20,23,26,0) 0%, var(--bg) 85%); }
-.sn-theme .pp-btn:hover{ background:#373e45; }
+.sn-theme .pp-header{ background: linear-gradient(180deg, var(--sn-hdr-top) 0%, var(--bg) 90%, transparent 100%); }
+.sn-theme .pp-nav-wrap::after{ background: linear-gradient(90deg, transparent 0%, var(--bg) 85%); }
+.sn-theme .pp-btn:hover{ background:var(--sn-btn-hover); }
 .sn-theme .pp-btn-gold, .sn-theme .pp-nav-btn.active, .sn-theme .pp-play-btn,
 .sn-theme .pp-chip-result, .sn-theme .pp-you, .sn-theme .pp-wk-pick.active,
-.sn-theme .pp-recap-top .pp-recap-place, .sn-theme .pp-inj-ques{ color:var(--sn-ink); }
-.sn-theme .pp-btn-gold:hover, .sn-theme .pp-play-btn:hover{ background: linear-gradient(180deg, #ffb07f, #ff8a45); }
-.sn-theme .pp-move-card-picked{ color:var(--sn-ink); box-shadow: 0 0 0 2px var(--gold-bright), 0 0 14px rgba(255,154,92,.55); }
-.sn-theme .pp-input, .sn-theme .pp-select, .sn-theme .pp-textarea{ background:#101215; }
-.sn-theme .pp-select option{ background-color:#1b1f23 !important; color:#f2f2ef !important; }
-.sn-theme .pp-select optgroup{ background-color:#1b1f23 !important; color:#ff7a30 !important; }
-.sn-theme .pp-warn{ color:#ff9a5c; background:rgba(255,122,48,0.10); }
-.sn-theme .pp-game-soon{ background: rgba(27,31,35,0.55); }
-.sn-theme .pp-grid-team-mine{ background: linear-gradient(180deg, #4a2f20, #2c2019) !important; }
-.sn-theme .pp-grid-total{ background:#101215; }
-.sn-theme .pp-wk-table tr.pp-wk-me td{ background:#3a2a20; }
-.sn-theme .pp-grid td + td, .sn-theme .pp-grid th + th{ border-left-color: rgba(255,122,48,0.40); }
+.sn-theme .pp-recap-top .pp-recap-place{ color:var(--sn-ink); }
+.sn-theme .pp-btn-gold:hover, .sn-theme .pp-play-btn:hover{ background: var(--sn-gold-hover); }
+.sn-theme .pp-move-card-picked{ color:var(--sn-ink); box-shadow: 0 0 0 2px var(--gold-bright), 0 0 14px rgba(var(--sn-acc-rgb),.55); }
+.sn-theme .pp-input, .sn-theme .pp-select, .sn-theme .pp-textarea{ background:var(--sn-input); }
+.sn-theme .pp-select option{ background-color:var(--surface) !important; color:var(--text) !important; }
+.sn-theme .pp-select optgroup{ background-color:var(--surface) !important; color:var(--gold) !important; }
+.sn-theme .pp-warn{ color:var(--gold-bright); background:rgba(var(--sn-acc-rgb),0.10); }
+.sn-theme .pp-game-soon{ background: var(--sn-game-soon); }
+.sn-theme .pp-grid-team-mine{ background: linear-gradient(180deg, var(--sn-mine-a), var(--sn-mine-b)) !important; }
+.sn-theme .pp-grid-total{ background:var(--sn-grid-total); }
+.sn-theme .pp-wk-table tr.pp-wk-me td{ background:var(--sn-me-row); }
+.sn-theme .pp-grid td + td, .sn-theme .pp-grid th + th{ border-left-color: rgba(var(--sn-acc-rgb),0.40); }
 .sn-theme .pp-standings-first td, .sn-theme .pp-my-row td, .sn-theme .pp-ev-mine,
 .sn-theme .pp-roster-total, .sn-theme .pp-scheme-summary, .sn-theme .pp-overlay-step,
 .sn-theme .pp-recap-note.tone-gold, .sn-theme .pp-recap-reminder,
 .sn-theme .pp-roster-slot.pp-move-picked{ background: var(--sn-wash); }
-.sn-theme .pp-grid-mine{ background: rgba(255,122,48,0.05); }
-.sn-theme .pp-grid-hit{ background: rgba(255,122,48,0.12); }
+.sn-theme .pp-grid-mine{ background: rgba(var(--sn-acc-rgb),0.05); }
+.sn-theme .pp-grid-hit{ background: rgba(var(--sn-acc-rgb),0.12); }
 .sn-theme .pp-grid-mine.pp-grid-hit{ background: var(--sn-wash-strong); }
 .sn-theme .pp-mtile-mine{ background: linear-gradient(180deg, var(--sn-wash-strong), var(--surface)); }
-.sn-theme .pp-recap.pp-recap-first{ box-shadow: 0 0 0 1px var(--gold-dim), 0 0 36px rgba(255,122,48,0.25); }
+.sn-theme .pp-recap.pp-recap-first{ box-shadow: 0 0 0 1px var(--gold-dim), 0 0 36px rgba(var(--sn-acc-rgb),0.25); }
+
+/* ==========================================================================
+ * YOUR COLORS (Scott, 2026-11-16). Inside a Full Season league each person may pick one
+ * of ten colour schemes for their own screen, on the My Team tab. The choice is saved in
+ * this browser only (src/storage/colorScheme.js) and nobody else sees it. Pylon Orange,
+ * the block above, is the default and stays what everybody sees until they pick.
+ *
+ * Every scheme is variables only. Generic colours on purpose: none is named after, or
+ * matched exactly to, an NFL team's colours - Scott asked for that so the list can never
+ * read as team merchandise. ONLY COLOUR: no screen, card or rule moves, and the position
+ * cards, the Block / Steal / Redraw colours and the injury tags are the same in all ten.
+ *
+ * The four light schemes also carry .sn-light (App.jsx adds it), which re-points the
+ * handful of rules above that were written for a dark background - pale pinks and greens
+ * that vanish on white. That block is after these.
+ * ========================================================================== */
+.pp-root.sn-theme.sn-c-classic-dark{
+  --bg:#121316; --bg-2:#0a0b0d; --surface:#1b1e22; --surface-2:#24272b;
+  --surface-3:#303236; --border:#393b3f; --text:#f3f3f1; --text-dim:#a6aab0;
+  --text-faint:#70757c; --gold:#e8eaed; --gold-bright:#eeeff2; --gold-dim:#a2a4a6;
+  --sn-ink:#232324; --sn-acc-rgb:232,234,237; --sn-glow:#252629; --sn-hdr-top:#0a0b0d;
+  --sn-btn-hover:#3e4044; --sn-gold-hover:linear-gradient(180deg, #f1f2f4, #ebedef); --sn-input:#0e0e10; --sn-mine-a:#54575b;
+  --sn-mine-b:#34363a; --sn-me-row:#44474b; --sn-grid-total:#0e0e10; --sn-game-soon:rgba(27,30,34,0.55);
+}
+.pp-root.sn-theme.sn-c-midnight{
+  --bg:#0c1a30; --bg-2:#07101c; --surface:#10223b; --surface-2:#1a2b43;
+  --surface-3:#26364d; --border:#2f3f54; --text:#f3f3f1; --text-dim:#a1a8b1;
+  --text-faint:#6a727d; --gold:#5cc8ff; --gold-bright:#85d6ff; --gold-dim:#408cb2;
+  --sn-ink:#0e1e26; --sn-acc-rgb:92,200,255; --sn-glow:#1f2c41; --sn-hdr-top:#07101c;
+  --sn-btn-hover:#354459; --sn-gold-hover:linear-gradient(180deg, #9ddeff, #70cfff); --sn-input:#091424; --sn-mine-a:#255072;
+  --sn-mine-b:#193653; --sn-me-row:#1f4362; --sn-grid-total:#091424; --sn-game-soon:rgba(16,34,59,0.55);
+}
+.pp-root.sn-theme.sn-c-blackout{
+  --bg:#0a0b0d; --bg-2:#050607; --surface:#111316; --surface-2:#1b1c1f;
+  --surface-3:#26282b; --border:#303234; --text:#f3f3f1; --text-dim:#9fa3a7;
+  --text-faint:#696d73; --gold:#e63a32; --gold-bright:#ec6b65; --gold-dim:#a12923;
+  --sn-ink:#ffffff; --sn-acc-rgb:230,58,50; --sn-glow:#1e1f20; --sn-hdr-top:#050607;
+  --sn-btn-hover:#35373a; --sn-gold-hover:linear-gradient(180deg, #f08984, #e9524b); --sn-input:#08080a; --sn-mine-a:#4d1e1e;
+  --sn-mine-b:#2b1819; --sn-me-row:#3c1b1c; --sn-grid-total:#08080a; --sn-game-soon:rgba(17,19,22,0.55);
+}
+.pp-root.sn-theme.sn-c-black-green{
+  --bg:#0a0b0d; --bg-2:#050607; --surface:#111316; --surface-2:#1b1c1f;
+  --surface-3:#26282b; --border:#303234; --text:#f3f3f1; --text-dim:#9fa3a7;
+  --text-faint:#696d73; --gold:#2fbf71; --gold-bright:#63cf94; --gold-dim:#21864f;
+  --sn-ink:#071d11; --sn-acc-rgb:47,191,113; --sn-glow:#1e1f20; --sn-hdr-top:#050607;
+  --sn-btn-hover:#35373a; --sn-gold-hover:linear-gradient(180deg, #82d9aa, #48c782); --sn-input:#08080a; --sn-mine-a:#19432f;
+  --sn-mine-b:#152821; --sn-me-row:#173528; --sn-grid-total:#08080a; --sn-game-soon:rgba(17,19,22,0.55);
+}
+.pp-root.sn-theme.sn-c-blue-silver{
+  --bg:#0a2c42; --bg-2:#061926; --surface:#0e3954; --surface-2:#18415b;
+  --surface-3:#244b63; --border:#2d536a; --text:#f3f3f1; --text-dim:#a0aeb8;
+  --text-faint:#6a7884; --gold:#c3cad0; --gold-bright:#d2d7dc; --gold-dim:#888d92;
+  --sn-ink:#1d1e1f; --sn-acc-rgb:195,202,208; --sn-glow:#1e3d51; --sn-hdr-top:#061926;
+  --sn-btn-hover:#33586e; --sn-gold-hover:linear-gradient(180deg, #dbdfe3, #cad0d6); --sn-input:#082132; --sn-mine-a:#416277;
+  --sn-mine-b:#244a63; --sn-me-row:#32566d; --sn-grid-total:#082132; --sn-game-soon:rgba(14,57,84,0.55);
+}
+.pp-root.sn-theme.sn-c-classic-light{
+  --bg:#f8f9f9; --bg-2:#f0f1f2; --surface:#ffffff; --surface-2:#f7f7f8;
+  --surface-3:#efeff0; --border:#c2c5cb; --text:#24282d; --text-dim:#575d66;
+  --text-faint:#828991; --gold:#24303e; --gold-bright:#1e2733; --gold-dim:#717882;
+  --sn-ink:#ffffff; --sn-acc-rgb:36,48,62; --sn-glow:#ffffff; --sn-hdr-top:#f0f2f2;
+  --sn-btn-hover:#e3e4e5; --sn-gold-hover:linear-gradient(180deg, #3e4955, #212c39); --sn-input:#ffffff; --sn-mine-a:#cfd1d5;
+  --sn-mine-b:#e9eaec; --sn-me-row:#e0e2e4; --sn-grid-total:#f7f7f8; --sn-game-soon:rgba(255,255,255,0.6);
+}
+.pp-root.sn-theme.sn-c-turf-chalk{
+  --bg:#eff5f1; --bg-2:#e4ede7; --surface:#ffffff; --surface-2:#f4f8f5;
+  --surface-3:#e8f0eb; --border:#b6c7c2; --text:#142a20; --text-dim:#475f5a;
+  --text-faint:#768a87; --gold:#1d8a4e; --gold-bright:#187140; --gold-dim:#6cb38c;
+  --sn-ink:#ffffff; --sn-acc-rgb:29,138,78; --sn-glow:#ffffff; --sn-hdr-top:#e4eee8;
+  --sn-btn-hover:#d8e5dd; --sn-gold-hover:linear-gradient(180deg, #389863, #1b7f48); --sn-input:#ffffff; --sn-mine-a:#cde5d8;
+  --sn-mine-b:#e8f3ed; --sn-me-row:#dfefe6; --sn-grid-total:#f4f8f5; --sn-game-soon:rgba(255,255,255,0.6);
+}
+.pp-root.sn-theme.sn-c-snow-day{
+  --bg:#e9eff6; --bg-2:#e0e8f2; --surface:#fbfcfd; --surface-2:#f2f5f9;
+  --surface-3:#e9eff5; --border:#bec9d7; --text:#1f2d3e; --text-dim:#526277;
+  --text-faint:#7f8d9e; --gold:#1d3f72; --gold-bright:#18345d; --gold-dim:#6c82a3;
+  --sn-ink:#ffffff; --sn-acc-rgb:29,63,114; --sn-glow:#ffffff; --sn-hdr-top:#e1e9f2;
+  --sn-btn-hover:#dce5ef; --sn-gold-hover:linear-gradient(180deg, #385683, #1b3a69); --sn-input:#ffffff; --sn-mine-a:#cdd5e0;
+  --sn-mine-b:#e8ecf1; --sn-me-row:#dfe4eb; --sn-grid-total:#f2f5f9; --sn-game-soon:rgba(255,255,255,0.6);
+}
+.pp-root.sn-theme.sn-c-game-day{
+  --bg:#f1f2f4; --bg-2:#e5e7eb; --surface:#ffffff; --surface-2:#f3f4f6;
+  --surface-3:#e7e9ed; --border:#b5bac5; --text:#13254a; --text-dim:#444e5e;
+  --text-faint:#747c8a; --gold:#c8202f; --gold-bright:#a41a27; --gold-dim:#db6e78;
+  --sn-ink:#ffffff; --sn-acc-rgb:200,32,47; --sn-glow:#ffffff; --sn-hdr-top:#e6e8ec;
+  --sn-btn-hover:#d6d9e0; --sn-gold-hover:linear-gradient(180deg, #cf3b48, #b81d2b); --sn-input:#ffffff; --sn-mine-a:#f3ced1;
+  --sn-mine-b:#fae9ea; --sn-me-row:#f7e0e2; --sn-grid-total:#f3f4f6; --sn-game-soon:rgba(255,255,255,0.6);
+}
+
+
+/* Game Day keeps a navy masthead over its white pages. Re-pointing the variables on the
+ * header alone puts everything inside it - title, tracker, nav, account bar - on navy. */
+.pp-root.sn-c-game-day .pp-header{
+  --text:#ffffff; --text-dim:#c3cde0; --text-faint:#8e9bb6;
+  --border:#2f4370; --border-soft:rgba(255,255,255,0.22);
+  --surface:#1b3060; --surface-2:#1f3668; --surface-3:#2a4277; --sn-btn-hover:#34508a;
+  --gold-bright:#ff6b76; --gold-dim:#ff9aa3;
+  background:#13254a; border-bottom-color:#13254a;
+}
+.pp-root.sn-c-game-day .pp-header .pp-nav-btn:not(.active){ background:rgba(255,255,255,0.06); }
+.pp-root.sn-c-game-day .pp-nav-wrap::after{ background: linear-gradient(90deg, transparent 0%, #13254a 85%); }
+
+/* The light schemes: rules above written for a dark ground. */
+.pp-root.sn-light{
+  color-scheme: light;
+  --danger:#b3261e; --danger-dim:#f6d9d5; --red-dim:#f2c9c4; --ok:#1f7a45;
+  --red:#c2352d; --blue:#2a64b0; --purple:#6b4bb8;
+  --inj-lp:#8a6100;
+  --shadow-card:0 1px 0 rgba(17,20,24,0.05), 0 6px 18px rgba(17,20,24,0.08);
+}
+.sn-light .pp-select{ color-scheme: light; }
+.sn-light .pp-tag, .sn-light .pp-nav-btn:not(.active){ background:rgba(17,20,24,0.04); }
+.sn-light .pp-roster-slot{ background:var(--surface-2); }
+.sn-light .pp-pick-list{ background:var(--surface-2); }
+.sn-light .pp-period-banner-phase{ background:rgba(17,20,24,0.06); }
+.sn-light .pp-btn-danger{ color:#7a1d17; border-color:#d9a49d; }
+.sn-light .pp-btn-danger:hover{ background:#efc9c3; }
+.sn-light .pp-hint-bad, .sn-light .pp-locked-pill, .sn-light .pp-account-bar-bad,
+.sn-light .pp-pick-option:disabled .pp-pick-right{ color:#a3241e; }
+.sn-light .pp-locked-pill, .sn-light .pp-account-bar-bad{ border-color:#d9a49d; }
+.sn-light .pp-pending-no{ color:#a3241e; }
+.sn-light .pp-table td, .sn-light .pp-tx-row{ border-bottom-color:rgba(17,20,24,0.08); }
+.sn-light .pp-grid th, .sn-light .pp-grid td{ border-bottom-color:rgba(17,20,24,0.10); }
+.sn-light .pp-id-QB{ color:#b02a1f; } .sn-light .pp-id-RB{ color:#1d7a4a; }
+.sn-light .pp-id-WR{ color:#22508f; } .sn-light .pp-id-TE{ color:#5b3fa6; } .sn-light .pp-id-Coach{ color:#4a4a44; }
+.sn-light .pp-strip-tag, .sn-light .pp-tx{ background:rgba(17,20,24,0.05); }
+.sn-light .pp-strip-add, .sn-light .pp-tx-add{ color:#17663a; }
+.sn-light .pp-strip-stolen, .sn-light .pp-tx-stolen, .sn-light .pp-tx-empty{ color:#8f1f18; }
+.sn-light .pp-tx-block{ color:#1f4f8f; }
+.sn-light .pp-tx-none, .sn-light .pp-wk-coach-T{ color:#8a5200; }
+.sn-light .pp-tx-drop{ background:rgba(17,20,24,0.07); }
+.sn-light .pp-tk-lost{ --k:#d0473d; }
+.sn-light .pp-mtile-hit{ box-shadow: inset 0 0 0 2px #d0473d; }
+.sn-light .pp-error-banner{ color:#7a1d17; border-color:#d9a49d; }
+.sn-light .pp-error-confirm{ border-color:#d9a49d !important; }
+.sn-light .pp-error-confirm strong, .sn-light .pp-scheme-closed{ color:#a3241e !important; }
+
+/* The picker itself, on My Team. Ten buttons in a grid, each with the scheme's three
+ * colours; the one in use wears the accent ring. */
+.pp-colors{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+.pp-color-opt{
+  display:flex; align-items:center; gap:9px; min-height:44px; padding:8px 10px; text-align:left;
+  font-family:var(--font-body); font-size:13px; font-weight:700; color:var(--text);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm); cursor:pointer;
+}
+.pp-color-opt:hover{ border-color:var(--gold-dim); }
+.pp-color-opt:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; }
+.pp-color-opt.picked{ border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); background:var(--sn-wash, var(--surface-2)); }
+.pp-color-swatch{ display:flex; flex:none; border-radius:5px; overflow:hidden; box-shadow:0 0 0 1px rgba(127,127,127,0.45); }
+.pp-color-swatch i{ display:block; width:11px; height:24px; }
+.pp-color-name{ flex:1; min-width:0; }
+.pp-color-kind{ font-size:9.5px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-faint); }
 
 /* THE SEASON / WEEKLY BADGE AND THE WEEK TRACKER (Scott, 2026-11-14) - see
  * src/components/leagueTracker.jsx. Both read --gold, so each game draws them in its own
