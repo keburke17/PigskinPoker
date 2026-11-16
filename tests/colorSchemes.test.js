@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { COLOR_SCHEMES, DEFAULT_COLOR_SCHEME, colorSchemeClasses, findColorScheme } from "../src/components/colorSchemes.jsx";
+import { COLOR_SCHEMES, DEFAULT_COLOR_SCHEME, PARKED_COLOR_SCHEMES, colorSchemeClasses, findColorScheme } from "../src/components/colorSchemes.jsx";
 import { readColorScheme, saveColorScheme } from "../src/storage/colorScheme.js";
 
 const CSS = fs.readFileSync(
@@ -20,16 +20,24 @@ const CSS = fs.readFileSync(
 );
 
 describe("colour schemes", () => {
-  it("offers twelve, and both games open in the Classic Felt", () => {
-    expect(COLOR_SCHEMES).toHaveLength(12);
-    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(12);
+  it("offers nine, and both games open in the Classic Felt", () => {
+    expect(COLOR_SCHEMES).toHaveLength(9);
+    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(9);
     expect(DEFAULT_COLOR_SCHEME).toEqual({ season: "felt", weekly: "felt" });
   });
 
-  it("has a CSS block for every scheme except the two built-in looks", () => {
-    for (const s of COLOR_SCHEMES) {
+  it("has a CSS block for every scheme except the two built-in looks - parked ones too", () => {
+    for (const s of [...COLOR_SCHEMES, ...PARKED_COLOR_SCHEMES]) {
       if (s.id === "felt" || s.id === "pylon") continue;
       expect(CSS, s.id).toContain(".pp-root.sn-theme.sn-c-" + s.id + "{");
+    }
+  });
+
+  it("does not offer a parked scheme, and draws the felt for one saved before it was parked", () => {
+    const offered = new Set(COLOR_SCHEMES.map((s) => s.id));
+    for (const s of PARKED_COLOR_SCHEMES) {
+      expect(offered.has(s.id), s.id).toBe(false);
+      expect(colorSchemeClasses(s.id, "season")).toBe("");
     }
   });
 

@@ -1,6 +1,6 @@
 /* Pigskin Poker UI - Your Colors, and the team settings sheet it lives in.
  *
- * Scott, 2026-11-16. Twelve schemes, chosen from four rounds of mockups, offered in both
+ * Scott, 2026-11-16. Nine schemes, chosen from four rounds of mockups, offered in both
  * poker games, which both open in the Classic Felt until a person picks. Each scheme is a block of CSS variables in global.css (.sn-c-<id>); this
  * file is the list, the names, and the three swatches the picker draws.
  *
@@ -34,13 +34,20 @@ export const COLOR_SCHEMES = [
   { id: "classic-dark", name: "Classic Dark", light: false, swatch: ["#121316", "#1b1e22", "#e8eaed"] },
   { id: "midnight", name: "Midnight", light: false, swatch: ["#0c1a30", "#10223b", "#5cc8ff"] },
   { id: "blackout", name: "Blackout", light: false, swatch: ["#0a0b0d", "#111316", "#e63a32"] },
-  { id: "black-green", name: "Black & Green", light: false, swatch: ["#0a0b0d", "#111316", "#2fbf71"] },
-  { id: "blue-silver", name: "Blue & Silver", light: false, swatch: ["#0a2c42", "#0e3954", "#c3cad0"] },
   { id: "classic-light", name: "Classic Light", light: true, swatch: ["#f8f9f9", "#ffffff", "#24303e"] },
   { id: "turf-chalk", name: "Turf & Chalk", light: true, swatch: ["#eff5f1", "#ffffff", "#1d8a4e"] },
   { id: "snow-day", name: "Snow Day", light: true, swatch: ["#e9eff6", "#fbfcfd", "#1d3f72"] },
-  { id: "blue-silver-light", name: "Blue & Silver Light", light: true, swatch: ["#ebeced", "#fbfcfc", "#1f7fc0"] },
   { id: "game-day", name: "Game Day", light: true, swatch: ["#13254a", "#ffffff", "#c8202f"] },
+];
+
+/* PARKED, NOT OFFERED (Scott, 2026-11-16). Finished schemes held back on purpose: he
+ * may one day sell extra colour schemes, and wants a few ready to add when he does. Their
+ * CSS blocks stay in global.css, so offering one is moving its line up into COLOR_SCHEMES.
+ * Nothing draws from this list. */
+export const PARKED_COLOR_SCHEMES = [
+  { id: "black-green", name: "Black & Green", light: false, swatch: ["#0a0b0d", "#111316", "#2fbf71"] },
+  { id: "blue-silver", name: "Blue & Silver", light: false, swatch: ["#0a2c42", "#0e3954", "#c3cad0"] },
+  { id: "blue-silver-light", name: "Blue & Silver Light", light: true, swatch: ["#ebeced", "#fbfcfc", "#1f7fc0"] },
 ];
 
 function defaultFor(game) {

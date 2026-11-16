@@ -1362,7 +1362,7 @@
 
 /* ==========================================================================
  * YOUR COLORS (Scott, 2026-11-16). In either poker game each person may pick one of
- * twelve colour schemes for their own screen, from the gear beside their team name. The
+ * nine colour schemes for their own screen, from the gear beside their team name. The
  * choice is saved in this browser only (src/storage/colorScheme.js) and nobody else sees
  * it. Both games open in the Classic Felt - the stylesheet's own :root - until a person
  * picks; Pylon Orange, the block above, is one of the choices. Every other scheme is
@@ -1401,6 +1401,7 @@
   --sn-btn-hover:#35373a; --sn-gold-hover:linear-gradient(180deg, #f08984, #e9524b); --sn-input:#08080a; --sn-mine-a:#4d1e1e;
   --sn-mine-b:#2b1819; --sn-me-row:#3c1b1c; --sn-grid-total:#08080a; --sn-game-soon:rgba(17,19,22,0.55);
 }
+/* PARKED - finished but not offered yet (PARKED_COLOR_SCHEMES in colorSchemes.jsx). */
 .pp-root.sn-theme.sn-c-black-green{
   --bg:#0a0b0d; --bg-2:#050607; --surface:#111316; --surface-2:#1b1c1f;
   --surface-3:#26282b; --border:#303234; --text:#f3f3f1; --text-dim:#9fa3a7;
@@ -1409,6 +1410,7 @@
   --sn-btn-hover:#35373a; --sn-gold-hover:linear-gradient(180deg, #82d9aa, #48c782); --sn-input:#08080a; --sn-mine-a:#19432f;
   --sn-mine-b:#152821; --sn-me-row:#173528; --sn-grid-total:#08080a; --sn-game-soon:rgba(17,19,22,0.55);
 }
+/* PARKED - finished but not offered yet (PARKED_COLOR_SCHEMES in colorSchemes.jsx). */
 .pp-root.sn-theme.sn-c-blue-silver{
   --bg:#0a2c42; --bg-2:#061926; --surface:#0e3954; --surface-2:#18415b;
   --surface-3:#244b63; --border:#2d536a; --text:#f3f3f1; --text-dim:#a0aeb8;
@@ -1441,6 +1443,7 @@
   --sn-btn-hover:#dce5ef; --sn-gold-hover:linear-gradient(180deg, #385683, #1b3a69); --sn-input:#ffffff; --sn-mine-a:#cdd5e0;
   --sn-mine-b:#e8ecf1; --sn-me-row:#dfe4eb; --sn-grid-total:#f2f5f9; --sn-game-soon:rgba(255,255,255,0.6);
 }
+/* PARKED - finished but not offered yet (PARKED_COLOR_SCHEMES in colorSchemes.jsx). */
 .pp-root.sn-theme.sn-c-blue-silver-light{
   --bg:#ebeced; --bg-2:#e4e5e7; --surface:#fbfcfc; --surface-2:#f4f5f6;
   --surface-3:#edeff0; --border:#c5c9cf; --text:#282d32; --text-dim:#5c626b;
