@@ -20,9 +20,9 @@ const CSS = fs.readFileSync(
 );
 
 describe("colour schemes", () => {
-  it("offers nine, and both games open in the Classic Felt", () => {
-    expect(COLOR_SCHEMES).toHaveLength(9);
-    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(9);
+  it("offers eight, and both games open in the Classic Felt", () => {
+    expect(COLOR_SCHEMES).toHaveLength(8);
+    expect(new Set(COLOR_SCHEMES.map((s) => s.id)).size).toBe(8);
     expect(DEFAULT_COLOR_SCHEME).toEqual({ season: "felt", weekly: "felt" });
   });
 
@@ -46,9 +46,10 @@ describe("colour schemes", () => {
     expect(colorSchemeClasses(null, "weekly")).toBe("");
   });
 
-  it("lets either game wear Pylon Orange or the felt", () => {
-    expect(colorSchemeClasses("felt", "season")).toBe("");
-    expect(colorSchemeClasses("pylon", "weekly")).toBe(" sn-theme");
+  it("no longer offers Pylon Orange, and draws the felt for a phone that saved it", () => {
+    expect(COLOR_SCHEMES.some((s) => s.id === "pylon")).toBe(false);
+    expect(colorSchemeClasses("pylon", "season")).toBe("");
+    expect(colorSchemeClasses("pylon", "weekly")).toBe("");
   });
 
   it("builds every other scheme on sn-theme, and marks the light ones", () => {

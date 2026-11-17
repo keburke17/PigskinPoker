@@ -1,14 +1,17 @@
 /* Pigskin Poker UI - Your Colors, and the team settings sheet it lives in.
  *
- * Scott, 2026-11-16. Nine schemes, chosen from four rounds of mockups, offered in both
+ * Scott, 2026-11-16. Eight schemes, chosen from four rounds of mockups, offered in both
  * poker games, which both open in the Classic Felt until a person picks. Each scheme is a block of CSS variables in global.css (.sn-c-<id>); this
  * file is the list, the names, and the three swatches the picker draws.
  *
  * HOW A SCHEME REACHES THE SCREEN. The Classic Felt is the stylesheet's own :root, so it
- * needs no class. Every other scheme is built on .sn-theme (Pylon Orange, the Full Season
- * look, written as variables) plus its own .sn-c-<id> block, and the light ones add
- * .sn-light. So a Weekly player who picks Pylon Orange gets exactly what a Full Season
- * player sees by default, and the other way round for the felt.
+ * needs no class. Every other scheme is built on .sn-theme (the old Full Season look,
+ * written as variables) plus its own .sn-c-<id> block, and the light ones add .sn-light.
+ *
+ * PYLON ORANGE IS GONE (Scott, 2026-11-17). It was the Full Season look, then a choice
+ * here; now it is neither. Its colours survive only as .sn-theme's base values, which no
+ * screen shows on their own any more - every offered scheme overrides all of them. A phone
+ * that saved "pylon" falls back to the felt.
  *
  * GENERIC ON PURPOSE. No scheme is named after an NFL team or matched exactly to one's
  * colours: Scott asked for that so the list could never read as team merchandise, in case
@@ -30,7 +33,6 @@ export const DEFAULT_COLOR_SCHEME = { season: "felt", weekly: "felt" };
 /* [background, card, highlight] - drawn as the three squares beside each name. */
 export const COLOR_SCHEMES = [
   { id: "felt", name: "Classic Felt", light: false, swatch: ["#061a11", "#0c2318", "#e8c25a"] },
-  { id: "pylon", name: "Pylon Orange", light: false, swatch: ["#14171a", "#1b1f23", "#ff7a30"] },
   { id: "classic-dark", name: "Classic Dark", light: false, swatch: ["#121316", "#1b1e22", "#e8eaed"] },
   { id: "midnight", name: "Midnight", light: false, swatch: ["#0c1a30", "#10223b", "#5cc8ff"] },
   { id: "blackout", name: "Blackout", light: false, swatch: ["#0a0b0d", "#111316", "#e63a32"] },
@@ -63,7 +65,6 @@ export function findColorScheme(id, game = "season") {
 export function colorSchemeClasses(id, game = "season") {
   const scheme = findColorScheme(id, game);
   if (scheme.id === "felt") return "";
-  if (scheme.id === "pylon") return " sn-theme";
   return " sn-theme sn-c-" + scheme.id + (scheme.light ? " sn-light" : "");
 }
 

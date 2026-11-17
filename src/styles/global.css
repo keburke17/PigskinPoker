@@ -1309,9 +1309,10 @@
  * with end-zone pylon orange, so a manager in both can tell them apart at a glance. Scoped
  * under .sn-theme ("season"), which App.jsx puts on the root inside a Full Season league -
  * the same pattern as .ld-theme for Last Digit. ONLY COLOUR: no screen, card or rule moves.
- * Since 2026-11-16 it is no longer the Full Season default (both games open in the felt)
- * but one of the colours a person can pick, and the base every other picked scheme builds
- * on, in either poker game - see YOUR COLORS below.
+ * Since 2026-11-16 it is no longer the Full Season default (both games open in the felt),
+ * and since 2026-11-17 not a choice either. It stays ONLY as the base every picked scheme
+ * builds on, in either poker game - the rules below read its variables. Do not delete it
+ * as unused - see YOUR COLORS below.
  *
  * --gold is re-pointed to the orange, because every component reads "the accent" from it.
  * The rest is the handful of rules above that hard-code a felt green or a gold wash.
@@ -1362,10 +1363,11 @@
 
 /* ==========================================================================
  * YOUR COLORS (Scott, 2026-11-16). In either poker game each person may pick one of
- * nine colour schemes for their own screen, from the gear beside their team name. The
+ * eight colour schemes for their own screen, from the gear beside their team name. The
  * choice is saved in this browser only (src/storage/colorScheme.js) and nobody else sees
  * it. Both games open in the Classic Felt - the stylesheet's own :root - until a person
- * picks; Pylon Orange, the block above, is one of the choices. Every other scheme is
+ * picks. Pylon Orange, the block above, is no longer offered (Scott, 2026-11-17); its
+ * values stay only as the base the other schemes override. Every other scheme is
  * .sn-theme plus its own block below (src/components/colorSchemes.jsx).
  *
  * Every scheme is variables only. Generic colours on purpose: none is named after, or

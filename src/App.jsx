@@ -806,7 +806,7 @@ export default function App() {
      * and end-zone orange, so a season league cannot be mistaken for a Weekly table.
      * NEITHER IS A DEFAULT ANY MORE (Scott, 2026-11-16): both poker games open in the
      * Classic Felt, and each person may pick their own scheme for each game from the gear
-     * beside their team name - Pylon Orange is one of the choices. See colorSchemes.jsx
+     * beside their team name. Pylon Orange was dropped on 2026-11-17. See colorSchemes.jsx
      * for how a pick becomes these classes. Last Digit keeps its own look. */
     <div className={"pp-root" + (lastDigit ? " ld-theme" : colorSchemeClasses(colorSchemes[colorGame], colorGame))}>
       {settingsOpen && !lastDigit ? (
