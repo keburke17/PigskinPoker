@@ -104,7 +104,7 @@ export function TypedConfirm({ phrase, onConfirm, label, confirmLabel = "Confirm
     return <button className="pp-btn pp-btn-danger" onClick={() => setActive(true)}>{label}</button>;
   }
   return (
-    <div className="pp-card-tight" style={{ border: "1px solid #7a2e29", borderRadius: 8, background: "rgba(226,86,75,0.08)" }}>
+    <div className="pp-card-tight pp-error-confirm" style={{ border: "1px solid #7a2e29", borderRadius: 8, background: "rgba(226,86,75,0.08)" }}>
       <p className="pp-sub" style={{ marginTop: 0 }}>
         Type <strong style={{ color: "#ffb4a8" }}>{phrase}</strong> below to confirm. This cannot be undone.
       </p>

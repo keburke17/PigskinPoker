@@ -93,7 +93,7 @@ export function SchemeForm({ state, team, onSubmit, disabled, disabledReason }) 
 
   return (
     <div>
-      {disabled ? <p className="pp-sub" style={{ color: "#ff9a90" }}>{disabledReason}</p> : null}
+      {disabled ? <p className="pp-sub pp-scheme-closed" style={{ color: "#ff9a90" }}>{disabledReason}</p> : null}
       <div className="pp-field">
         <label className="pp-label">Play Scheme</label>
         <select className="pp-select" value={type} disabled={disabled} onChange={(e) => { setType(e.target.value); setPosition(""); setPlayerId(""); }}>

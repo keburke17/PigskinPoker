@@ -7,16 +7,13 @@
  * ticking so that happens at kickoff rather than at the next reload.
  */
 
-import { useState } from "react";
 import { LINEUP_LOCK, lineupLockMode, teamPeriodScore } from "../engine/index.js";
 import { PeriodBanner } from "./atoms.jsx";
 import { LineupEditor } from "./lineup.jsx";
 import { SchemeForm } from "./scheme.jsx";
 import { NextStepNote } from "./WelcomeOverlay.jsx";
 
-export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, onRename, onGoTo }) {
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(team.name);
+export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, onGoTo }) {
   const dealt = state.currentPeriod.phase !== "pre-deal";
   const schemeDisabled = !team.roster || state.rosterLocked;
   /* Both of these used to stop at the fact and leave the person to guess what it meant
@@ -46,26 +43,12 @@ export function MyTeamTab({ state, team, onSwap, onMoveStarter, onSubmitScheme, 
       {onGoTo ? <NextStepNote state={state} role="manager" team={team} onGoTo={onGoTo} /> : null}
       <div className="pp-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          {renaming ? (
-            <div style={{ display: "flex", gap: 6, flex: 1 }}>
-              <input className="pp-input" value={name} onChange={(e) => setName(e.target.value)} />
-              {/* Disabled on an empty box rather than accepting the press and doing
-                * nothing with it - the server refuses a blank name and the click would
-                * otherwise close the editor as though it had worked. */}
-              <button className="pp-btn pp-btn-sm pp-btn-gold" disabled={!name.trim()} onClick={() => { onRename(name); setRenaming(false); }}>Save</button>
-              <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => { setRenaming(false); setName(team.name); }}>Cancel</button>
-            </div>
-          ) : (
-            <>
-              <h2 className="pp-h2" style={{ marginBottom: 0 }}>{team.name}</h2>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {dealt && team.roster ? (
-                  <span className="pp-score-mid" title="Your score this period">{teamPeriodScore(state, team)}</span>
-                ) : null}
-                <button className="pp-btn pp-btn-sm pp-btn-ghost" onClick={() => setRenaming(true)}>Rename</button>
-              </div>
-            </>
-          )}
+          {/* RENAMING MOVED to the gear beside the team name in the header (Scott,
+            * 2026-11-16) - Team Settings, colorSchemes.jsx - so it is one place, not two. */}
+          <h2 className="pp-h2" style={{ marginBottom: 0 }}>{team.name}</h2>
+          {dealt && team.roster ? (
+            <span className="pp-score-mid" title="Your score this period">{teamPeriodScore(state, team)}</span>
+          ) : null}
         </div>
         {/* The scheme sentence that sat here is now the Ticket at the top of every tab
           * (schemeTicket.jsx). The one beside the Submit button stays - issue #27. */}
