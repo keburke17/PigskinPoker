@@ -2710,6 +2710,14 @@ already put him in the next hand. Scott may move the deal to **Friday or Saturda
 the Thursday games altogether**. For now the deal stays Tuesday; this is his to circle back
 to. Nothing in the lobby depends on the day - it fills at whatever moment the deal happens.
 
+**Still parked, more detail (Scott, 2026-11-25).** The shape he has in mind for the weekly
+table: deal Friday or Saturday, schemes process 3am Sunday, and players whose Thursday game
+is already played are left out of the deal the way bye-week and OUT players are. Rosters
+would be dealt later and on better injury news, and he expects to need it if the game ever
+takes money. "For now, we'll keep it until I want to change it." Worth knowing when it is
+picked up: **today the deal does not skip a player whose game has kicked off** - it skips
+byes (OQ-25) and statuses only - so that part would be new.
+
 **What it needs to go live.** `20261112000000_table_lobby.sql` applied with `npm run db:push`
 - Kyle's step. **Apply it BEFORE merging, or at the same time**: the new code writes the new
 columns (`lobby_order` and friends) whenever somebody joins a table, so a table invite
