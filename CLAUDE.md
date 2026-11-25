@@ -521,6 +521,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | Document | For |
 |---|---|
 | `docs/OPEN-QUESTIONS.md` | **Decisions waiting on Scott.** Start here if you are him. |
+| `docs/PLAN-AUTOMATIC-LEAGUES.md` | **The next big piece (OQ-41, not built).** Every league on the clock, an admin console, one job per league |
 | `docs/FOR-THE-DESIGNER.md` | Scott's own guide - setup, and what working with you looks like |
 | `docs/LIVE-DATA.md` | **The stats-feed plan.** Provider survey, what it would take, and what it waits on |
 | `docs/DATA-MODEL.md` | Schema, concurrency design, RLS plan |
