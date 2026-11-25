@@ -25,6 +25,8 @@
  * server/operations.js, and it is the same one the commissioner's own button presses.
  */
 
+import { kickoffAt, kickoffsFor } from "./lineupLock.js";
+
 /**
  * The two deadlines, in the league's own local time. 0 = Sunday, hour is 0-23.
  *
@@ -42,6 +44,109 @@ export const CYCLE_DEADLINES = {
 };
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/**
+ * THE WEDNESDAY-GAME WEEK. Scott, 2026-11-24 (OQ-40): "weeks that have a Wednesday game,
+ * the schemes are processed Wednesday at 3am instead of Thursday. Once the schedule reads
+ * back to normal, and games are just Thursday Sunday Monday, the schemes go back to
+ * Thursday 3am like normal."
+ *
+ * WHY: schemes ignore kickoffs. At 3am Thursday a Wednesday game is over, so a steal
+ * could take a player whose line is already known, and a Block could be chosen in
+ * hindsight. Moving the deadline ahead of the game is the whole fix; nothing about how
+ * schemes resolve changed.
+ *
+ * READ OFF THE WEEK'S OWN `kickoffs` - the times the deal dealt against and the lineup
+ * lock fires on - so it switches on and off with the schedule and needs no setting.
+ */
+export const WEDNESDAY_SCHEME_DEADLINE = { weekday: 3, hour: 3 };
+
+/* Weekday and hour of an instant in a zone, by Intl. Null when the runtime cannot say. */
+function wallDayHour(ms, tz) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "numeric",
+      hourCycle: "h23",
+    }).formatToParts(new Date(ms));
+    const wd = parts.find((p) => p.type === "weekday");
+    const hr = parts.find((p) => p.type === "hour");
+    const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wd && wd.value);
+    const hour = Number(hr && hr.value) % 24;
+    if (weekday < 0 || !Number.isFinite(hour)) return null;
+    return { weekday, hour };
+  } catch {
+    return null;
+  }
+}
+
+/** Does any game in this week's schedule kick off on a Wednesday, in the league's zone? */
+export function hasWednesdayGame(kickoffs, tz = "America/New_York") {
+  return Object.values(kickoffs || {}).some((entry) => {
+    const iso = kickoffAt(entry);
+    if (!iso) return false;
+    const here = wallDayHour(Date.parse(iso), tz);
+    return Boolean(here && here.weekday === WEDNESDAY_SCHEME_DEADLINE.weekday);
+  });
+}
+
+/**
+ * This week's scheme deadline.
+ *
+ * An ordinary week: Thursday 3am, exactly as before. A week with a Wednesday game: the
+ * FIRST of Wednesday 3am or Thursday 3am after the week was dealt. Dealt on the Tuesday
+ * as normal, that is Wednesday 3am. Dealt late - on the Wednesday itself, after 3am - it
+ * falls back to Thursday 3am rather than waiting a whole week for the next Wednesday,
+ * which would process schemes after every game had been played. A commissioner who wants
+ * a late-dealt week closed before the Wednesday game presses Process Schemes himself.
+ *
+ * Unknown deal time (a week not dealt yet) answers Wednesday, which is what a deal on the
+ * normal Tuesday will get.
+ *
+ * @param {{kickoffs?: object, tz?: string, dealtAt?: string|null}} week
+ * @returns {{weekday: number, hour: number}}
+ */
+export function schemeDeadlineFor({ kickoffs, tz = "America/New_York", dealtAt = null } = {}) {
+  const normal = CYCLE_DEADLINES.schemes;
+  if (!hasWednesdayGame(kickoffs, tz)) return normal;
+  const dealt = Date.parse(dealtAt ?? "");
+  const here = Number.isFinite(dealt) ? wallDayHour(dealt, tz) : null;
+  if (!here) return WEDNESDAY_SCHEME_DEADLINE;
+  /* Hours from the deal forward to each candidate, in local wall-clock terms. A deal in
+   * the deadline's own hour is AFTER it (the server compares dealt < deadline), so zero
+   * counts as a full week away. */
+  const ahead = (d) => {
+    const h = ((d.weekday - here.weekday) * 24 + d.hour - here.hour + 168) % 168;
+    return h === 0 ? 168 : h;
+  };
+  return ahead(WEDNESDAY_SCHEME_DEADLINE) <= ahead(normal) ? WEDNESDAY_SCHEME_DEADLINE : normal;
+}
+
+/** The deadline for the week a hydrated league is on. */
+export function schemeDeadlineOf(state) {
+  return schemeDeadlineFor({
+    kickoffs: kickoffsFor(state),
+    tz: leagueTimeZone(state),
+    dealtAt: state && state._meta ? state._meta.dealtAt : null,
+  });
+}
+
+/**
+ * The disclaimer for a Wednesday-game week, or null in an ordinary one. Shown wherever the
+ * deadline is, so nobody discovers the early close by losing their scheme.
+ */
+export function wednesdayDeadlineNote(state) {
+  if (!hasWednesdayGame(kickoffsFor(state), leagueTimeZone(state))) return null;
+  const d = schemeDeadlineOf(state);
+  return d.weekday === WEDNESDAY_SCHEME_DEADLINE.weekday
+    ? "This week has a Wednesday game, so schemes process Wednesday 3am instead of Thursday."
+    : "This week has a Wednesday game, but it was dealt late, so schemes process Thursday 3am - after that game.";
+}
+
+/** The rule, for the Rules screen, whatever week it is. */
+export const WEDNESDAY_RULE_WORDS =
+  "In a week with a Wednesday game, schemes process Wednesday 3am instead of Thursday. Every other week it is Thursday 3am.";
 
 /** "Thursday 3am" - the deadline as a phrase, for a log line or a sentence on screen. */
 export function describeDeadline({ weekday, hour }) {
@@ -113,7 +218,7 @@ export function zoneLabel(tz, at = Date.now()) {
  * each other or from what the server actually does.
  */
 export function schemeDeadlineWords(state, at = Date.now()) {
-  return describeDeadline(CYCLE_DEADLINES.schemes) + " " + zoneLabel(leagueTimeZone(state), at);
+  return describeDeadline(schemeDeadlineOf(state)) + " " + zoneLabel(leagueTimeZone(state), at);
 }
 
 /** The same, for the Tuesday morning finalize-and-deal. */

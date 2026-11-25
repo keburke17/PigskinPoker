@@ -47,7 +47,7 @@
 
 import { isValidNflWeek } from "./schedule.js";
 import { isValidTimeZone, lastLocalDeadline, nextLocalDeadline, wallClock } from "./tz.js";
-import { CYCLE_DEADLINES, describeDeadline } from "../src/engine/weeklyClock.js";
+import { CYCLE_DEADLINES, describeDeadline, schemeDeadlineFor } from "../src/engine/weeklyClock.js";
 
 /** Fallback when a league's stored zone is one this runtime cannot use. */
 export const DEFAULT_TZ = "America/New_York";
@@ -78,6 +78,18 @@ export function zoneOf(league) {
 
 /** "Thursday 3am", for a log line and for a sentence on screen. */
 export const deadlineWords = describeDeadline;
+
+/**
+ * The scheme deadline for THIS league's current week: Thursday 3am, or Wednesday 3am in a
+ * week with a Wednesday game (OQ-40, src/engine/weeklyClock.js has the rule).
+ */
+export function schemeDeadlineOfPeriod(league, period) {
+  return schemeDeadlineFor({
+    kickoffs: period?.kickoffs ?? {},
+    tz: zoneOf(league),
+    dealtAt: period?.dealt_at ?? null,
+  });
+}
 
 /**
  * Has this league's deadline for the current week passed, with the week still sitting
@@ -127,14 +139,15 @@ export function schemesEligibility({ league, period, teamCount, now }) {
   }
   if (!teamCount) return { eligible: false, why: "the league has no teams" };
 
-  const { passed, at } = deadlinePassed(league, period.dealt_at, DEADLINES.schemes, now);
+  const deadline = schemeDeadlineOfPeriod(league, period);
+  const { passed, at } = deadlinePassed(league, period.dealt_at, deadline, now);
   if (!passed) {
     return {
       eligible: false,
-      why: "the " + deadlineWords(DEADLINES.schemes) + " deadline has not come round yet",
+      why: "the " + deadlineWords(deadline) + " deadline has not come round yet",
     };
   }
-  return { eligible: true, why: "the " + deadlineWords(DEADLINES.schemes) + " deadline passed at " + new Date(at).toISOString() };
+  return { eligible: true, why: "the " + deadlineWords(deadline) + " deadline passed at " + new Date(at).toISOString() };
 }
 
 /**
@@ -357,7 +370,7 @@ export function reminderEligibility({ league, period, now }) {
   const dealt = Date.parse(period.dealt_at ?? "");
   if (!Number.isFinite(dealt)) return { eligible: false, why: "the week has no deal time" };
 
-  const at = nextLocalDeadline(dealt, zoneOf(league), DEADLINES.schemes);
+  const at = nextLocalDeadline(dealt, zoneOf(league), schemeDeadlineOfPeriod(league, period));
   const opens = at - REMINDER_LEAD_MS;
 
   if (now < opens) return { eligible: false, why: "more than 12 hours until the deadline" };

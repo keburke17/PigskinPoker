@@ -23,12 +23,20 @@ import {
   kickoffsFor,
   lineupLockMode,
   schemeDeadlineWords,
+  wednesdayDeadlineNote,
   SEAT,
   TABLE_MIN_PLAYERS,
   isTable,
   periodTeamIds,
   seatOf,
 } from "../engine/index.js";
+
+/* OQ-40: a week with a Wednesday game closes schemes early. Said beside the deadline,
+ * every time it applies, so nobody learns it by losing their scheme. */
+function wednesdayTail(state) {
+  const note = autoProcessSchemes(state) ? wednesdayDeadlineNote(state) : null;
+  return note ? " " + note : "";
+}
 
 /* The weekly cycle, named once. CLAUDE.md writes it as
  * pre-deal -> dealt -> schemes-processed -> stats -> finalized; the three below are the
@@ -330,7 +338,7 @@ function managerStep(state, team) {
       detail:
         "Your roster is in. Pick your 6 starters, then choose Block, Steal, Redraw or No Action. " +
         (autoProcessSchemes(state)
-          ? "Schemes close at " + schemeDeadlineWords(state) + ", on the clock. Miss it and you get No Action for the week."
+          ? "Schemes close at " + schemeDeadlineWords(state) + ", on the clock. Miss it and you get No Action for the week." + wednesdayTail(state)
           : "Submit before your commissioner processes the week - there is no clock, so do it now."),
       tab: "myteam",
     };
@@ -340,7 +348,7 @@ function managerStep(state, team) {
     headline: "You are in. " + schemeWord(scheme) + " is on file.",
     detail:
       (autoProcessSchemes(state)
-        ? "You can change it right up until " + schemeDeadlineWords(state) + "."
+        ? "You can change it right up until " + schemeDeadlineWords(state) + "." + wednesdayTail(state)
         : "You can change it right up until the commissioner processes " + period + ".") +
       (isWeekly(state)
         ? " Keep an eye on your lineup too - every lineup closes at " + weeklyDeadline(state) + "."
@@ -387,7 +395,7 @@ export function welcomeMove(state, team) {
       detail:
         "Your " + period + " roster is in. " +
         (autoProcessSchemes(state)
-          ? "Schemes close " + schemeDeadlineWords(state) + "."
+          ? "Schemes close " + schemeDeadlineWords(state) + "." + wednesdayTail(state)
           : "Get your scheme in now - schemes can close any time."),
       tab: "myteam",
     };

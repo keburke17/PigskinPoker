@@ -30,6 +30,7 @@ import {
   autoProcessSchemes,
   leagueTimeZone,
   schemeDeadlineWords,
+  wednesdayDeadlineNote,
   zoneLabel,
 } from "../src/engine/weeklyClock.js";
 
@@ -128,7 +129,8 @@ export function recapFor(view, teamId) {
 export function deadlineWords(view, now = Date.now()) {
   return autoProcessSchemes(view)
     ? "Schemes close " + schemeDeadlineWords(view, now) +
-        " - anything not in by then plays the week exactly as it was dealt."
+        " - anything not in by then plays the week exactly as it was dealt." +
+        (wednesdayDeadlineNote(view) ? " " + wednesdayDeadlineNote(view) : "")
     : "Your commissioner processes schemes once everyone is in, so get yours in before he does.";
 }
 
