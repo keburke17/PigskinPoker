@@ -147,17 +147,30 @@ league to automatic is what loads the clock the most, so the clock is made sturd
 Dependencies stay boring (CLAUDE.md): nothing above needs a new npm package; a queue, if
 chosen, is a Supabase or Netlify feature rather than a library.
 
-## Waiting on Scott
+## Scott's answers of 2026-11-26
 
-a. **The playoff bracket and stat corrections.** He asked how the big sites do it first;
-   the session's answer is in OQ-41. Options: wait to seed until Thursday 3am in the last
-   regular-season week; seed Tuesday and freeze with a notice; or re-seed and re-deal
-   Round 1 before it kicks off.
-b. **A scoring change made mid-week** - does it apply to the week being played, or from
-   the next week dealt?
-c. **A league with fewer than two teams at its start week** - push the start back a week
-   by itself and tell the commissioner?
-d. **Lineup lock**: leagues set to lock every lineup at the week's first kickoff would move
-   to per-player locks. Confirm.
-e. **Last Digit's hand-picked draw**: the commissioner keeps picking teams before the
-   start, and anyone he has not given a team at the start gets a random one?
+- **The playoffs get a consolation bracket.** Teams that miss the playoffs are still dealt
+  and play on for the final standings. **Consolation teams cannot steal from playoff
+  teams; playoff teams can steal from consolation teams.** Stated on the Rules tab.
+- **The final seeding settles at Thursday 3am**, at the scheme run: corrections land, a team
+  moves between the brackets if they change who is in, then schemes run on the final
+  seeding. Everyone is dealt either way, so a seeding change never needs a re-deal. The last
+  regular-season week still finalizes Tuesday.
+- **The Rules tab gets a Stat corrections section**: corrections count until the Thursday
+  3am scheme run, and can change a finished week's scores, places and standings until then.
+- **Fewer than two teams at the start week**: the start moves back a week by itself.
+- **Lineups** lock at each player's own kickoff, in every league.
+- **Last Digit**: the commissioner hand-picks teams or sets them to deal automatically;
+  anyone without a team at the start gets a random one.
+
+This adds a step to the build plan, between 7 and 8: **the consolation bracket and the
+Thursday seeding.** It is a game-rules change (`src/engine/`, and `tests/parity.test.js`
+records it).
+
+## Still waiting on Scott
+
+b. **A scoring change made while a week is being played** - say TDs go from 4 to 6 on a
+   Friday: does that week count with 4 or with 6?
+f. **The consolation bracket's shape**: an elimination bracket of its own (the winner
+   finishes first among the non-playoff teams), or one table of points for those places?
+   And do teams knocked out of the playoffs drop into it, or are they done?

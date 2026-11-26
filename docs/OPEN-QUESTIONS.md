@@ -2805,4 +2805,27 @@ only an admin, or the feed's own correction.
 - **(e)** Last Digit's hand-picked draw: picks made before the start, and a random team for
   anyone without one at the start?
 
+**Answered 2026-11-26 by Scott:**
+
+- **(a) Playoffs get a consolation bracket, and the final seeding waits until Thursday 3am.**
+  Teams that do not make the playoffs are still dealt and still play, in a consolation
+  bracket for the final standings. **A consolation team cannot steal from a playoff team;
+  a playoff team can steal from a consolation team** (said in the rules too). Because
+  every team is dealt either way, a correction that changes who made the playoffs needs
+  NO re-deal - the team just moves between the two brackets. The seeding is final at
+  Thursday 3am, the moment schemes process, so the steal rule always runs on the final
+  seeding: corrections land, the seeding settles, then schemes run. The last regular-season
+  week is still finalized on Tuesday as normal; only the seeding stays open.
+- **Stat corrections, in the rules, in their own section:** the game picks up stat
+  corrections until the Thursday 3am scheme run; a finished week is finalized when it is
+  finalized, but a correction before Thursday 3am still changes its scores, places and
+  standings if it changes anything.
+- **(c) Yes** - fewer than two teams at the start week pushes the start back a week by itself.
+- **(d) Yes** - lineups lock at each player's own kickoff.
+- **(e)** The commissioner either hand-picks teams or sets the game to deal them
+  automatically. Anyone without a team at the start is given a random one.
+
+**Still open:** (b) - restated for Scott on 2026-11-26 - and the consolation bracket's own
+shape (see the plan).
+
 **Nothing is built.** The build order, and what each step needs from Kyle, is in the plan.
