@@ -2828,12 +2828,12 @@ only an admin, or the feed's own correction.
 - **(b) Next week.** A scoring change takes effect from the next week dealt; the week being
   played keeps the values it was dealt with, and finished weeks never move.
 
-- **(f) The consolation group.** Every team is dealt every playoff week. A place locks the
-  moment a team is out of the race: teams cut from the playoffs by that week's score, and
-  9th-12th by Playoff Week 1's score - so after Week 1 nobody outside the playoffs plays
-  for a place ("a team eliminated 7th should not be done while the 9th is still playing").
-  Out-of-race teams play on for a weekly consolation callout. One-way steals; every round
-  settles at Thursday 3am. Full detail in the plan.
+- **(f) The consolation group.** Every team is dealt every playoff week. Knocked-out teams
+  drop into the consolation group and play to the end; consolation points add up. Final
+  standings come in groups by how far a team got - out in a later round always above an
+  earlier one, every playoff team above every non-playoff team - and within a group the
+  consolation total decides. Weekly consolation callout, one-way steals, every round
+  settles at Thursday 3am. Worked example and the full rule in the plan.
 
 **Nothing left open on OQ-41.**
 

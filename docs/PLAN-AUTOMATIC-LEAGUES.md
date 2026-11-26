@@ -174,21 +174,38 @@ f. ~~The consolation bracket's shape~~ - **answered 2026-11-26, below.**
 
 ## The playoffs and the consolation group (Scott, 2026-11-26)
 
+Worked example Scott approved: a 12-team league, 8 make it, 8 -> 6 -> 4 -> 2 -> 1.
+
 - **Every team is dealt every playoff week**, from the same pool - a 12-team league deals
   12 hands every week, as in the regular season.
-- **Two groups.** The *playoff group* is the teams still alive; the top of each week
-  advance as the league's format says (e.g. 8, 6, 4, 2, 1). Everyone else is the
-  *consolation group*.
-- **A place is locked the moment a team is out of the race, and never moves after.**
-  - Teams cut from the playoffs take the places just below the survivors, ordered by that
-    week's score (8 -> 6: the two cut finish 7th and 8th).
-  - **Places below the bracket (9th to 12th) are decided by Playoff Week 1's score**, among
-    the teams that did not make the playoffs - the same week and the same rule as 7th and
-    8th. So after Playoff Week 1, nobody outside the playoff group is playing for a place.
-  - Scott's reason: a team knocked out in 7th must not be done while a 9th-place team is
-    still playing for something.
-- **The consolation group keeps playing for the week only**: every team out of the race is
-  still dealt, and the top consolation score each week gets a callout on the scoreboard.
+- **The playoff group** is the teams still alive. Each playoff week stands alone, as today:
+  that week's score decides who advances, and nothing carries over.
+- **The consolation group** is everyone else: the teams that missed the playoffs, plus
+  every team knocked out, which drops in the week after it goes out and plays on to the
+  end of the playoffs. **Consolation points add up** from the week a team drops in through
+  the last playoff week.
+- **Final standings come in groups, by how far a team got - and that order never moves.**
+  A team knocked out in a later round always finishes above every team knocked out in an
+  earlier one, and every team that made the playoffs finishes above every team that did
+  not. Within a group, the consolation total decides the order. A lower group can only
+  reorder itself, never pass a group above it (Scott: a team that made the playoffs and
+  was eliminated "should never finish below a team that started in the consolation
+  bracket").
+
+  | Group | Places | Ordered by |
+  |---|---|---|
+  | The final two | 1st, 2nd | the championship week |
+  | Out in Week 3 | 3rd, 4th | consolation total, Week 4 |
+  | Out in Week 2 | 5th, 6th | consolation total, Weeks 3-4 |
+  | Out in Week 1 | 7th, 8th | consolation total, Weeks 2-4 |
+  | Missed the playoffs | 9th - 12th | consolation total, Weeks 1-4 |
+
+  Everyone in a group dropped in the same week, so they are compared over the same weeks.
+  **Group sizes follow the league's format**: 8 -> 4 -> 2 -> 1 cuts four in the first
+  round, so 5th-8th is one group of four. Ties: the score from the week the team was
+  knocked out, then the usual tiebreakers.
+- **Consolation week winner**: the top consolation score each week gets a callout on the
+  scoreboard.
 - **Steals are one-way**: a playoff team can steal from anyone; a consolation team only from
   another consolation team. Blocks and redraws are the same for everyone. Stated on the
   Rules tab.
@@ -198,15 +215,6 @@ f. ~~The consolation bracket's shape~~ - **answered 2026-11-26, below.**
 - **The champion** is crowned at the final week's finalize and made official at Thursday 3am
   once corrections close.
 
-Example, 12 teams, 8 make it, 8 -> 6 -> 4 -> 2 -> 1:
-
-| Playoff week | Playoff group | Places locked after it |
-|---|---|---|
-| 1 | seeds 1-8 | 7th, 8th (cut), and 9th-12th (by this week's score) |
-| 2 | the 6 left | 5th, 6th |
-| 3 | the 4 left | 3rd, 4th |
-| 4 | the final 2 | Champion, 2nd |
-
-All 12 are dealt all four weeks. This replaces today's rule that only surviving teams are
-dealt, so it is a game-rules change: `src/engine/`, with `tests/parity.test.js` recording
-the difference.
+This replaces today's rule that only surviving teams are dealt and that a final standing
+exists only for the champion, so it is a game-rules change: `src/engine/`, with
+`tests/parity.test.js` recording the difference.
