@@ -3379,8 +3379,10 @@ gate()("the scheduled weekly cycle", () => {
     expect((await ops.finalizePeriod(db, { leagueId, token })).status).toBe(200);
     const totals = async () => {
       const { data } = await db.from("team_totals")
-        .select("team_id, standings_points, week_wins, coach_wins, total_tds, total_yards, best_player")
-        .eq("season_id", (await season()).id).order("team_id");
+        .select("team_id, scope, standings_points, week_wins, coach_wins, total_tds, total_yards, best_player")
+        /* Two rows per team (regular and playoff), so order by both: by team alone, the
+         * database is free to return each pair either way round. */
+        .eq("season_id", (await season()).id).order("team_id").order("scope");
       return data;
     };
     const afterWeek2 = await totals();
