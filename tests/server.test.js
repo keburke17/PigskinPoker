@@ -26,7 +26,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import * as ops from "../server/operations.js";
-import { fetchLeagueRows, hydrate } from "../server/league.js";
+import { fetchLeagueRows, hydrate, persistBlob } from "../server/league.js";
+import { repairSkippedWeek } from "../scripts/repair-skipped-week.mjs";
+import { finalizeCurrentPeriod } from "../src/engine/standings.js";
 import { autoSeatIds, lobbyLine, nextHandTeamIds, periodTeamIds, slotAcceptsPosition, tableRecord } from "../src/engine/index.js";
 
 const SEED_PATH = path.resolve(
@@ -3270,6 +3272,188 @@ gate()("the scheduled weekly cycle", () => {
     const next = (await periodsOf()).find((p) => p.number === 3 && p.type === "week");
     expect(next.phase).toBe("dealt");
     expect(next.roster_locked).toBe(false);
+  });
+
+  /* ---------------- 2026-11-24: the week that was skipped ---------------- */
+
+  /* THE INCIDENT. The clock checked that Week 11 was ready, then spent a while reading
+   * results and pulling stats. Meanwhile Week 11 was finalized by somebody else, so when
+   * the clock re-read the league the current week was an UNDEALT Week 12 - and it
+   * finalized that: every team 0, the tiebreakers naming a winner, and then it dealt
+   * Week 13. Reproduced here with the commissioner pressing Finalize while the clock is
+   * inside its results read. */
+  it("NEVER finalizes a week other than the one it checked", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true, auto_pull_stats: false });
+    const kickoffs = await kickoffsForWeek((await current()).id);
+    const period = await stage({ phase: "stats", roster_locked: true, nfl_week: 6, kickoffs });
+    const done = await feedAllDone(period.id);
+    const token = await asCommissioner();
+
+    let pressed = false;
+    const feed = {
+      ...done,
+      fetchGameResults: async (args) => {
+        if (!pressed) {
+          pressed = true;
+          const byHand = await ops.finalizePeriod(db, { leagueId, token, feed: done });
+          expect(byHand.status).toBe(200);
+        }
+        return done.fetchGameResults(args);
+      },
+    };
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed });
+    expect(r.body.ok).toBe(true);
+
+    const after = await periodsOf();
+    expect(after.find((p) => p.id === period.id).phase).toBe("finalized");
+    const week3 = after.find((p) => p.type === "week" && p.number === 3);
+    /* Week 3 is the next week: dealt by the clock's deal step, NOT finalized. */
+    expect(week3.phase).toBe("dealt");
+    expect(after.some((p) => p.type === "week" && p.number === 4)).toBe(false);
+
+    const { data: results } = await db.from("period_results").select("id").eq("period_id", week3.id);
+    expect(results).toEqual([]);
+  });
+
+  /* The same gap in the deal step, and the table mismatch of Nov 10 onwards: a second
+   * run that re-read a week already dealt used to deal it again and keep the second
+   * roster, while the managers had been emailed the first. */
+  it("NEVER deals a week that was dealt while it was refreshing the pool", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true });
+    const period = await current();
+    await db.from("periods")
+      .update({ phase: "finalized", finalized_at: "2026-10-20T02:00:00Z" })
+      .eq("id", period.id);
+    const { data: week3 } = await db
+      .from("periods").insert({
+        season_id: (await season()).id, type: "week", number: 3, phase: "pre-deal", nfl_week: 7,
+      }).select().single();
+
+    const plain = await feedAllDone(period.id);
+    let seedSeenByOther = null;
+    const feed = {
+      ...plain,
+      /* The pool refresh is the slow read before a deal. While it is in flight, another
+       * run deals the same week. */
+      fetchDepthChart: async () => {
+        if (seedSeenByOther == null) {
+          seedSeenByOther = "pending";
+          await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: plain });
+          const { data } = await db.from("periods").select("deal_seed").eq("id", week3.id).single();
+          seedSeenByOther = data.deal_seed;
+        }
+        throw new Error("feed down");
+      },
+    };
+
+    const r = await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed });
+    expect(r.body.ok).toBe(true);
+    const { data: after } = await db.from("periods").select("*").eq("id", week3.id).single();
+    expect(after.phase).toBe("dealt");
+    expect(seedSeenByOther).toBeTruthy();
+    expect(after.deal_seed).toBe(seedSeenByOther);
+  });
+
+  /* finalized_at is stamped after the blob is written and decompose cannot carry it, so
+   * every later blob write used to wipe it - and dealWindowOpen reads it. */
+  it("keeps a finished week's finalized_at through the next deal", async () => {
+    await setSwitches({ auto_process_schemes: false, auto_advance_week: true, auto_pull_stats: false });
+    const kickoffs = await kickoffsForWeek((await current()).id);
+    const period = await stage({ phase: "stats", roster_locked: true, nfl_week: 6, kickoffs });
+
+    await ops.scheduledWeeklyCycle(db, { now: TUESDAY, feed: await feedAllDone(period.id) });
+
+    const after = await periodsOf();
+    expect(after.find((p) => p.number === 3).phase).toBe("dealt");
+    expect(after.find((p) => p.id === period.id).finalized_at).toBeTruthy();
+  });
+
+  /* THE REPAIR for a league it already happened to (scripts/repair-skipped-week.mjs).
+   * Week 2 is finished properly; Week 3 is then finalized while still undealt - the bug,
+   * done by hand since the code no longer allows it - and Week 4 is dealt. The repair
+   * must leave the league exactly where it was after Week 2, ready to deal Week 3. */
+  const stageSkippedWeek = async () => {
+    const token = await asCommissioner();
+    await stage({ phase: "stats", roster_locked: true, nfl_week: 6 });
+    expect((await ops.finalizePeriod(db, { leagueId, token })).status).toBe(200);
+    const totals = async () => {
+      const { data } = await db.from("team_totals")
+        .select("team_id, scope, standings_points, week_wins, coach_wins, total_tds, total_yards, best_player")
+        /* Two rows per team (regular and playoff), so order by both: by team alone, the
+         * database is free to return each pair either way round. */
+        .eq("season_id", (await season()).id).order("team_id").order("scope");
+      return data;
+    };
+    const afterWeek2 = await totals();
+
+    const rows = await fetchLeagueRows(db, leagueId);
+    const bogus = finalizeCurrentPeriod(hydrate(rows));
+    await persistBlob(db, rows, bogus.state, { leagueKey: "demo", year: rows.seasons[0].year });
+    const week3 = (await periodsOf()).find((p) => p.number === 3);
+    await db.from("periods").update({ phase: "finalized", finalized_at: new Date().toISOString() }).eq("id", week3.id);
+    expect((await ops.dealPeriod(db, { leagueId, token, refresh: false })).status).toBe(200);
+    expect((await periodsOf()).find((p) => p.number === 4).phase).toBe("dealt");
+    expect(await totals()).not.toEqual(afterWeek2);
+    return { token, totals, afterWeek2, week3 };
+  };
+
+  it("the repair puts a skipped week back exactly as it was, ready to deal", async () => {
+    const { token, totals, afterWeek2, week3 } = await stageSkippedWeek();
+
+    const dry = await repairSkippedWeek(db, { leagueId, week: 3, log: () => {} });
+    expect(dry.ok).toBe(true);
+    expect((await periodsOf()).some((p) => p.number === 4)).toBe(true); // dry run wrote nothing
+
+    const out = await repairSkippedWeek(db, { leagueId, week: 3, apply: true, log: () => {} });
+    expect(out.ok).toBe(true);
+
+    const after = await periodsOf();
+    expect(after.some((p) => p.number === 4)).toBe(false);
+    const w3 = after.find((p) => p.number === 3);
+    expect(w3.id).toBe(week3.id);
+    expect(w3.phase).toBe("pre-deal");
+    expect(w3.finalized_at).toBeNull();
+    const { data: results } = await db.from("period_results").select("id").eq("period_id", w3.id);
+    expect(results).toEqual([]);
+    expect(await totals()).toEqual(afterWeek2);
+
+    // And Week 3 deals as normal.
+    expect((await ops.dealPeriod(db, { leagueId, token, refresh: false })).status).toBe(200);
+    expect((await periodsOf()).find((p) => p.number === 3).phase).toBe("dealt");
+  });
+
+  it("the repair refuses a league that does not look like the incident", async () => {
+    // The demo league as seeded: Week 2 in play, nothing skipped.
+    const before = await periodsOf();
+    const out = await repairSkippedWeek(db, { leagueId, week: 1, apply: true, log: () => {} });
+    expect(out.ok).toBe(false);
+    expect(await periodsOf()).toEqual(before);
+  });
+
+  /* OQ-40. A week with a Wednesday game closes schemes at 3am Wednesday. */
+  it("processes a Wednesday-game week's schemes at 3am Wednesday", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: false });
+    const period = await stage({
+      phase: "dealt",
+      kickoffs: { "Dallas Cowboys": { at: "2026-10-14T23:15:00Z", opp: "NYG", home: true } },
+    });
+
+    // 3:30am Eastern Wednesday, the morning after the Tuesday deal.
+    const r = await ops.scheduledWeeklyCycle(db, { now: Date.parse("2026-10-14T07:30:00Z") });
+    expect(r.body.acted).toBe(1);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("schemes-processed");
+  });
+
+  it("leaves an ordinary week's schemes alone on Wednesday", async () => {
+    await setSwitches({ auto_process_schemes: true, auto_advance_week: false });
+    const period = await stage({
+      phase: "dealt",
+      kickoffs: { "Dallas Cowboys": { at: "2026-10-16T00:15:00Z", opp: "NYG", home: true } }, // Thu 8:15pm ET
+    });
+    const r = await ops.scheduledWeeklyCycle(db, { now: Date.parse("2026-10-14T07:30:00Z") });
+    expect(r.body.acted).toBe(0);
+    expect((await periodsOf()).find((p) => p.id === period.id).phase).toBe("dealt");
   });
 
   /* ------------------------------ the switch ------------------------------ */

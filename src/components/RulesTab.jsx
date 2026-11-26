@@ -35,6 +35,8 @@ import {
   kickoffsFor,
   lineupLockMode,
   schemeDeadlineWords,
+  wednesdayDeadlineNote,
+  WEDNESDAY_RULE_WORDS,
 } from "../engine/index.js";
 
 export function RuleCard({ title, children }) {
@@ -94,7 +96,7 @@ export function RulesTab({ state, role }) {
       ? <>Every <strong>{advanceDeadlineWords(state)}</strong> you&apos;re dealt a new <strong>random</strong> 12-man roster.</>
       : <>Every {word} your {boss} deals you a new <strong>random</strong> 12-man roster.</>,
     schemeClock
-      ? <>Pick one scheme - Block, Steal or Redraw. Schemes process <strong>{schemeDeadlineWords(state)}</strong>.</>
+      ? <>Pick one scheme - Block, Steal or Redraw. Schemes process <strong>{schemeDeadlineWords(state)}</strong>.{wednesdayDeadlineNote(state) ? <> <strong>{wednesdayDeadlineNote(state)}</strong></> : null}</>
       : <>Pick one scheme - Block, Steal or Redraw. Schemes process when your {boss} runs them.</>,
     <>To Steal or Redraw, you <strong>drop a player at the same position</strong> you&apos;re going after. Drop a WR, get a WR.</>,
     <>Who you steal is <strong>random</strong> - from anyone on their roster, bench included. Who you redraw is <strong>random</strong>. Both lean toward each NFL team&apos;s top RB and WR. Blocks go first, then every steal and redraw runs in a <strong>random order</strong>.</>,
@@ -134,6 +136,7 @@ export function RulesTab({ state, role }) {
         "Blocks run first. Then every steal and redraw runs in a random order, so picking early gets you nothing.",
         "Coaches can't be schemed. Nobody sees your pick.",
         schemeClock ? "Nothing in by " + schemeDeadlineWords(state) + " means No Action." : null,
+        schemeClock ? WEDNESDAY_RULE_WORDS : null,
       ],
     },
     {

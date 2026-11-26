@@ -460,6 +460,10 @@ export function hydrateLeague(db, opts = {}) {
       lineupLock: normalizeLineupLock(season.lineup_lock),
       kickoffs: current?.kickoffs ?? {},
       kickoffsReadAt: current?.kickoffs_read_at ?? null,
+      /* When this week was dealt. Server-owned like kickoffs. The scheme deadline in a
+       * week with a Wednesday game depends on it (OQ-40, src/engine/weeklyClock.js), and
+       * the screen has to name the same deadline the clock will act on. */
+      dealtAt: current?.dealt_at ?? null,
       /* OQ-32: where each player sits on his NFL team's depth chart - player id -> rank,
        * from the last pool refresh. The deal reads it to give each team's top healthy RB
        * and WR better odds; see src/engine/deal.js. In _meta for the reason kickoffs is:

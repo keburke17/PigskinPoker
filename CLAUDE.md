@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **1082 passed, 48 files**. If the output says
+2. `npm test` before committing: **1106 passed, 49 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -197,6 +197,17 @@ in a league that is actually being played is worse than a bug everyone has adapt
   deal a season's first week, will not deal past week 18, and will not start the playoffs.
   See `server/autoCycle.js`.
 
+  **In a week with a Wednesday game the scheme deadline is Wednesday 3am** (OQ-40, Scott
+  2026-11-24), read off the week's own kickoffs by `schemeDeadlineFor` in
+  `src/engine/weeklyClock.js`. A week dealt late on the Wednesday falls back to Thursday.
+
+  **Every clock step re-checks the week after its slow reads** (`samePeriodStill`, and
+  `wrongPhase` inside the shared steps, `server/operations.js`). On 2026-11-24 the clock
+  checked Week 11, Week 11 was finalized by something else while it read results, and it
+  finalized the undealt Week 12 instead, then dealt Week 13. The Nov 10 claim lock did not
+  cover it. **Do not remove either check as redundant.** `docs/INCIDENT-2026-11-24.md`
+  has the whole story and `scripts/repair-skipped-week.mjs` the repair.
+
   **This does not reopen the rule.** Anything else that would move the week without him
   is still his to ask for, and still gets written into `docs/OPEN-QUESTIONS.md` first.
 - **`standingsPointsOverride` is still in the state shape, in `decompose.js` and in the
@@ -288,7 +299,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          48 suites
+tests/          49 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -393,7 +404,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-1082 tests. Three groups worth knowing about:
+1106 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -402,7 +413,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`, `notifyDb.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - about 280 of the 1082
+  (started for you by `npm run dev`) and **skip themselves silently without it** - about 280 of the 1106
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.

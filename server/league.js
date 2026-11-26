@@ -195,6 +195,15 @@ export async function persistBlob(db, previous, blob, opts) {
     const before = new Map((previous?.[table] ?? []).map((r) => [r.id, r]));
     const rows = (next[table] ?? []).map((row) => {
       const prev = before.get(row.id);
+      /* `finalized_at` is stamped by the finalize step AFTER the blob is written, and
+       * decompose cannot know it - so it emits null, and every later blob write used to
+       * wipe it from every finished week. The clock reads it to decide whether a week may
+       * be dealt (`dealWindowOpen` in server/autoCycle.js), so a commissioner who finalized
+       * on Monday night and then edited anything saw no Tuesday deal. Carry it forward
+       * for a week that is still finalized. */
+      if (table === "periods" && row.phase === "finalized" && row.finalized_at == null && prev?.finalized_at) {
+        row = { ...row, finalized_at: prev.finalized_at };
+      }
       if (!VERSIONED.has(table)) return row;
       const changed =
         !prev ||

@@ -25,7 +25,7 @@ describe("leagueHomeFacts - which week the homepage talks about", () => {
 
   it("picks the first week not yet finalized, as the league's own screens do", () => {
     const f = leagueHomeFacts({ league: { mode: "season" }, seasons: [SEASON], periods });
-    expect(f.period).toEqual({ type: "week", number: 2, phase: "dealt" });
+    expect(f.period).toMatchObject({ type: "week", number: 2, phase: "dealt" });
     expect(f.game).toBe("season");
     expect(f.seats).toBe(null);
   });
@@ -36,7 +36,7 @@ describe("leagueHomeFacts - which week the homepage talks about", () => {
       { season_id: "s1", type: "week", number: 18, phase: "finalized" },
     ];
     const f = leagueHomeFacts({ league: { mode: "season" }, seasons: [SEASON], periods: done });
-    expect(f.period).toEqual({ type: "playoff", number: 1, phase: "finalized" });
+    expect(f.period).toMatchObject({ type: "playoff", number: 1, phase: "finalized" });
   });
 
   it("ignores another season's periods, and prefers the active season", () => {

@@ -2710,7 +2710,51 @@ already put him in the next hand. Scott may move the deal to **Friday or Saturda
 the Thursday games altogether**. For now the deal stays Tuesday; this is his to circle back
 to. Nothing in the lobby depends on the day - it fills at whatever moment the deal happens.
 
+**Still parked, more detail (Scott, 2026-11-25).** The shape he has in mind for the weekly
+table: deal Friday or Saturday, schemes process 3am Sunday, and players whose Thursday game
+is already played are left out of the deal the way bye-week and OUT players are. Rosters
+would be dealt later and on better injury news, and he expects to need it if the game ever
+takes money. "For now, we'll keep it until I want to change it." Worth knowing when it is
+picked up: **today the deal does not skip a player whose game has kicked off** - it skips
+byes (OQ-25) and statuses only - so that part would be new.
+
 **What it needs to go live.** `20261112000000_table_lobby.sql` applied with `npm run db:push`
 - Kyle's step. **Apply it BEFORE merging, or at the same time**: the new code writes the new
 columns (`lobby_order` and friends) whenever somebody joins a table, so a table invite
 redeemed against the old schema fails. Season and Last Digit leagues never touch them.
+
+### OQ-40. A week with a Wednesday game closes schemes on Wednesday. **[ANSWERED 2026-11-24 by Scott]**
+
+**The problem.** Schemes resolve at 3am Thursday and know nothing about kickoffs. NFL Week
+12 of 2026 has a Wednesday night game before Thanksgiving, so by 3am Thursday that game
+is over: a manager could steal a player whose stat line is already known, a redraw could
+land on a finished player, and a Block could be chosen in hindsight.
+
+**Scott's rule:** "weeks that have a Wednesday game, the schemes are processed Wednesday at
+3am instead of Thursday. Once the schedule reads back to normal, and games are just
+Thursday Sunday Monday, the schemes go back to Thursday 3am like normal." And there should
+be a disclaimer wherever the deadline is shown.
+
+**What was built** (`src/engine/weeklyClock.js`, `schemeDeadlineFor`):
+
+- The week's own kickoff times decide it - the ones the deal dealt against. Any game that
+  kicks off on a Wednesday in the league's time zone makes it a Wednesday week. No
+  setting; it switches itself on and off with the schedule.
+- In a Wednesday week the deadline is the first of **Wednesday 3am or Thursday 3am after
+  the deal**. Dealt on the Tuesday as normal, that is Wednesday 3am. **A week dealt late,
+  on the Wednesday itself, falls back to Thursday 3am** rather than waiting a whole week
+  for the next Wednesday - which would process schemes after every game had been played.
+  The screen says so. A commissioner who wants a late week closed before the Wednesday
+  game presses Process Schemes himself. (A call made while building it; Scott to confirm.)
+- The 12-hour reminder email moves with it, to 3pm Tuesday.
+- The disclaimer: the Rules tab states the rule every week; in a Wednesday week the
+  deadline reads "Wednesday 3am" everywhere it appears (Rules, the next-step line, the
+  scheme ticket, the homepage, the deal email) with "This week has a Wednesday game, so
+  schemes process Wednesday 3am instead of Thursday." beside it.
+
+**Nothing about how schemes RESOLVE changed** - only when. Tuesday games (there have been
+none since 2010, bar 2020) are not covered: Scott named Wednesday.
+
+**Considered and not taken:** freezing any player whose game has kicked off so he cannot
+be stolen, redrawn or blocked. It would handle any day, but it is a change to what a
+scheme can do rather than when it runs. Left for Scott if Wednesday is not enough.

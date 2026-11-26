@@ -28,10 +28,10 @@ import { planSeasonLines, planStatsPull, statWriteRows } from "./stats.js";
 import { planInjuryRows } from "./injuries.js";
 import { pullEligibility, summarize } from "./autoPull.js";
 import {
-  DEADLINES,
   advanceEligibility,
   dealEligibility,
   deadlineWords,
+  schemeDeadlineOfPeriod,
   schemesEligibility,
   summarize as summarizeCycle,
   zoneOf,
@@ -913,7 +913,7 @@ export async function myLeagues(db, { accountToken }) {
     .from("seasons").select("id, league_id, year, status, playoff_completed").in("league_id", leagueIds);
   const seasonIds = (seasons ?? []).map((s) => s.id);
   const { data: periods } = seasonIds.length
-    ? await db.from("periods").select("season_id, type, number, phase").in("season_id", seasonIds)
+    ? await db.from("periods").select("season_id, type, number, phase, kickoffs, dealt_at").in("season_id", seasonIds)
     : { data: [] };
   const tableIds = (leagues ?? []).filter((l) => l.mode === "table").map((l) => l.id);
   const { data: seatedTeams } = tableIds.length
@@ -971,7 +971,14 @@ export function leagueHomeFacts({ league, seasons = [], periods = [], seated = 0
     startWeek: league?.mode === LAST_DIGIT ? (league?.start_week ?? null) : null,
     seats: table ? (league?.table_seats ?? null) : null,
     seated: table ? seated : null,
-    period: current ? { type: current.type, number: current.number, phase: current.phase } : null,
+    /* kickoffs and dealtAt so the homepage names THIS week's scheme deadline - Wednesday
+     * 3am in a week with a Wednesday game (OQ-40) - rather than always Thursday. */
+    period: current
+      ? {
+          type: current.type, number: current.number, phase: current.phase,
+          kickoffs: current.kickoffs ?? {}, dealtAt: current.dealt_at ?? null,
+        }
+      : null,
     seasonOver: Boolean(season?.playoff_completed),
     autoProcessSchemes: Boolean(league?.auto_process_schemes),
     tz: league?.tz ?? null,
@@ -1765,6 +1772,25 @@ async function commissionerLifecycle(db, leagueId, token, opName, expect, apply)
  * skip a league quietly (server/autoCycle.js). What must NOT differ is what gets
  * written, which is everything below.
  */
+/**
+ * The phase rule, asked again INSIDE the shared step - whoever called it.
+ *
+ * 2026-11-24: a season league's Week 12 was finalized before it had been dealt. The
+ * clock checked that Week 11 was ready, spent a while downloading results and pulling
+ * stats, re-read the league - by which time something else had already finalized Week
+ * 11 - and then finalized whatever week was current: an undealt Week 12, scored as all
+ * zeros with the tiebreakers naming a winner. Then it dealt Week 13. The engine's
+ * finalize has no phase rule of its own and the claim in runLifecycle only stops two
+ * writers at once, so nothing caught it. The commissioner's buttons check the phase in
+ * `guard`; this makes the step itself refuse, so no caller can forget.
+ */
+function wrongPhase(ctx, opName) {
+  const allowed = PHASE_RULES[opName];
+  const phase = ctx.period?.phase ?? ctx.view?.currentPeriod?.phase ?? null;
+  if (!allowed || allowed.includes(phase)) return null;
+  return "This week has moved on (it is now '" + phase + "'), so that step did not run.";
+}
+
 async function runLifecycle(db, leagueId, ctx, apply) {
   const outcome = await apply(ctx);
   if (outcome.error) return fail(400, outcome.error, { reason: "invalid", view: ctx.view });
@@ -1937,6 +1963,8 @@ export async function dealPeriod(db, { leagueId, token, expect, feed, refresh })
  */
 function applyDeal({ poolRefresh, feed, by = "commissioner", now = null }) {
   return async (ctx) => {
+    const wrong = wrongPhase(ctx, "dealPeriod");
+    if (wrong) return { error: wrong };
     const v = ctx.view;
     const teamIds = periodTeamIds(v);
     /* OQ-39. Who the line fills into open seats - already counted in teamIds, and seated
@@ -2061,6 +2089,8 @@ export async function processSchemes(db, { leagueId, token, expect }) {
  */
 function applyProcessSchemes({ by = "commissioner" } = {}) {
   return async (ctx) => {
+    const wrong = wrongPhase(ctx, "processSchemes");
+    if (wrong) return { error: wrong };
     const seed = newSeed();
     const blob = engineProcessSchemes(ctx.view, seededRng(seedFromString(seed)));
     blob.currentPeriod.phase = "schemes-processed";
@@ -2084,7 +2114,8 @@ function applyProcessSchemes({ by = "commissioner" } = {}) {
         type: "auto",
         text:
           "Schemes for " + label + " were processed automatically at the " +
-          deadlineWords(DEADLINES.schemes) + " deadline. Rosters are now locked.",
+          deadlineWords(schemeDeadlineOfPeriod(ctx.rows.leagues[0], ctx.period)) +
+          " deadline. Rosters are now locked.",
       });
     }
     return {
@@ -2129,6 +2160,8 @@ export async function finalizePeriod(db, { leagueId, token, expect, feed }) {
  */
 function applyFinalize({ feed, by = "commissioner" } = {}) {
   return async (ctx) => {
+    const wrong = wrongPhase(ctx, "finalizePeriod");
+    if (wrong) return { error: wrong };
     const result = finalizeCurrentPeriod(ctx.view);
     if (result.error) return { error: result.error };
     if (by !== "commissioner") {
@@ -3166,12 +3199,22 @@ async function advanceOneLeague(db, { league, now, feed }) {
    * is almost every hour - nothing did, so the league we just read is still current and
    * the deal step is one more pure comparison rather than a second full read of every
    * table. That matters at 24 runs a day, per league, for a job that acts twice a week. */
-  const acted = finalize.steps.some((st) => st.did);
+  /* Also re-read when the finalize stood aside because the week moved under it - the
+   * read we hold is then out of date, and the week in front of the league is new. */
+  const acted = finalize.steps.some((st) => st.did || st.why === LOST_CLAIM);
   const deal = await dealIfDue(db, { league, now, feed, ctx: acted ? null : ctx });
   steps.push(...deal.steps);
   if (deal.failure) return { steps, failure: deal.failure };
 
   return { steps };
+}
+
+/* Phases the clock may finalize from. Mirrors PHASE_RULES.finalizePeriod. */
+const FINALIZABLE = ["schemes-processed", "stats"];
+
+/** Is the period we just re-read the one we checked, still in a phase we may act on? */
+function samePeriodStill(checked, now, phases) {
+  return Boolean(checked && now && checked.id === now.id && phases.includes(now.phase));
 }
 
 /* A run that lost the claim in runLifecycle did nothing because something else already
@@ -3229,6 +3272,16 @@ async function finalizeIfReady(db, { league, ctx, now, feed }) {
   const fresh = await systemContext(db, league.id);
   if (fresh.error) return { steps, failure: "the league vanished mid-run" };
 
+  /* THE WEEK WE FINALIZE MUST BE THE WEEK WE CHECKED. Everything above can take a while
+   * (an 8 MB schedule file, a stats pull), and the commissioner or an overlapping run can
+   * finalize the week in the meantime. Re-reading then hands us the NEXT week - undealt -
+   * and finalizing it scores a week nobody played. That is exactly what happened to a
+   * season league's Week 12 on 2026-11-24. Anything other than the same period, still in
+   * a finalizable phase, means somebody else got here first. */
+  if (!samePeriodStill(ctx.period, fresh.period, FINALIZABLE)) {
+    return { steps: [...steps, { step: "finalize", did: false, why: LOST_CLAIM }] };
+  }
+
   const finalized = await runLifecycle(db, league.id, fresh, applyFinalize({ feed, by: "the schedule" }));
   if (lostTheClaim(finalized)) return { steps: [...steps, { step: "finalize", did: false, why: LOST_CLAIM }] };
   if (finalized.status !== 200) {
@@ -3271,6 +3324,14 @@ async function dealIfDue(db, { league, now, feed, ctx: known = null }) {
   /* Re-read, because the refresh just rewrote the players the deal is about to read. */
   const beforeDeal = await systemContext(db, league.id);
   if (beforeDeal.error) return { steps: [], failure: "the league vanished mid-run" };
+
+  /* The same rule as the finalize: deal the week we checked, or nothing. The pool refresh
+   * is slow, and a week another run dealt meanwhile is now `dealt` - the claim below
+   * would happily accept that phase, re-deal it, and keep the second roster while the
+   * managers had been emailed the first. That is the table mismatch of Nov 10 onwards. */
+  if (!samePeriodStill(ctx.period, beforeDeal.period, ["pre-deal"])) {
+    return { steps: [{ step: "deal", did: false, why: LOST_CLAIM }] };
+  }
 
   const dealt = await runLifecycle(
     db, league.id, beforeDeal,

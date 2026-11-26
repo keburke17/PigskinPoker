@@ -12,7 +12,7 @@
  * status line rather than a wrong one.
  */
 
-import { CYCLE_DEADLINES, describeDeadline, zoneLabel } from "../engine/index.js";
+import { describeDeadline, schemeDeadlineFor, zoneLabel } from "../engine/index.js";
 import { CP } from "../engine/constants.js";
 
 const SEP = " - ";
@@ -76,7 +76,9 @@ export function leagueStatus(league, now = Date.now()) {
       break;
     case "dealt":
       what = league.autoProcessSchemes
-        ? "Schemes due " + describeDeadline(CYCLE_DEADLINES.schemes) + " " + zoneLabel(league.tz || "America/New_York", now)
+        ? "Schemes due " +
+          describeDeadline(schemeDeadlineFor({ kickoffs: p.kickoffs, tz: league.tz || "America/New_York", dealtAt: p.dealtAt })) +
+          " " + zoneLabel(league.tz || "America/New_York", now)
         : table ? "Cards are out - schemes open" : "Schemes open";
       break;
     case "schemes-processed":
