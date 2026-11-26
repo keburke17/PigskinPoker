@@ -79,7 +79,7 @@ trigger the prompt as well; and do not add them to the settings file to skip it.
 
 1. **Never commit on `main`.** Branch off the remote, so a bare `git push` cannot land on
    main: `git checkout -b scott/<short-name> --no-track origin/main`.
-2. `npm test` before committing: **1106 passed, 49 files**. If the output says
+2. `npm test` before committing: **1131 passed, 51 files**. If the output says
    files were *skipped*, Docker is not running, the security tests did not execute, and
    you have not verified what the green tick suggests. Say so rather than reporting a
    pass.
@@ -299,7 +299,7 @@ src/
 server/         privileged operations. NEVER imported from src/
 netlify/        the one HTTP endpoint, a thin wrapper over server/
 supabase/       migrations (forward-only) and the local demo seed
-tests/          49 suites
+tests/          51 suites
 docs/           design, decisions, deployment
 LegacyProject/  the original Artifact, untouched
 ```
@@ -404,7 +404,7 @@ leagues exist, on purpose. `npm run db:reset` clears it.
 npm test
 ```
 
-1106 tests. Three groups worth knowing about:
+1131 tests. Three groups worth knowing about:
 
 - **`tests/parity.test.js`** is the safety net. It lifts the pure-JS region straight out
   of `LegacyProject/PigskinPokerCode.jsx`, runs it against `src/engine/` on identical
@@ -413,7 +413,7 @@ npm test
   just introduced, or a rules change that needs the designer's sign-off *and* an update
   to that file explaining what changed and why.
 - **`rls.test.js`, `server.test.js`, `bootstrap.test.js`, `notifyDb.test.js`** need the local Supabase stack
-  (started for you by `npm run dev`) and **skip themselves silently without it** - about 280 of the 1106
+  (started for you by `npm run dev`) and **skip themselves silently without it** - about 280 of the 1131
   tests. They cover every Row Level Security assertion, all server-side authorization,
   and the regression guard for a bug that would destroy the league on the first team
   added.
@@ -503,6 +503,7 @@ it. `docs/DEPLOYMENT.md` explains the whole failure mode.
 | **Real accounts** | **Done.** Magic-link sign-in is the only way in. Join codes, the hand-rolled `sessions` table, our login rate limiter and the `has_*_code` flags were all dropped (`supabase/migrations/20260820000000_retire_join_codes.sql`). A role is a `league_members` row; people join by invitation. See `docs/AUTH.md`. |
 | **Lineup lock** | **Done.** Per-league: each player at his own kickoff, or every lineup at the week's first one (`seasons.lineup_lock`). Times come from the schedule and are re-readable, because flex scheduling moves games. |
 | **The week on a clock** | **Done, opt-in.** Two per-league switches (`leagues.auto_process_schemes`, `leagues.auto_advance_week`, both default off) let the scheme deadline and the Tuesday finalize-and-deal run themselves - Scott's request, recorded as OQ-14 and built 2026-09-07. `server/autoCycle.js` holds the rules, `netlify/functions/run-cycle-scheduled.mjs` runs hourly so the deadlines survive the daylight-saving change mid-season. Managers are now told by email, if their commissioner switched it on - OQ-6, below. |
+| **League checker** | **Built 2026-11-27, not live until Kyle applies its migration.** Every hour at twenty past, `netlify/functions/check-leagues-scheduled.mjs` reads every league and looks for states that should be impossible - a week finished with every team on 0, a league a week ahead of or behind the NFL, a deadline passed with the week not moved, a deal that never recorded its time, a roster email sent before the deal the league kept. The rules are `server/leagueHealth.js` (pure, and the overdue checks ask the clock's OWN eligibility functions two hours late, so the two cannot disagree); the reading, `league_alerts` and the email to every `site_admins` address are `server/leagueCheck.js`. **It changes nothing in any league** - it reports. Each problem is emailed once, and clears itself when it goes away. Step 3 of `docs/PLAN-AUTOMATIC-LEAGUES.md`. Step 2, **one download of each NFL file per run** shared by every league, is `server/feed/shared.js`, used by all four hourly jobs. |
 | **League email** | **Done, opt-in.** Three messages - a week dealt (carrying last week's result), a 12-hour scheme-deadline reminder, and schemes processed - answering OQ-6 as issue #57, built 2026-09-20. One switch per league (`leagues.notify_members`, **default false**); each member turns off each kind for themselves from any message's footer, with no sign-in. `server/notify.js` is the outbox, `notifications` is the send log that keeps a retried hourly run from mailing anybody twice, and nothing sends from a machine whose database is local. League mail has its own sending subdomain so a spam complaint cannot reach the magic links - `docs/EMAIL-SETUP.md` section 6. **Not built: a digest, anything for the commissioner, and any notification that is not email.** |
 | **Live stats feed** | **Mostly done.** The pool refreshes from nflverse depth charts, scoring splits into passing / rushing / receiving (stages 1 and 4, live since 2026-08-29), each period carries the NFL week it plays (stage 3, `server/schedule.js`), the weekly stats pull is built (stage 5, `server/stats.js`), and **it now runs on a schedule** - every three hours, for leagues that opt in (stage 7, `server/autoPull.js`, `leagues.auto_pull_stats`). **Not built: the persistent disagreement view beside each box** - stage 6 in `docs/PHASE-4-PLAN.md`; `docs/LIVE-DATA.md` is the provider survey behind the choice, and carries nflverse's real publish cadence. |
 | **Weekly recap** | **Done, free.** A short, funny write-up of each team's week - finish, standings move, the steal that backfired, the bench that outscored the lineup - popping up once when a manager next opens the league after the finalize, then kept as a strip on My Team (OQ-31, Scott 2026-10-19). Written ONCE by the server at finalize (`src/recap/`, stored in `weekly_recaps`), from fill-in-the-blank lines in `src/recap/lines.js` that never repeat in a season - `scripts/recap-season-check.mjs` checks that. Two server-owned columns feed it and are deliberately absent from `decompose.js`: `periods.scheme_moves` (what each scheme did, captured when schemes run - the only moment it is known) and `seasons.recap_deck` (the lines used so far). **Nothing in the game reads a recap.** Regular-season weeks only; no AI - Scott chose free for now, and an AI writer later would change only where the words come from. |

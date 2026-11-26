@@ -90,6 +90,11 @@
 # 2026-10-17), so this is roughly one run after each new report and well inside the hours
 # a manager has before a Sunday kickoff to see a Saturday downgrade. It is downloaded ONCE
 # per run whatever the number of leagues - see scheduledInjuryPull.
+# The hourly league checker (docs/PLAN-AUTOMATIC-LEAGUES.md, step 3). Twenty past, after
+# the weekly cycle has run. Reads every league; writes only league_alerts.
+[functions."check-leagues-scheduled"]
+  schedule = "20 * * * *"
+
 [functions."pull-injuries-scheduled"]
   schedule = "30 */3 * * *"
 
