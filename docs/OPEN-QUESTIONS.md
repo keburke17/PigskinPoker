@@ -2825,7 +2825,9 @@ only an admin, or the feed's own correction.
 - **(e)** The commissioner either hand-picks teams or sets the game to deal them
   automatically. Anyone without a team at the start is given a random one.
 
-**Still open:** (b) - restated for Scott on 2026-11-26 - and the consolation bracket's own
-shape (see the plan).
+- **(b) Next week.** A scoring change takes effect from the next week dealt; the week being
+  played keeps the values it was dealt with, and finished weeks never move.
+
+**Still open:** the consolation bracket's own shape (see the plan).
 
 **Nothing is built.** The build order, and what each step needs from Kyle, is in the plan.

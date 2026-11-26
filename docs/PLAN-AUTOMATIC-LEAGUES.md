@@ -169,8 +169,7 @@ records it).
 
 ## Still waiting on Scott
 
-b. **A scoring change made while a week is being played** - say TDs go from 4 to 6 on a
-   Friday: does that week count with 4 or with 6?
+b. ~~A scoring change mid-week~~ - **answered: from the next week dealt.**
 f. **The consolation bracket's shape**: an elimination bracket of its own (the winner
    finishes first among the non-playoff teams), or one table of points for those places?
    And do teams knocked out of the playoffs drop into it, or are they done?
