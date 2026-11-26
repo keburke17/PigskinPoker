@@ -170,6 +170,43 @@ records it).
 ## Still waiting on Scott
 
 b. ~~A scoring change mid-week~~ - **answered: from the next week dealt.**
-f. **The consolation bracket's shape**: an elimination bracket of its own (the winner
-   finishes first among the non-playoff teams), or one table of points for those places?
-   And do teams knocked out of the playoffs drop into it, or are they done?
+f. ~~The consolation bracket's shape~~ - **answered 2026-11-26, below.**
+
+## The playoffs and the consolation group (Scott, 2026-11-26)
+
+- **Every team is dealt every playoff week**, from the same pool - a 12-team league deals
+  12 hands every week, as in the regular season.
+- **Two groups.** The *playoff group* is the teams still alive; the top of each week
+  advance as the league's format says (e.g. 8, 6, 4, 2, 1). Everyone else is the
+  *consolation group*.
+- **A place is locked the moment a team is out of the race, and never moves after.**
+  - Teams cut from the playoffs take the places just below the survivors, ordered by that
+    week's score (8 -> 6: the two cut finish 7th and 8th).
+  - **Places below the bracket (9th to 12th) are decided by Playoff Week 1's score**, among
+    the teams that did not make the playoffs - the same week and the same rule as 7th and
+    8th. So after Playoff Week 1, nobody outside the playoff group is playing for a place.
+  - Scott's reason: a team knocked out in 7th must not be done while a 9th-place team is
+    still playing for something.
+- **The consolation group keeps playing for the week only**: every team out of the race is
+  still dealt, and the top consolation score each week gets a callout on the scoreboard.
+- **Steals are one-way**: a playoff team can steal from anyone; a consolation team only from
+  another consolation team. Blocks and redraws are the same for everyone. Stated on the
+  Rules tab.
+- **Every round settles at Thursday 3am**, at the scheme run: stat corrections land, a team
+  moves between the groups if they change who advanced (nobody is re-dealt - everyone has
+  a roster), then schemes run on the settled groups. Each round still finalizes Tuesday.
+- **The champion** is crowned at the final week's finalize and made official at Thursday 3am
+  once corrections close.
+
+Example, 12 teams, 8 make it, 8 -> 6 -> 4 -> 2 -> 1:
+
+| Playoff week | Playoff group | Places locked after it |
+|---|---|---|
+| 1 | seeds 1-8 | 7th, 8th (cut), and 9th-12th (by this week's score) |
+| 2 | the 6 left | 5th, 6th |
+| 3 | the 4 left | 3rd, 4th |
+| 4 | the final 2 | Champion, 2nd |
+
+All 12 are dealt all four weeks. This replaces today's rule that only surviving teams are
+dealt, so it is a game-rules change: `src/engine/`, with `tests/parity.test.js` recording
+the difference.

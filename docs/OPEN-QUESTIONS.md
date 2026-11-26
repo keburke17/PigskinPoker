@@ -2828,6 +2828,13 @@ only an admin, or the feed's own correction.
 - **(b) Next week.** A scoring change takes effect from the next week dealt; the week being
   played keeps the values it was dealt with, and finished weeks never move.
 
-**Still open:** the consolation bracket's own shape (see the plan).
+- **(f) The consolation group.** Every team is dealt every playoff week. A place locks the
+  moment a team is out of the race: teams cut from the playoffs by that week's score, and
+  9th-12th by Playoff Week 1's score - so after Week 1 nobody outside the playoffs plays
+  for a place ("a team eliminated 7th should not be done while the 9th is still playing").
+  Out-of-race teams play on for a weekly consolation callout. One-way steals; every round
+  settles at Thursday 3am. Full detail in the plan.
+
+**Nothing left open on OQ-41.**
 
 **Nothing is built.** The build order, and what each step needs from Kyle, is in the plan.
