@@ -40,6 +40,7 @@ import {
 import { isValidTimeZone } from "./tz.js";
 import { isValidNflWeek, nextNflWeek } from "./schedule.js";
 import { selectFeed } from "./feed/index.js";
+import { sharedFeed } from "./feed/shared.js";
 import {
   LINEUP_LOCK,
   LINEUP_LOCK_MODES,
@@ -2787,7 +2788,9 @@ export async function setAutoPullStats(db, { leagueId, token, enabled }) {
  * @param {object}  feed   injected by tests; otherwise feed/index.js chooses
  * @returns {{ status, body }} an ops-shaped result whose body carries the run summary
  */
-export async function scheduledStatsPull(db, { feed } = {}) {
+export async function scheduledStatsPull(db, { feed: given } = {}) {
+  /* One download of each NFL file for the whole run - see server/feed/shared.js. */
+  const feed = sharedFeed(given || (await selectFeed()));
   const { data: leagues, error } = await db
     .from("leagues")
     .select("id, name, auto_pull_stats")
@@ -2952,7 +2955,9 @@ async function runInjuryPull(db, { leagueId, rows, period, feed, report = null }
  * or one not mapped to an NFL week, is skipped rather than failed - the same "not yet"
  * the stats job uses (server/autoPull.js).
  */
-export async function scheduledInjuryPull(db, { feed } = {}) {
+export async function scheduledInjuryPull(db, { feed: given } = {}) {
+  /* One download of each NFL file for the whole run - see server/feed/shared.js. */
+  const feed = sharedFeed(given || (await selectFeed()));
   const { data: leagues, error } = await db.from("leagues").select("id, name");
   if (error) return fail(500, "Could not list leagues: " + error.message);
 
@@ -3125,7 +3130,11 @@ export async function setNotifyMembers(db, { leagueId, token, enabled }) {
  * @param {number} now   epoch ms, injected so tests can freeze the clock
  * @param {object} feed  injected by tests; otherwise feed/index.js chooses
  */
-export async function scheduledWeeklyCycle(db, { now = Date.now(), feed } = {}) {
+export async function scheduledWeeklyCycle(db, { now = Date.now(), feed: given } = {}) {
+  /* One download of each NFL file for the whole run, shared by every league in it
+   * (server/feed/shared.js). Choosing the feed downloads nothing; the first league that
+   * asks for a file fetches it, and every league after it gets that copy. */
+  const feed = sharedFeed(given || (await selectFeed()));
   const { data: leagues, error } = await db
     .from("leagues")
     .select("id, name, tz, auto_process_schemes, auto_advance_week, auto_pull_stats, notify_members")

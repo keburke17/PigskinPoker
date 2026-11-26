@@ -39,7 +39,7 @@ const READABLE = [
  * record of who is in which league and what they have been told, keyed on auth.users
  * ids, and NOTHING in the browser reads it. The send log is the server's alone. Your own
  * opt-out switches are `notification_prefs`, which is an account table below. */
-const SECRETS = ["invites", "site_admins", "notifications"];
+const SECRETS = ["invites", "site_admins", "notifications", "league_alerts"];
 /* Phase 3b. A THIRD category, because these fit neither of the other two: they are
  * about people rather than about the game, so a signed-in visitor may read their own
  * rows (SELECT to `authenticated`, narrowed further by an RLS policy scoped to

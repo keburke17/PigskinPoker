@@ -28,6 +28,7 @@ import { createClient } from "@supabase/supabase-js";
 import * as ops from "../server/operations.js";
 import { fetchLeagueRows, hydrate, persistBlob } from "../server/league.js";
 import { repairSkippedWeek } from "../scripts/repair-skipped-week.mjs";
+import { scheduledLeagueCheck } from "../server/leagueCheck.js";
 import { finalizeCurrentPeriod } from "../src/engine/standings.js";
 import { autoSeatIds, lobbyLine, nextHandTeamIds, periodTeamIds, slotAcceptsPosition, tableRecord } from "../src/engine/index.js";
 
@@ -3429,6 +3430,44 @@ gate()("the scheduled weekly cycle", () => {
     const out = await repairSkippedWeek(db, { leagueId, week: 1, apply: true, log: () => {} });
     expect(out.ok).toBe(false);
     expect(await periodsOf()).toEqual(before);
+  });
+
+  /* THE CHECKER (server/leagueCheck.js) on the same incident: it finds it, records it,
+   * emails the admins once, and clears it once the league is repaired. */
+  it("the league checker finds the skipped week, reports it once, and clears it after the repair", async () => {
+    await db.from("league_alerts").delete().eq("league_id", leagueId);
+    await stageSkippedWeek();
+    const feed = { fetchSeasonGames: async () => ({ games: [] }) };
+    const env = { ...process.env, RESEND_API_KEY: "" };
+
+    const first = await scheduledLeagueCheck(db, { feed, env });
+    expect(first.ok).toBe(true);
+    const { data: open } = await db.from("league_alerts").select("*").eq("league_id", leagueId).is("resolved_at", null);
+    expect(open.map((a) => a.kind)).toContain("empty_week");
+    expect(open.find((a) => a.kind === "empty_week").message).toMatch(/Week 3 .*every team on 0/);
+
+    expect(first.emailed).toBeGreaterThan(0); // captured locally, never really sent
+
+    // A second hour: still open, not a second alert, and not emailed again.
+    const second = await scheduledLeagueCheck(db, { feed, env });
+    expect(second.emailed).toBe(0);
+    const { data: again } = await db.from("league_alerts").select("id").eq("league_id", leagueId).eq("kind", "empty_week");
+    expect(again).toHaveLength(1);
+
+    // Repaired: the alert is resolved on the next run.
+    expect((await repairSkippedWeek(db, { leagueId, week: 3, apply: true, log: () => {} })).ok).toBe(true);
+    await scheduledLeagueCheck(db, { feed, env });
+    const { data: after } = await db.from("league_alerts").select("resolved_at").eq("league_id", leagueId).eq("kind", "empty_week");
+    expect(after[0].resolved_at).toBeTruthy();
+    await db.from("league_alerts").delete().eq("league_id", leagueId);
+  });
+
+  it("the league checker is unreachable from a browser", async () => {
+    await db.from("league_alerts").insert({ league_id: leagueId, kind: "probe", key: "x", message: "probe" });
+    const anon = createClient(dbUrl, dbPublishable, { auth: { persistSession: false } });
+    const { data } = await anon.from("league_alerts").select("*");
+    expect(data ?? []).toEqual([]);
+    await db.from("league_alerts").delete().eq("league_id", leagueId).eq("kind", "probe");
   });
 
   /* OQ-40. A week with a Wednesday game closes schemes at 3am Wednesday. */
