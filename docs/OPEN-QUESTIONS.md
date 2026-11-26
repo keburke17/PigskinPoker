@@ -2758,3 +2758,83 @@ none since 2010, bar 2020) are not covered: Scott named Wednesday.
 **Considered and not taken:** freezing any player whose game has kicked off so he cannot
 be stolen, redrawn or blocked. It would handle any day, but it is a change to what a
 scheme can do rather than when it runs. Left for Scott if Wednesday is not enough.
+
+### OQ-41. Every league on the clock; only the admins hold the step buttons. **[ANSWERED 2026-11-25 by Scott - four smaller points still open]**
+
+**Why it came up.** The Week 12 incident (`docs/INCIDENT-2026-11-24.md`) and the double
+deals before it, and Scott's aim of a public game next season with leagues nobody here
+commissions. "Everything needs to run, smooth and in unison and the same way. Admin tools
+for just me and Kyle to fix any issues that arrive in any number of leagues."
+
+**What it does to the league - said plainly, because it reverses a rule CLAUDE.md
+protects.** The weekly flow has been commissioner-driven since the artifact, with the
+clock an opt-in exception (OQ-14). Under this answer the clock runs every league, always,
+and a commissioner can no longer deal, process schemes, finalize, pull stats, refresh the
+pool or type a stat. If the feed gets a number wrong, nobody in the league can fix it -
+only an admin, or the feed's own correction.
+
+**Scott's answers** (the whole plan is `docs/PLAN-AUTOMATIC-LEAGUES.md`):
+
+| Question | Answer |
+|---|---|
+| What runs automatically? | **Everything**, in every league and all three games: deal, schemes, stats, pool refresh, finalize. The Weekly dealer and Last Digit's Deal Teams too. |
+| Who holds the step buttons? | **Only Scott and Kyle**, in an admin console reached from the homepage, covering every league. |
+| When does a league start? | **At a start week picked at creation, with whoever has joined by then's Tuesday 6am deal.** Earliest: Week 1 before the season, the following week during it. **The commissioner can push it back any time before it starts.** Nobody presses "ready". Same for all three games; this changes OQ-37's "a start week already played". |
+| Stat corrections after a week is finished? | **Re-score automatically until Thursday 3am**, re-ranking the week and moving standings points and the week win if the order changes, **with a visible note of every correction**. Final after that. Closes most of OQ-38 (PR #114). |
+| Settings after the start | **Email**: any time. **Scoring**: any time, never re-scoring a finished week. **Playoff start week**: set at creation, locked once the season begins. **Lineup lock**: always per player at his own kickoff. |
+
+**Still open:**
+
+- **(a) The playoff bracket.** Scott asked first how ESPN, Yahoo and Sleeper handle a
+  correction that would change the seeding. What their help pages say: all three re-score
+  automatically after the games - Sleeper "up to and including Thursdays", Yahoo "up until
+  the first real life game in the next matchup week", ESPN until the Saturday after - and
+  standings follow. Yahoo seeds from regular-season standings and lets the commissioner
+  edit Week 1 playoff seeds until the first real game of the playoff week kicks off. None
+  of the three says it re-seeds after that, and late corrections have flipped playoff
+  results after the fact (a Buffalo D/ST correction Yahoo acknowledged changed a matchup;
+  the Ezekiel Elliott fumble reversal, 2018). **Their position is easier than ours**: a
+  re-seed costs them nothing because everyone keeps their own drafted roster. Here, Round 1
+  rosters are DEALT from the bracket on Tuesday, so a re-seed means a re-deal. Options:
+  wait to seed until Thursday 3am in the last regular-season week (Round 1 then needs its
+  own scheme deadline); seed Tuesday and freeze, with a notice; or re-seed and re-deal
+  Round 1 before it kicks off.
+- **(b)** A scoring change made mid-week: the week being played, or from the next week dealt?
+- **(c)** Fewer than two teams at the start week: push the start back a week by itself?
+- **(d)** Leagues set to lock every lineup at the week's first kickoff move to per-player locks.
+- **(e)** Last Digit's hand-picked draw: picks made before the start, and a random team for
+  anyone without one at the start?
+
+**Answered 2026-11-26 by Scott:**
+
+- **(a) Playoffs get a consolation bracket, and the final seeding waits until Thursday 3am.**
+  Teams that do not make the playoffs are still dealt and still play, in a consolation
+  bracket for the final standings. **A consolation team cannot steal from a playoff team;
+  a playoff team can steal from a consolation team** (said in the rules too). Because
+  every team is dealt either way, a correction that changes who made the playoffs needs
+  NO re-deal - the team just moves between the two brackets. The seeding is final at
+  Thursday 3am, the moment schemes process, so the steal rule always runs on the final
+  seeding: corrections land, the seeding settles, then schemes run. The last regular-season
+  week is still finalized on Tuesday as normal; only the seeding stays open.
+- **Stat corrections, in the rules, in their own section:** the game picks up stat
+  corrections until the Thursday 3am scheme run; a finished week is finalized when it is
+  finalized, but a correction before Thursday 3am still changes its scores, places and
+  standings if it changes anything.
+- **(c) Yes** - fewer than two teams at the start week pushes the start back a week by itself.
+- **(d) Yes** - lineups lock at each player's own kickoff.
+- **(e)** The commissioner either hand-picks teams or sets the game to deal them
+  automatically. Anyone without a team at the start is given a random one.
+
+- **(b) Next week.** A scoring change takes effect from the next week dealt; the week being
+  played keeps the values it was dealt with, and finished weeks never move.
+
+- **(f) The consolation group.** Every team is dealt every playoff week. Knocked-out teams
+  drop into the consolation group and play to the end; consolation points add up. Final
+  standings come in groups by how far a team got - out in a later round always above an
+  earlier one, every playoff team above every non-playoff team - and within a group the
+  consolation total decides. Weekly consolation callout, one-way steals, every round
+  settles at Thursday 3am. Worked example and the full rule in the plan.
+
+**Nothing left open on OQ-41.**
+
+**Nothing is built.** The build order, and what each step needs from Kyle, is in the plan.
